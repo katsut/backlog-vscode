@@ -1,0 +1,93 @@
+body {
+	font-family: var(--vscode-font-family);
+	font-weight: var(--vscode-font-weight);
+	font-size: var(--vscode-font-size);
+	margin: 0;
+	padding: 0 20px;
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-editor-background);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	color: var(--vscode-foreground);
+}
+
+a {
+	color: var(--vscode-textLink-foreground);
+}
+
+a:hover {
+	color: var(--vscode-textLink-activeForeground);
+}
+
+button {
+	border: none;
+	padding: 6px 14px;
+	text-align: center;
+	outline: 1px solid transparent;
+	outline-offset: 2px !important;
+	color: var(--vscode-button-foreground);
+	background: var(--vscode-button-background);
+	cursor: pointer;
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+}
+
+button:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+button:active {
+	background: var(--vscode-button-background);
+	outline-color: var(--vscode-focusBorder);
+}
+
+label {
+	color: var(--vscode-foreground);
+	font-size: var(--vscode-font-size);
+	font-weight: normal;
+}
+
+input {
+	display: block;
+	width: 100%;
+	border: none;
+	font-family: var(--vscode-font-family);
+	padding: 6px;
+	color: var(--vscode-input-foreground);
+	outline-color: var(--vscode-input-border);
+	background-color: var(--vscode-input-background);
+}
+
+input::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+code {
+	font-size: var(--vscode-editor-font-size);
+	font-family: var(--vscode-editor-font-family);
+	background: var(--vscode-textCodeBlock-background);
+	padding: 1px 3px;
+	border-radius: 3px;
+}
+
+blockquote {
+	background: var(--vscode-textBlockQuote-background);
+	border: var(--vscode-textBlockQuote-border);
+	padding: 10px;
+	margin: 8px 0;
+}
+
+pre {
+	background: var(--vscode-textPreformat-background);
+	border: var(--vscode-textPreformat-border);
+	padding: 10px;
+	margin: 8px 0;
+	font-family: var(--vscode-editor-font-family);
+	font-size: var(--vscode-editor-font-size);
+	overflow-x: auto;
+}

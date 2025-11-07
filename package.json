@@ -1,0 +1,301 @@
+{
+  "name": "backlog-vscode",
+  "displayName": "Backlog Viewer",
+  "description": "Backlog viewer and management extension for VS Code",
+  "version": "0.0.1",
+  "publisher": "backlog-vscode",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "backlog",
+    "project management",
+    "issue tracking",
+    "viewer"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "views": {
+      "backlogContainer": [
+        {
+          "id": "backlogProjects",
+          "name": "Projects",
+          "when": "!backlogProjectFocused && backlogExplorer.enabled"
+        },
+        {
+          "id": "backlogIssues",
+          "name": "Issues",
+          "when": "backlogExplorer.enabled && backlogProjectFocused"
+        },
+        {
+          "id": "backlogWiki",
+          "name": "Wiki",
+          "when": "backlogExplorer.enabled && backlogProjectFocused"
+        },
+        {
+          "id": "backlogDocuments",
+          "name": "Documents", 
+          "when": "backlogExplorer.enabled && backlogProjectFocused"
+        }
+      ],
+      "backlogIssueDetail": [
+        {
+          "id": "backlogIssueDetailView",
+          "name": "Issue Detail",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "backlogContainer",
+          "title": "Backlog",
+          "icon": "$(project)"
+        }
+      ],
+      "panel": [
+        {
+          "id": "backlogIssueDetail",
+          "title": "Backlog Issue Detail",
+          "icon": "$(bug)"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "backlogProjects",
+        "contents": "Configure Backlog settings to get started.\n[Open Settings](command:backlog.openSettings)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "backlog.refreshProjects",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "backlog.refreshIssues",
+        "title": "Refresh Issues",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "backlog.refreshWiki",
+        "title": "Refresh Wiki",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "backlog.refreshDocuments",
+        "title": "Refresh Documents",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "backlog.searchProjects",
+        "title": "Search Projects",
+        "icon": "$(search)"
+      },
+      {
+        "command": "backlog.clearProjectSearch",
+        "title": "Clear Search",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "backlog.openIssue",
+        "title": "Open Issue"
+      },
+      {
+        "command": "backlog.openSettings",
+        "title": "Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "backlog.setApiKey",
+        "title": "Set API Key",
+        "icon": "$(key)"
+      },
+      {
+        "command": "backlog.search",
+        "title": "Search Issues",
+        "icon": "$(search)"
+      },
+      {
+        "command": "backlog.filter",
+        "title": "Filter Issues",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "backlog.sort",
+        "title": "Sort Issues",
+        "icon": "$(sort-precedence)"
+      },
+      {
+        "command": "backlog.clearFilters",
+        "title": "Clear Filters",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "backlog.focusProject",
+        "title": "Focus Project"
+      },
+      {
+        "command": "backlog.unfocusProject",
+        "title": "Back to Projects",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "backlog.openWiki",
+        "title": "Open Wiki"
+      },
+      {
+        "command": "backlog.openDocument",
+        "title": "Open Document"
+      },
+      {
+        "command": "backlog.openProjectByKey",
+        "title": "Open Project by Key",
+        "category": "Backlog"
+      },
+      {
+        "command": "backlog.openIssueByKey",
+        "title": "Open Issue by Key",
+        "category": "Backlog"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "backlog.refreshProjects",
+          "when": "view == backlogProjects",
+          "group": "navigation@1"
+        },
+        {
+          "command": "backlog.searchProjects",
+          "when": "view == backlogProjects",
+          "group": "navigation@2"
+        },
+        {
+          "command": "backlog.clearProjectSearch",
+          "when": "view == backlogProjects",
+          "group": "navigation@3"
+        },
+        {
+          "command": "backlog.openSettings",
+          "when": "view == backlogProjects",
+          "group": "navigation@4"
+        },
+        {
+          "command": "backlog.refreshIssues",
+          "when": "view == backlogIssues",
+          "group": "navigation@1"
+        },
+        {
+          "command": "backlog.search",
+          "when": "view == backlogIssues",
+          "group": "navigation@2"
+        },
+        {
+          "command": "backlog.filter",
+          "when": "view == backlogIssues",
+          "group": "navigation@3"
+        },
+        {
+          "command": "backlog.sort",
+          "when": "view == backlogIssues",
+          "group": "navigation@4"
+        },
+        {
+          "command": "backlog.clearFilters",
+          "when": "view == backlogIssues",
+          "group": "navigation@5"
+        },
+        {
+          "command": "backlog.unfocusProject",
+          "when": "view == backlogIssues",
+          "group": "navigation@6"
+        },
+        {
+          "command": "backlog.refreshWiki",
+          "when": "view == backlogWiki",
+          "group": "navigation@1"
+        },
+        {
+          "command": "backlog.unfocusProject",
+          "when": "view == backlogWiki",
+          "group": "navigation@2"
+        },
+        {
+          "command": "backlog.refreshDocuments",
+          "when": "view == backlogDocuments",
+          "group": "navigation@1"
+        },
+        {
+          "command": "backlog.unfocusProject",
+          "when": "view == backlogDocuments",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "backlog.openProjectByKey",
+        "key": "alt+shift+p",
+        "mac": "ctrl+shift+p"
+      },
+      {
+        "command": "backlog.openIssueByKey",
+        "key": "alt+shift+i",
+        "mac": "ctrl+shift+i"
+      }
+    ],
+    "configuration": {
+      "title": "Backlog",
+      "properties": {
+        "backlog.apiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Backlog API URL (e.g., https://yourspace.backlog.jp)"
+        },
+        "backlog.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto refresh project data"
+        },
+        "backlog.refreshInterval": {
+          "type": "number",
+          "default": 300,
+          "description": "Auto refresh interval (seconds)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "lint:fix": "eslint src --ext ts --fix",
+    "test": "node ./out/test/runTest.js",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint": "^8.28.0",
+    "prettier": "^2.8.0",
+    "typescript": "^4.9.4",
+    "@vscode/test-electron": "^2.2.0"
+  },
+  "dependencies": {
+    "backlog-js": "^0.9.1"
+  }
+}
