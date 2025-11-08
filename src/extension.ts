@@ -320,11 +320,13 @@ export function activate(context: vscode.ExtensionContext) {
   const filterCommand = vscode.commands.registerCommand('backlog.filter', async () => {
     const filterOptions = [
       { label: '🔴 Open Issues Only', description: 'Show only unresolved issues', value: 'open' },
+      { label: '🔍 Non-Closed Issues', description: 'Show all issues except closed ones', value: 'nonClosed' },
       { label: '👤 My Issues', description: 'Show issues assigned to me', value: 'my' },
       { label: '⏰ Overdue Issues', description: 'Show issues past due date', value: 'overdue' },
       { label: '🎯 Status Filter', description: 'Filter by specific status', value: 'status' },
       { label: '🔥 Priority Filter', description: 'Filter by priority level', value: 'priority' },
       { label: '👥 Assignee Filter', description: 'Filter by assignee', value: 'assignee' },
+      { label: '🧹 Clear All Filters', description: 'Remove all filters and show all issues', value: 'clear' },
     ];
 
     const selectedFilter = await vscode.window.showQuickPick(filterOptions, {
@@ -339,6 +341,12 @@ export function activate(context: vscode.ExtensionContext) {
       case 'open': {
         await backlogIssuesProvider.filterOpenIssues();
         vscode.window.showInformationMessage('Showing open issues only');
+        break;
+      }
+
+      case 'nonClosed': {
+        await backlogIssuesProvider.filterNonClosedIssues();
+        vscode.window.showInformationMessage('Showing all issues except closed ones');
         break;
       }
 
@@ -403,6 +411,12 @@ export function activate(context: vscode.ExtensionContext) {
           await backlogIssuesProvider.filterByAssignee(assignees);
           vscode.window.showInformationMessage(`Assignee filter applied: ${assignees.join(', ')}`);
         }
+        break;
+      }
+
+      case 'clear': {
+        backlogIssuesProvider.clearFilters();
+        vscode.window.showInformationMessage('All filters and search cleared');
         break;
       }
     }

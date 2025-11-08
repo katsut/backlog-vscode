@@ -26,7 +26,8 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
   async setProject(projectId: number): Promise<void> {
     this.currentProjectId = projectId;
     await this.loadIssues();
-    this._onDidChangeTreeData.fire();
+    // デフォルトでNon-Closed Issuesフィルタを適用
+    await this.filterNonClosedIssues();
   }
 
   // プロジェクトをクリア
@@ -139,6 +140,20 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
   async filterOpenIssues(): Promise<void> {
     this.statusFilter = ['Open', 'In Progress', 'オープン', '処理中'];
     this.applyFilters();
+    this._onDidChangeTreeData.fire();
+  }
+
+  // クイックフィルタ: Closed以外の課題
+  async filterNonClosedIssues(): Promise<void> {
+    // Closedステータス以外の課題をフィルタ
+    const filtered = this.issues.filter((issue) => {
+      const statusName = issue.status.name.toLowerCase();
+      return !['closed', 'クローズ'].includes(statusName);
+    });
+
+    this.filteredIssues = filtered;
+    // statusFilterをクリアしてカスタムフィルタを適用
+    this.statusFilter = [];
     this._onDidChangeTreeData.fire();
   }
 
