@@ -58,8 +58,6 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
 
       console.log('Project focus command completed successfully');
 
-      // 成功メッセージを表示
-      vscode.window.showInformationMessage(`Selected project: ${projectId}`);
     } catch (error) {
       console.error('Error focusing project:', error);
       vscode.window.showErrorMessage(`Failed to select project: ${error}`);

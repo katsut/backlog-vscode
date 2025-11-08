@@ -150,21 +150,16 @@ export function activate(context: vscode.ExtensionContext) {
   // 個別のリフレッシュコマンド
   const refreshIssuesCommand = vscode.commands.registerCommand('backlog.refreshIssues', () => {
     backlogIssuesProvider.refresh();
-    vscode.window.showInformationMessage('Issues refreshed');
   });
 
   const refreshWikiCommand = vscode.commands.registerCommand('backlog.refreshWiki', () => {
     backlogWikiProvider.refresh();
-    vscode.window.showInformationMessage('Wiki refreshed');
   });
 
   const refreshDocumentsCommand = vscode.commands.registerCommand(
     'backlog.refreshDocuments',
     async () => {
       backlogDocumentsProvider.refresh();
-      setTimeout(() => {
-        vscode.window.showInformationMessage(`Documents refreshed.`);
-      }, 1000); // リフレッシュ完了を待つため少し遅延
     }
   );
 
@@ -189,7 +184,7 @@ export function activate(context: vscode.ExtensionContext) {
             issueDetail,
             issueComments
           );
-          vscode.window.showInformationMessage(`Issue ${issueKey} refreshed`);
+          // Success - no notification needed for regular refresh
         } catch (error) {
           existingPanel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to load issue: ${error}`);
         }
@@ -249,7 +244,6 @@ export function activate(context: vscode.ExtensionContext) {
                     refreshedComments,
                     configService.getBaseUrl()
                   );
-                  vscode.window.showInformationMessage('Issue refreshed successfully');
                 } catch (error) {
                   console.error('Error refreshing issue:', error);
                   vscode.window.showErrorMessage(`Failed to refresh issue: ${error}`);
@@ -304,11 +298,6 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (query !== undefined) {
         await backlogTreeViewProvider.search(query);
-        if (query) {
-          vscode.window.showInformationMessage(`Searching projects: "${query}"`);
-        } else {
-          vscode.window.showInformationMessage('Project search cleared');
-        }
       }
     }
   );
@@ -318,7 +307,6 @@ export function activate(context: vscode.ExtensionContext) {
     'backlog.clearProjectSearch',
     () => {
       backlogTreeViewProvider.search('');
-      vscode.window.showInformationMessage('Project search cleared');
     }
   );
 
@@ -331,11 +319,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     if (query !== undefined) {
       await backlogIssuesProvider.searchIssues(query);
-      if (query) {
-        vscode.window.showInformationMessage(`Searching issues: "${query}"`);
-      } else {
-        vscode.window.showInformationMessage('Issue search cleared');
-      }
     }
   });
 
@@ -363,25 +346,21 @@ export function activate(context: vscode.ExtensionContext) {
     switch (selectedFilter.value) {
       case 'open': {
         await backlogIssuesProvider.filterOpenIssues();
-        vscode.window.showInformationMessage('Showing open issues only');
         break;
       }
 
       case 'nonClosed': {
         await backlogIssuesProvider.filterNonClosedIssues();
-        vscode.window.showInformationMessage('Showing all issues except closed ones');
         break;
       }
 
       case 'my': {
         await backlogIssuesProvider.filterMyIssues();
-        vscode.window.showInformationMessage('Showing your assigned issues');
         break;
       }
 
       case 'overdue': {
         await backlogIssuesProvider.filterOverdueIssues();
-        vscode.window.showInformationMessage('Showing overdue issues');
         break;
       }
 
@@ -402,9 +381,6 @@ export function activate(context: vscode.ExtensionContext) {
         });
         if (selectedStatuses) {
           await backlogIssuesProvider.filterByStatus(selectedStatuses);
-          vscode.window.showInformationMessage(
-            `Status filter applied: ${selectedStatuses.join(', ')}`
-          );
         }
         break;
       }
@@ -417,9 +393,6 @@ export function activate(context: vscode.ExtensionContext) {
         });
         if (selectedPriorities) {
           await backlogIssuesProvider.filterByPriority(selectedPriorities);
-          vscode.window.showInformationMessage(
-            `Priority filter applied: ${selectedPriorities.join(', ')}`
-          );
         }
         break;
       }
@@ -432,14 +405,12 @@ export function activate(context: vscode.ExtensionContext) {
         if (assigneeInput) {
           const assignees = assigneeInput.split(',').map((a) => a.trim());
           await backlogIssuesProvider.filterByAssignee(assignees);
-          vscode.window.showInformationMessage(`Assignee filter applied: ${assignees.join(', ')}`);
         }
         break;
       }
 
       case 'clear': {
         backlogIssuesProvider.clearFilters();
-        vscode.window.showInformationMessage('All filters and search cleared');
         break;
       }
     }
@@ -470,7 +441,6 @@ export function activate(context: vscode.ExtensionContext) {
         'asc' | 'desc'
       ];
       await backlogTreeViewProvider.sort(sortBy, order);
-      vscode.window.showInformationMessage(`Sorted by: ${selected.label}`);
     }
   });
 
@@ -478,7 +448,6 @@ export function activate(context: vscode.ExtensionContext) {
   const clearFiltersCommand = vscode.commands.registerCommand('backlog.clearFilters', () => {
     backlogIssuesProvider.clearFilters();
     backlogTreeViewProvider.clearFilters(); // 後方互換性のため
-    vscode.window.showInformationMessage('All filters and search cleared');
   });
 
   // プロジェクトフォーカスコマンド（新しいプロバイダー対応）
@@ -511,7 +480,6 @@ export function activate(context: vscode.ExtensionContext) {
         // Focus Backlog sidebar
         await vscode.commands.executeCommand('workbench.view.extension.backlogContainer');
 
-        vscode.window.showInformationMessage(`Focused on project ID: ${projectId}`);
       } catch (error) {
         console.error('Error in focusProject command:', error);
         vscode.window.showErrorMessage(`Failed to focus project: ${error}`);
@@ -532,7 +500,6 @@ export function activate(context: vscode.ExtensionContext) {
     // 旧プロバイダーも更新
     backlogTreeViewProvider.unfocusProject();
 
-    vscode.window.showInformationMessage('Returned to projects view');
   });
 
   // Wikiを開くコマンド - エディタでWebviewを開く（選択時に詳細データを取得）
@@ -580,7 +547,6 @@ export function activate(context: vscode.ExtensionContext) {
                       refreshedWiki,
                       configService.getBaseUrl()
                     );
-                    vscode.window.showInformationMessage('Wiki refreshed successfully');
                   } catch (error) {
                     console.error('Error refreshing wiki:', error);
                     vscode.window.showErrorMessage(`Failed to refresh wiki: ${error}`);
@@ -612,7 +578,6 @@ export function activate(context: vscode.ExtensionContext) {
         if (existingPanel) {
           // 既存のパネルをフォーカスしてリフレッシュ
           existingPanel.reveal(vscode.ViewColumn.One);
-          vscode.window.showInformationMessage(`Document ${documentTitle} is already open`);
           return;
         }
 
@@ -689,7 +654,6 @@ export function activate(context: vscode.ExtensionContext) {
                       configService,
                       refreshProjectKey
                     );
-                    vscode.window.showInformationMessage('Document refreshed successfully');
                   } catch (error) {
                     console.error('Error refreshing document:', error);
                     vscode.window.showErrorMessage(`Failed to refresh document: ${error}`);
@@ -736,7 +700,6 @@ export function activate(context: vscode.ExtensionContext) {
             issueDetail,
             issueComments
           );
-          vscode.window.showInformationMessage(`Issue ${resolvedIssueKey} updated and refreshed`);
         } else {
           // 新しいWebviewを作成
           const panel = vscode.window.createWebviewPanel(
@@ -765,9 +728,6 @@ export function activate(context: vscode.ExtensionContext) {
             context.extensionUri,
             issueDetail,
             issueComments
-          );
-          vscode.window.showInformationMessage(
-            `Issue ${resolvedIssueKey} opened after MCP operation`
           );
         }
       } catch (error) {
@@ -806,9 +766,6 @@ export function activate(context: vscode.ExtensionContext) {
           if (project) {
             // プロジェクトにフォーカス
             await vscode.commands.executeCommand('backlog.focusProject', project.id);
-            vscode.window.showInformationMessage(
-              `Opened project: ${project.name} (${project.projectKey})`
-            );
           } else {
             vscode.window.showErrorMessage(`Project not found: ${projectKey}`);
           }
@@ -862,7 +819,6 @@ export function activate(context: vscode.ExtensionContext) {
             );
             if (issueSearchResult) {
               await vscode.commands.executeCommand('backlog.openIssue', issueSearchResult);
-              vscode.window.showInformationMessage(`Opened issue: ${issueKey}`);
               return;
             }
           } catch (mcpError) {
@@ -877,9 +833,6 @@ export function activate(context: vscode.ExtensionContext) {
             try {
               // Issues viewを通じて課題を検索
               await backlogIssuesProvider.searchIssues(issueKey.trim());
-              vscode.window.showInformationMessage(
-                `Searched for issue: ${issueKey}. Check the Issues view.`
-              );
             } catch (error) {
               console.error('Error searching issues:', error);
               vscode.window.showErrorMessage(`Failed to search for issue: ${issueKey}`);
