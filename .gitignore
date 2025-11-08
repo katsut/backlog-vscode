@@ -157,3 +157,7 @@ storybook-static/
 
 # TernJS port file
 .tern-port
+
+# cline
+.clinerules
+.clineignore
