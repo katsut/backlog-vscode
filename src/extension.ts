@@ -8,6 +8,10 @@ import { BacklogWikiTreeViewProvider } from './providers/wikiTreeViewProvider';
 import { BacklogDocumentsTreeViewProvider } from './providers/documentsTreeViewProvider';
 import { ConfigService } from './services/configService';
 import { BacklogApiService } from './services/backlogApi';
+import { WebviewHelper } from './webviews/common';
+import { DocumentWebview } from './webviews/documentWebview';
+import { IssueWebview } from './webviews/issueWebview';
+import { WikiWebview } from './webviews/wikiWebview';
 
 let backlogTreeViewProvider: BacklogTreeViewProvider;
 let backlogWebviewProvider: BacklogWebviewProvider;
@@ -176,7 +180,7 @@ export function activate(context: vscode.ExtensionContext) {
         try {
           const issueDetail = await backlogApi.getIssue(issue.id);
           const issueComments = await backlogApi.getIssueComments(issue.id);
-          existingPanel.webview.html = getIssueWebviewContent(
+          existingPanel.webview.html = IssueWebview.getWebviewContent(
             existingPanel.webview,
             context.extensionUri,
             issueDetail,
@@ -184,7 +188,7 @@ export function activate(context: vscode.ExtensionContext) {
           );
           vscode.window.showInformationMessage(`Issue ${issueKey} refreshed`);
         } catch (error) {
-          existingPanel.webview.html = getErrorWebviewContent(`Failed to load issue: ${error}`);
+          existingPanel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to load issue: ${error}`);
         }
         return;
       }
@@ -213,14 +217,14 @@ export function activate(context: vscode.ExtensionContext) {
         const issueDetail = await backlogApi.getIssue(issue.id);
         const issueComments = await backlogApi.getIssueComments(issue.id);
 
-        panel.webview.html = getIssueWebviewContent(
+        panel.webview.html = IssueWebview.getWebviewContent(
           panel.webview,
           context.extensionUri,
           issueDetail,
           issueComments
         );
       } catch (error) {
-        panel.webview.html = getErrorWebviewContent(`Failed to load issue: ${error}`);
+        panel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to load issue: ${error}`);
       }
     }
   );
@@ -495,9 +499,9 @@ export function activate(context: vscode.ExtensionContext) {
         // Wiki詳細を取得してWebviewの内容を設定
         try {
           const wikiDetail = await backlogApi.getWiki(wiki.id);
-          panel.webview.html = getWikiWebviewContent(panel.webview, context.extensionUri, wikiDetail);
+          panel.webview.html = WikiWebview.getWebviewContent(panel.webview, context.extensionUri, wikiDetail);
         } catch (error) {
-          panel.webview.html = getErrorWebviewContent(`Failed to load wiki: ${error}`);
+          panel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to load wiki: ${error}`);
         }
       }
     }
@@ -519,13 +523,41 @@ export function activate(context: vscode.ExtensionContext) {
           }
         );
 
-        // Webviewの内容を設定
-        panel.webview.html = getDocumentWebviewContent(
-          panel.webview,
-          context.extensionUri,
-          document,
-          configService
-        );
+        // ドキュメント詳細を取得してWebviewの内容を設定
+        try {
+          let documentDetail = document;
+
+          // ドキュメントIDがある場合は詳細情報を取得
+          if (document.id) {
+            try {
+              documentDetail = await backlogApi.getDocument(document.id.toString());
+            } catch (error) {
+              console.log('Could not fetch document details, using tree data:', error);
+            }
+          }
+
+          panel.webview.html = DocumentWebview.getWebviewContent(
+            panel.webview,
+            context.extensionUri,
+            documentDetail,
+            configService
+          );
+
+          // Handle messages from the webview
+          panel.webview.onDidReceiveMessage(
+            message => {
+              switch (message.command) {
+                case 'openExternal':
+                  vscode.env.openExternal(vscode.Uri.parse(message.url));
+                  break;
+              }
+            },
+            undefined,
+            context.subscriptions
+          );
+        } catch (error) {
+          panel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to load document: ${error}`);
+        }
       }
     }
   );
@@ -553,7 +585,7 @@ export function activate(context: vscode.ExtensionContext) {
 
           // コンテンツをリフレッシュ
           const issueComments = await backlogApi.getIssueComments(numericIssueId);
-          existingPanel.webview.html = getIssueWebviewContent(
+          existingPanel.webview.html = IssueWebview.getWebviewContent(
             existingPanel.webview,
             context.extensionUri,
             issueDetail,
@@ -582,7 +614,7 @@ export function activate(context: vscode.ExtensionContext) {
 
           // コンテンツを設定
           const issueComments = await backlogApi.getIssueComments(numericIssueId);
-          panel.webview.html = getIssueWebviewContent(
+          panel.webview.html = IssueWebview.getWebviewContent(
             panel.webview,
             context.extensionUri,
             issueDetail,
@@ -796,548 +828,4 @@ async function checkConfiguration(configService: ConfigService) {
         }
       });
   }
-}
-
-function getIssueWebviewContent(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-  issue: Entity.Issue.Issue,
-  comments: Entity.Issue.Comment[]
-): string {
-  const styleResetUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'reset.css')
-  );
-  const styleVSCodeUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'vscode.css')
-  );
-  const styleMainUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'main.css'));
-
-  const nonce = getNonce();
-
-  return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource
-    }; script-src 'nonce-${nonce}';">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link href="${styleResetUri}" rel="stylesheet">
-        <link href="${styleVSCodeUri}" rel="stylesheet">
-        <link href="${styleMainUri}" rel="stylesheet">
-        <title>Issue ${issue.issueKey}</title>
-    </head>
-    <body>
-        <div class="issue-header">
-            <h1>${escapeHtml(issue.summary)}</h1>
-            <div class="issue-meta">
-                <span class="issue-key">${escapeHtml(issue.issueKey)}</span>
-                <span class="status-badge ${getStatusClass(issue.status)}">${escapeHtml(
-      issue.status.name
-    )}</span>
-                <span class="priority-badge ${getPriorityClass(issue.priority)}">${escapeHtml(
-      issue.priority.name
-    )}</span>
-            </div>
-        </div>
-
-        <div class="issue-details">
-            <div class="issue-field">
-                <label>Status:</label>
-                <span>${escapeHtml(issue.status.name)}</span>
-            </div>
-            <div class="issue-field">
-                <label>Priority:</label>
-                <span>${escapeHtml(issue.priority.name)}</span>
-            </div>
-            ${issue.assignee
-      ? `
-            <div class="issue-field">
-                <label>Assignee:</label>
-                <span>${escapeHtml(issue.assignee.name)}</span>
-            </div>
-            `
-      : ''
-    }
-            ${issue.dueDate
-      ? `
-            <div class="issue-field">
-                <label>Due Date:</label>
-                <span>${new Date(issue.dueDate).toLocaleDateString()}</span>
-            </div>
-            `
-      : ''
-    }
-        </div>
-
-        ${issue.description
-      ? `
-        <div class="issue-description">
-            <h3>Description</h3>
-            <div class="issue-description-content">${escapeHtml(issue.description)}</div>
-        </div>
-        `
-      : ''
-    }
-
-        ${comments && comments.length > 0
-      ? `
-        <div class="issue-comments">
-            <h3>Comments (${comments.length})</h3>
-            ${comments
-        .map(
-          (comment) => `
-            <div class="comment">
-                <div class="comment-header">
-                    <span class="comment-author">${escapeHtml(comment.createdUser.name)}</span>
-                    <span class="comment-date">${new Date(
-            comment.created
-          ).toLocaleDateString()}</span>
-                </div>
-                <div class="comment-content">${escapeHtml(comment.content)}</div>
-            </div>
-            `
-        )
-        .join('')}
-        </div>
-        `
-      : ''
-    }
-    </body>
-    </html>`;
-}
-
-function getErrorWebviewContent(errorMessage: string): string {
-  return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Error</title>
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                padding: 20px;
-                color: var(--vscode-foreground);
-                background: var(--vscode-editor-background);
-            }
-            .error {
-                color: var(--vscode-errorForeground);
-                background: var(--vscode-inputValidation-errorBackground);
-                border: 1px solid var(--vscode-inputValidation-errorBorder);
-                padding: 15px;
-                border-radius: 4px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="error">
-            <h2>Error</h2>
-            <p>${escapeHtml(errorMessage)}</p>
-        </div>
-    </body>
-    </html>`;
-}
-
-function escapeHtml(text: string): string {
-  if (!text) {
-    return '';
-  }
-  const map: { [key: string]: string } = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;',
-  };
-  return text.replace(/[&<>"']/g, function (m) {
-    return map[m];
-  });
-}
-
-function getStatusClass(status: Entity.Project.ProjectStatus): string {
-  if (!status) {
-    return '';
-  }
-  const name = status.name.toLowerCase();
-  if (name.includes('open') || name.includes('オープン')) {
-    return 'open';
-  }
-  if (name.includes('progress') || name.includes('処理中')) {
-    return 'in-progress';
-  }
-  if (name.includes('resolved') || name.includes('解決')) {
-    return 'resolved';
-  }
-  if (name.includes('closed') || name.includes('クローズ')) {
-    return 'closed';
-  }
-  return '';
-}
-
-function getPriorityClass(priority: Entity.Issue.Priority): string {
-  if (!priority) {
-    return '';
-  }
-  const name = priority.name.toLowerCase();
-  if (name.includes('high') || name.includes('高')) {
-    return 'high';
-  }
-  if (name.includes('medium') || name.includes('中')) {
-    return 'medium';
-  }
-  if (name.includes('low') || name.includes('低')) {
-    return 'low';
-  }
-  return '';
-}
-
-function getWikiWebviewContent(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-  wiki: Entity.Wiki.Wiki
-): string {
-  const styleResetUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'reset.css')
-  );
-  const styleVSCodeUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'vscode.css')
-  );
-  const styleMainUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'main.css'));
-
-  const nonce = getNonce();
-
-  return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource
-    }; script-src 'nonce-${nonce}';">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link href="${styleResetUri}" rel="stylesheet">
-        <link href="${styleVSCodeUri}" rel="stylesheet">
-        <link href="${styleMainUri}" rel="stylesheet">
-        <title>Wiki: ${escapeHtml(wiki.name)}</title>
-    </head>
-    <body>
-        <div class="wiki-header">
-            <h1>📚 ${escapeHtml(wiki.name)}</h1>
-            <div class="wiki-meta">
-                ${wiki.createdUser
-      ? `<span class="meta-item">👤 Created by: ${escapeHtml(wiki.createdUser.name)}</span>`
-      : ''
-    }
-                ${wiki.created
-      ? `<span class="meta-item">📅 Created: ${new Date(wiki.created).toLocaleDateString()}</span>`
-      : ''
-    }
-                ${wiki.updatedUser
-      ? `<span class="meta-item">✏️ Updated by: ${escapeHtml(wiki.updatedUser.name)}</span>`
-      : ''
-    }
-                ${wiki.updated
-      ? `<span class="meta-item">🕒 Updated: ${new Date(wiki.updated).toLocaleDateString()}</span>`
-      : ''
-    }
-                ${wiki.tags && wiki.tags.length > 0
-      ? `<div class="wiki-tags">
-                        <span class="meta-label">🏷️ Tags:</span>
-                        ${wiki.tags.map(tag => `<span class="tag-badge">${escapeHtml(tag.name)}</span>`).join('')}
-                    </div>`
-      : ''
-    }
-            </div>
-        </div>
-
-        <div class="wiki-details">
-            ${wiki.attachments && wiki.attachments.length > 0
-      ? `
-            <div class="wiki-section">
-                <h3>📎 Attachments (${wiki.attachments.length})</h3>
-                <div class="attachments-list">
-                    ${wiki.attachments.map(attachment => `
-                        <div class="attachment-item">
-                            <span class="attachment-name">${escapeHtml(attachment.name)}</span>
-                            <span class="attachment-size">${formatFileSize(attachment.size)}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            `
-      : ''
-    }
-            
-            ${wiki.sharedFiles && wiki.sharedFiles.length > 0
-      ? `
-            <div class="wiki-section">
-                <h3>📁 Shared Files (${wiki.sharedFiles.length})</h3>
-                <div class="shared-files-list">
-                    ${wiki.sharedFiles.map(file => `
-                        <div class="shared-file-item">
-                            <span class="file-name">${escapeHtml(file.name)}</span>
-                            <span class="file-size">${formatFileSize(file.size)}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            `
-      : ''
-    }
-
-            ${wiki.stars && wiki.stars.length > 0
-      ? `
-            <div class="wiki-section">
-                <h3>⭐ Stars: ${wiki.stars.length}</h3>
-            </div>
-            `
-      : ''
-    }
-        </div>
-
-        <div class="wiki-content">
-            <h3>📝 Content</h3>
-            ${wiki.content
-      ? `<div class="wiki-description">${formatWikiContent(wiki.content)}</div>`
-      : '<p class="no-content">No content available for this wiki page.</p>'
-    }
-        </div>
-
-        <style>
-            .wiki-header {
-                border-bottom: 2px solid var(--vscode-panel-border);
-                padding-bottom: 16px;
-                margin-bottom: 20px;
-            }
-            
-            .wiki-header h1 {
-                margin: 0 0 12px 0;
-                color: var(--vscode-foreground);
-                font-size: 1.8em;
-            }
-            
-            .wiki-meta {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 12px;
-                color: var(--vscode-descriptionForeground);
-                font-size: 0.9em;
-            }
-            
-            .meta-item {
-                background: var(--vscode-badge-background);
-                color: var(--vscode-badge-foreground);
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 0.85em;
-            }
-            
-            .wiki-tags {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                flex-wrap: wrap;
-                margin-top: 8px;
-                width: 100%;
-            }
-            
-            .meta-label {
-                color: var(--vscode-foreground);
-                font-weight: 500;
-            }
-            
-            .tag-badge {
-                background: var(--vscode-button-secondaryBackground);
-                color: var(--vscode-button-secondaryForeground);
-                padding: 2px 6px;
-                border-radius: 12px;
-                font-size: 0.8em;
-                border: 1px solid var(--vscode-button-border);
-            }
-            
-            .wiki-section {
-                margin: 20px 0;
-                padding: 16px;
-                background: var(--vscode-editor-inactiveSelectionBackground);
-                border-radius: 6px;
-                border-left: 4px solid var(--vscode-textBlockQuote-border);
-            }
-            
-            .wiki-section h3 {
-                margin: 0 0 12px 0;
-                color: var(--vscode-foreground);
-                font-size: 1.1em;
-            }
-            
-            .attachment-item, .shared-file-item {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 8px 0;
-                border-bottom: 1px solid var(--vscode-panel-border);
-            }
-            
-            .attachment-item:last-child, .shared-file-item:last-child {
-                border-bottom: none;
-            }
-            
-            .attachment-name, .file-name {
-                font-weight: 500;
-                color: var(--vscode-foreground);
-            }
-            
-            .attachment-size, .file-size {
-                color: var(--vscode-descriptionForeground);
-                font-size: 0.9em;
-            }
-            
-            .wiki-content {
-                margin-top: 24px;
-            }
-            
-            .wiki-content h3 {
-                color: var(--vscode-foreground);
-                margin-bottom: 16px;
-                font-size: 1.2em;
-            }
-            
-            .wiki-description {
-                background: var(--vscode-textCodeBlock-background);
-                border: 1px solid var(--vscode-panel-border);
-                border-radius: 6px;
-                padding: 16px;
-                white-space: pre-wrap;
-                font-family: var(--vscode-editor-font-family);
-                line-height: 1.6;
-            }
-            
-            .no-content {
-                color: var(--vscode-descriptionForeground);
-                font-style: italic;
-                text-align: center;
-                padding: 20px;
-            }
-        </style>
-
-        <script nonce="${nonce}">
-            // Format file size helper function
-            function formatFileSize(bytes) {
-                if (!bytes) return 'Unknown';
-                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-                if (bytes === 0) return '0 Bytes';
-                const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
-                return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-            }
-        </script>
-    </body>
-    </html>`;
-}
-
-function formatWikiContent(content: string): string {
-  if (!content) return '';
-
-  // 基本的なBacklog記法の変換
-  let formatted = escapeHtml(content);
-
-  // 改行の処理
-  formatted = formatted.replace(/\n/g, '<br>');
-
-  // **太字** の変換
-  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
-  // *斜体* の変換
-  formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-  // ~~取り消し線~~ の変換
-  formatted = formatted.replace(/~~(.*?)~~/g, '<del>$1</del>');
-
-  // `インラインコード` の変換
-  formatted = formatted.replace(/`([^`]+)`/g, '<code style="background: var(--vscode-textPreformat-background); padding: 2px 4px; border-radius: 3px; font-family: var(--vscode-editor-font-family);">$1</code>');
-
-  return formatted;
-}
-
-function formatFileSize(bytes: number): string {
-  if (!bytes) return 'Unknown';
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  if (bytes === 0) return '0 Bytes';
-  const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)).toString());
-  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-}
-
-function getDocumentWebviewContent(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-  document: Entity.Document.Document,
-  configService: ConfigService
-): string {
-  const styleResetUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'reset.css')
-  );
-  const styleVSCodeUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'vscode.css')
-  );
-  const styleMainUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'main.css'));
-
-  const nonce = getNonce();
-  const baseUrl = configService.getBaseUrl();
-  const docUrl = baseUrl && document.id ? `${baseUrl}/file/${document.id}` : '#';
-
-  return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource
-    }; script-src 'nonce-${nonce}';">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link href="${styleResetUri}" rel="stylesheet">
-        <link href="${styleVSCodeUri}" rel="stylesheet">
-        <link href="${styleMainUri}" rel="stylesheet">
-        <title>Document: ${escapeHtml(document.title)}</title>
-    </head>
-    <body>
-        <div class="document-header">
-            <h1>${escapeHtml(document.title)}</h1>
-            <div class="document-meta">
-                <span>Size: ${document.title || 'Unknown'}</span>
-                <span>Created: ${document.created ? new Date(document.created).toLocaleDateString() : 'Unknown'
-    }</span>
-                ${baseUrl && document.id
-      ? `<a href="${docUrl}" style="color: var(--vscode-textLink-foreground);">Open in Backlog</a>`
-      : ''
-    }
-            </div>
-        </div>
-
-        <div class="document-content">
-            <p>Document preview is not available in this view.</p>
-            ${baseUrl && document.id
-      ? `<p><a href="${docUrl}" style="color: var(--vscode-textLink-foreground);">Click here to view the document in Backlog</a></p>`
-      : ''
-    }
-            
-            <div class="document-info">
-                <h3>Document Information</h3>
-                <p><strong>Name:</strong> ${escapeHtml(document.title)}</p>
-                ${document.created
-      ? `<p><strong>Created:</strong> ${new Date(
-        document.created
-      ).toLocaleDateString()}</p>`
-      : ''
-    }
-                ${document.createdUser
-      ? `<p><strong>Creator:</strong> ${escapeHtml(document.createdUser.name)}</p>`
-      : ''
-    }
-            </div>
-        </div>
-    </body>
-    </html>`;
-}
-
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

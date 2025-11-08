@@ -291,6 +291,26 @@ export class BacklogApiService {
     return response;
   }
 
+  async getDocument(documentId: string): Promise<Entity.Document.Document> {
+    this.log('=== GET DOCUMENT API DEBUG START ===');
+    this.log(`getDocument called with documentId: ${documentId}`);
+
+    // 初期化完了を待つ
+    const initializedService = await this.ensureInitialized();
+    this.log('API service initialized successfully');
+
+    this.log('=== CALLING BACKLOG-JS getDocument ===');
+    this.log(`Calling backlog.getDocument with documentId: ${documentId}`);
+
+    // ドキュメント詳細APIを使用
+    const response = await initializedService.backlog.getDocument(documentId);
+    this.log('Document API call successful');
+    this.log(`Document response: ${JSON.stringify(response, null, 2)}`);
+
+    this.log('=== GET DOCUMENT API DEBUG END (SUCCESS) ===');
+    return response;
+  }
+
   async reinitialize(): Promise<void> {
     // 状態をリセットして再初期化
     this.serviceState = { state: 'uninitialized' };

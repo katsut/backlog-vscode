@@ -296,6 +296,8 @@
     "typescript": "^4.9.4"
   },
   "dependencies": {
-    "backlog-js": "^0.15.0"
+    "@types/marked": "^5.0.2",
+    "backlog-js": "^0.15.0",
+    "marked": "^17.0.0"
   }
 }
