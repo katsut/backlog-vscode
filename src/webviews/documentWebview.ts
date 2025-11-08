@@ -362,7 +362,7 @@ export class DocumentWebview {
     }
     
     // Try JSON content if available and plain is not available
-    if (document.json && document.json.trim()) {
+    if (document.json && typeof document.json === 'string' && document.json.trim()) {
       try {
         const jsonContent = JSON.parse(document.json);
         // If it's ProseMirror format, try to extract text content

@@ -66,25 +66,13 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
     }
 
     if (!element) {
-      // Root level - show activeTree as a single item
-      if (!this.documentTree || !this.documentTree.activeTree) {
+      // Root level - show activeTree's children directly
+      if (!this.documentTree || !this.documentTree.activeTree || !this.documentTree.activeTree.children) {
         return [];
       }
 
-      // activeTree自体を一つのアイテムとして表示
-      const activeTreeItem = new DocumentTreeItem(
-        {
-          id: this.documentTree.activeTree.id,
-          name: 'Documents',
-          children: this.documentTree.activeTree.children,
-          title: 'Documents',
-          type: 'folder',
-        } as Entity.Document.DocumentTreeNode & { title: string; type: string },
-        vscode.TreeItemCollapsibleState.Collapsed,
-        this.documentTree.activeTree.children
-      );
-
-      return [activeTreeItem];
+      // activeTreeの子要素を直接ルートレベルに表示
+      return this.buildTreeItems(this.documentTree.activeTree.children);
     } else {
       // Child level - show children of the element
       if (element.children) {
@@ -189,29 +177,36 @@ export class DocumentTreeItem extends vscode.TreeItem {
     this.children = children;
     this.tooltip = this.buildTooltip();
 
-    // childrenがある場合はフォルダとして扱う
+    // childrenがある場合はフォルダとして扱うが、親ドキュメント自体もドキュメントとして機能する
     const hasChildren = children && children.length > 0;
-    const isFolder =
-      hasChildren ||
-      ('type' in document && (document.type === 'folder' || document.type === 'directory'));
+    const isOnlyFolder =
+      ('type' in document && (document.type === 'folder' || document.type === 'directory')) &&
+      !hasChildren;
 
-    if (isFolder) {
+    if (isOnlyFolder) {
+      // 純粋なフォルダ（子要素なし）
       this.iconPath = new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.yellow'));
       this.contextValue = 'documentFolder';
+    } else if (hasChildren) {
+      // 子要素を持つドキュメント（親ドキュメント）
+      this.iconPath = new vscode.ThemeIcon('file-submodule', new vscode.ThemeColor('charts.blue'));
+      this.contextValue = 'documentWithChildren';
+      // 親ドキュメントもクリックでコンテンツを開けるようにコマンドを設定
+      this.command = {
+        command: 'backlog.openDocument',
+        title: 'Open Document',
+        arguments: [this.document],
+      };
     } else {
+      // 通常のドキュメント（子要素なし）
       this.iconPath = new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue'));
       this.contextValue = 'document';
-    }
-
-    // フォルダの場合はコマンドを設定せず、ファイルの場合のみコマンドを設定
-    if (!isFolder) {
       this.command = {
         command: 'backlog.openDocument',
         title: 'Open Document',
         arguments: [this.document],
       };
     }
-    // フォルダの場合は`command`を設定しないことで、VS Codeのデフォルトの展開/折りたたみ動作が使用される
   }
 
   private buildTooltip(): string {
