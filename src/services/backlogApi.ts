@@ -1,567 +1,306 @@
 import * as vscode from 'vscode';
-import { Backlog } from 'backlog-js';
+import { Backlog, Entity } from 'backlog-js';
 import { ConfigService } from './configService';
+import { BacklogServiceState, isInitialized, isInitializing } from '../types/backlog';
+
+// Backlog.jsの型を使用した初期化済みサービス
+interface InitializedBacklogService {
+  readonly state: 'initialized';
+  readonly backlog: Backlog;
+}
 
 export class BacklogApiService {
-  private backlog: any;
+  private serviceState: BacklogServiceState;
   private configService: ConfigService;
-  private initializationPromise: Promise<void> | null = null;
+  private outputChannel: vscode.OutputChannel;
 
   constructor(configService: ConfigService) {
     this.configService = configService;
-    // 初期化を開始するが、Promiseを保存して完了を待てるようにする
-    this.initializationPromise = this.initializeClient();
+    // VS Code Output Channel for debugging
+    this.outputChannel = vscode.window.createOutputChannel('Backlog Extension Debug');
+    // 初期状態は未初期化
+    this.serviceState = { state: 'uninitialized' };
+    // 同期的に基本設定をチェック
+    this.checkInitialConfiguration();
   }
 
-  private async initializeClient(): Promise<void> {
-    const apiUrl = this.configService.getApiUrl();
+  private log(message: string): void {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] ${message}`;
+    console.log(logMessage);
+    this.outputChannel.appendLine(logMessage);
+  }
+
+  private checkInitialConfiguration(): void {
+    const domain = this.configService.getDomain();
+
+    if (!domain) {
+      this.serviceState = {
+        state: 'uninitialized',
+        error: new Error('Backlog domain is not configured'),
+      };
+    }
+  }
+
+  private async initializeService(): Promise<InitializedBacklogService> {
+    console.log('=== INITIALIZE SERVICE START ===');
+    
+    const domain = this.configService.getDomain();
     const apiKey = await this.configService.getApiKey();
 
     console.log('Initializing Backlog API client...');
-    console.log('API URL:', apiUrl ? 'configured' : 'not configured');
-    console.log('API Key:', apiKey ? 'configured' : 'not configured');
+    console.log('Domain:', domain || 'NOT CONFIGURED');
+    console.log('API Key length:', apiKey ? apiKey.length : 'NOT CONFIGURED');
 
-    if (apiUrl && apiKey) {
-      try {
-        // URLの正規化と検証
-        const normalizedUrl = this.normalizeApiUrl(apiUrl);
-        console.log('Normalized API URL:', normalizedUrl);
-
-        this.backlog = new Backlog({
-          host: normalizedUrl,
-          apiKey: apiKey,
-        });
-        
-        console.log('Backlog API client initialized successfully');
-      } catch (error) {
-        console.error('Error initializing Backlog API client:', error);
-        vscode.window.showErrorMessage(`Failed to initialize Backlog API: ${error}`);
-      }
-    } else {
-      console.log('Backlog API client not initialized: missing configuration');
-    }
-  }
-
-  private async ensureInitialized(): Promise<void> {
-    if (this.initializationPromise) {
-      await this.initializationPromise;
-    }
-  }
-
-  private normalizeApiUrl(apiUrl: string): string {
-    // Remove trailing slash
-    let normalized = apiUrl.replace(/\/$/, '');
-    
-    // Ensure https protocol
-    if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-      normalized = 'https://' + normalized;
+    if (!domain) {
+      throw new Error('Backlog domain is not configured');
     }
 
-    // For Backlog, we need the base domain without '/api/v2'
-    normalized = normalized.replace(/\/api\/v2.*$/, '');
-    
-    return normalized;
-  }
-
-  async getProjects(): Promise<any[]> {
-    // 初期化完了を待つ
-    await this.ensureInitialized();
-    
-    if (!this.backlog) {
-      const apiUrl = this.configService.getApiUrl();
-      const apiKey = await this.configService.getApiKey();
-      
-      console.error('Backlog API client is not initialized');
-      console.error('Current API URL:', apiUrl || 'not set');
-      console.error('Current API Key:', apiKey ? 'set' : 'not set');
-      
-      throw new Error(
-        'Backlog API client is not initialized. Please configure API URL and API Key in VS Code settings.'
-      );
+    if (!apiKey) {
+      throw new Error('API Key is not configured');
     }
 
     try {
-      console.log('Fetching projects from Backlog API using backlog-js...');
-      const response = await this.backlog.getProjects();
-      console.log('Projects fetched successfully with backlog-js:', response.body?.length || 0, 'projects');
-      return response.body || [];
-    } catch (error: any) {
-      console.error('Error with backlog-js, trying direct fetch API:', error);
-      
-      // backlog-jsでエラーが発生した場合、直接fetch APIを使用してフォールバック
-      try {
-        console.log('Falling back to direct fetch API...');
-        const testResult = await this.testApiConnection();
-        
-        if (testResult.success && testResult.data) {
-          console.log('Fallback successful, got', testResult.data.length, 'projects');
-          return testResult.data;
-        } else {
-          throw new Error(testResult.message);
-        }
-      } catch (fallbackError: any) {
-        console.error('Fallback also failed:', fallbackError);
-        
-        // より詳細なエラー情報を提供
-        let errorMessage = 'Failed to fetch projects';
-        if (error?.message) {
-          errorMessage += `: ${error.message}`;
-        }
-        if (error?.code) {
-          errorMessage += ` (Code: ${error.code})`;
-        }
-        
-        // ネットワークエラーの場合の特別な処理
-        if (error?.message?.includes('fetch failed') || error?.code === 'ENOTFOUND' || error?.code === 'ECONNREFUSED') {
-          errorMessage += '\n\nTried both backlog-js and direct fetch API. Possible causes:\n- Check your internet connection\n- Verify the Backlog API URL is correct\n- Ensure the Backlog service is accessible';
-        }
-        
-        throw new Error(errorMessage);
+      console.log('=== BACKLOG CLIENT CREATION START ===');
+      // backlog-jsにはホスト名のみを渡す必要がある（プロトコルなし）
+      let hostOnly = domain;
+      if (hostOnly.startsWith('https://')) {
+        hostOnly = hostOnly.replace('https://', '');
       }
-    }
-  }
-
-  async getProjectIssues(projectId: number, options?: any): Promise<any[]> {
-    // 初期化完了を待つ
-    await this.ensureInitialized();
-    
-    if (!this.backlog) {
-      throw new Error(
-        'Backlog API client is not initialized. Please configure API URL and API Key.'
-      );
-    }
-
-    try {
-      console.log('Fetching issues from Backlog API using backlog-js...');
-      const response = await this.backlog.getIssues({
-        projectId: [projectId],
-        ...options,
+      if (hostOnly.startsWith('http://')) {
+        hostOnly = hostOnly.replace('http://', '');
+      }
+      // パスの部分も削除
+      hostOnly = hostOnly.split('/')[0];
+      
+      console.log('Original domain:', domain);
+      console.log('Host for backlog-js:', hostOnly);
+      
+      const backlog = new Backlog({
+        host: hostOnly,
+        apiKey: apiKey,
       });
-      console.log('Issues fetched successfully with backlog-js:', response.body?.length || 0, 'issues');
-      return response.body || [];
-    } catch (error: any) {
-      console.error('Error with backlog-js for issues, trying direct fetch API:', error);
-      
-      // backlog-jsでエラーが発生した場合、直接fetch APIを使用してフォールバック
-      try {
-        console.log('Falling back to direct fetch API for issues...');
-        const issuesResult = await this.fetchIssuesDirectly(projectId, options);
-        
-        if (issuesResult.length >= 0) {
-          console.log('Fallback successful for issues, got', issuesResult.length, 'issues');
-          return issuesResult;
-        } else {
-          throw new Error('No issues data received from fallback API');
-        }
-      } catch (fallbackError: any) {
-        console.error('Fallback also failed for issues:', fallbackError);
-        throw new Error(`Failed to fetch issues: ${error.message || error}`);
-      }
-    }
-  }
+      console.log('Backlog client created successfully with host:', hostOnly);
+      console.log('=== BACKLOG CLIENT CREATION END ===');
 
-  // 直接fetch APIを使用してIssuesを取得するヘルパーメソッド
-  private async fetchIssuesDirectly(projectId: number, options?: any): Promise<any[]> {
-    const apiUrl = this.configService.getApiUrl();
-    const apiKey = await this.configService.getApiKey();
-
-    if (!apiUrl || !apiKey) {
-      throw new Error('API URL or API Key is not configured');
-    }
-
-    const normalizedUrl = this.normalizeApiUrl(apiUrl);
-    let issuesUrl = `${normalizedUrl}/api/v2/issues?apiKey=${apiKey}&projectId[]=${projectId}`;
-    
-    // オプションパラメータを追加
-    if (options) {
-      const params = new URLSearchParams();
-      Object.keys(options).forEach(key => {
-        if (key === 'projectId') return; // すでに追加済み
-        const value = options[key];
-        if (Array.isArray(value)) {
-          value.forEach(v => params.append(`${key}[]`, v));
-        } else {
-          params.append(key, value);
-        }
-      });
-      if (params.toString()) {
-        issuesUrl += '&' + params.toString();
-      }
-    }
-    
-    console.log('Direct fetch issues URL:', issuesUrl.replace(apiKey, '[HIDDEN]'));
-    
-    const response = await fetch(issuesUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'VS Code Backlog Extension'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data || [];
-  }
-
-  async getIssue(issueId: number): Promise<any> {
-    // 初期化完了を待つ
-    await this.ensureInitialized();
-    
-    if (!this.backlog) {
-      throw new Error(
-        'Backlog API client is not initialized. Please configure API URL and API Key.'
-      );
-    }
-
-    try {
-      console.log('Fetching issue from Backlog API using backlog-js...');
-      const response = await this.backlog.getIssue(issueId);
-      console.log('Issue fetched successfully with backlog-js');
-      return response.body;
-    } catch (error: any) {
-      console.error('Error with backlog-js for issue, trying direct fetch API:', error);
-      
-      // backlog-jsでエラーが発生した場合、直接fetch APIを使用してフォールバック
-      try {
-        console.log('Falling back to direct fetch API for issue...');
-        const issueResult = await this.fetchIssueDirectly(issueId);
-        
-        if (issueResult) {
-          console.log('Fallback successful for issue');
-          return issueResult;
-        } else {
-          throw new Error('No issue data received from fallback API');
-        }
-      } catch (fallbackError: any) {
-        console.error('Fallback also failed for issue:', fallbackError);
-        throw new Error(`Failed to fetch issue: ${error.message || error}`);
-      }
-    }
-  }
-
-  async getIssueComments(issueId: number): Promise<any[]> {
-    // 初期化完了を待つ
-    await this.ensureInitialized();
-    
-    if (!this.backlog) {
-      throw new Error(
-        'Backlog API client is not initialized. Please configure API URL and API Key.'
-      );
-    }
-
-    try {
-      console.log('Fetching issue comments from Backlog API using backlog-js...');
-      const response = await this.backlog.getIssueComments(issueId);
-      console.log('Issue comments fetched successfully with backlog-js:', response.body?.length || 0, 'comments');
-      return response.body || [];
-    } catch (error: any) {
-      console.error('Error with backlog-js for issue comments, trying direct fetch API:', error);
-      
-      // backlog-jsでエラーが発生した場合、直接fetch APIを使用してフォールバック
-      try {
-        console.log('Falling back to direct fetch API for issue comments...');
-        const commentsResult = await this.fetchIssueCommentsDirectly(issueId);
-        
-        if (commentsResult.length >= 0) {
-          console.log('Fallback successful for issue comments, got', commentsResult.length, 'comments');
-          return commentsResult;
-        } else {
-          throw new Error('No comments data received from fallback API');
-        }
-      } catch (fallbackError: any) {
-        console.error('Fallback also failed for issue comments:', fallbackError);
-        // コメントが取得できない場合は空配列を返す
-        return [];
-      }
-    }
-  }
-
-  // 直接fetch APIを使用してIssueを取得するヘルパーメソッド
-  private async fetchIssueDirectly(issueId: number): Promise<any> {
-    const apiUrl = this.configService.getApiUrl();
-    const apiKey = await this.configService.getApiKey();
-
-    if (!apiUrl || !apiKey) {
-      throw new Error('API URL or API Key is not configured');
-    }
-
-    const normalizedUrl = this.normalizeApiUrl(apiUrl);
-    const issueUrl = `${normalizedUrl}/api/v2/issues/${issueId}?apiKey=${apiKey}`;
-    
-    console.log('Direct fetch issue URL:', issueUrl.replace(apiKey, '[HIDDEN]'));
-    
-    const response = await fetch(issueUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'VS Code Backlog Extension'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data;
-  }
-
-  // 直接fetch APIを使用してIssue Commentsを取得するヘルパーメソッド
-  private async fetchIssueCommentsDirectly(issueId: number): Promise<any[]> {
-    const apiUrl = this.configService.getApiUrl();
-    const apiKey = await this.configService.getApiKey();
-
-    if (!apiUrl || !apiKey) {
-      throw new Error('API URL or API Key is not configured');
-    }
-
-    const normalizedUrl = this.normalizeApiUrl(apiUrl);
-    const commentsUrl = `${normalizedUrl}/api/v2/issues/${issueId}/comments?apiKey=${apiKey}`;
-    
-    console.log('Direct fetch issue comments URL:', commentsUrl.replace(apiKey, '[HIDDEN]'));
-    
-    const response = await fetch(commentsUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'VS Code Backlog Extension'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data || [];
-  }
-
-  async getUser(): Promise<any> {
-    if (!this.backlog) {
-      throw new Error(
-        'Backlog API client is not initialized. Please configure API URL and API Key.'
-      );
-    }
-
-    try {
-      const response = await this.backlog.getUser();
-      return response.body;
+      console.log('=== INITIALIZE SERVICE END (SUCCESS) ===');
+      return {
+        state: 'initialized',
+        backlog,
+      };
     } catch (error) {
-      console.error('Error fetching user:', error);
-      throw new Error(`Failed to fetch user: ${error}`);
+      console.error('=== INITIALIZE SERVICE ERROR ===');
+      console.error('Error type:', typeof error);
+      console.error('Error name:', error instanceof Error ? error.name : 'Unknown');
+      console.error('Error message:', error instanceof Error ? error.message : error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
+      console.error('=== INITIALIZE SERVICE ERROR END ===');
+      
+      vscode.window.showErrorMessage(`Failed to initialize Backlog API: ${error instanceof Error ? error.message : error}`);
+      throw error;
     }
   }
 
-  async getWikiPages(projectId: number): Promise<any[]> {
-    // 初期化完了を待つ
-    await this.ensureInitialized();
-    
-    if (!this.backlog) {
-      throw new Error(
-        'Backlog API client is not initialized. Please configure API URL and API Key.'
-      );
+  private async ensureInitialized(): Promise<InitializedBacklogService> {
+    if (isInitialized(this.serviceState)) {
+      return this.serviceState;
     }
+
+    if (isInitializing(this.serviceState)) {
+      return await this.serviceState.initializationPromise;
+    }
+
+    // 初期化を開始
+    const initializationPromise = this.initializeService();
+    this.serviceState = {
+      state: 'initializing',
+      initializationPromise,
+    };
 
     try {
-      console.log('Fetching wiki pages from Backlog API using backlog-js...');
-      // backlog-jsの正しい関数名を使用
-      const response = await this.backlog.getWikis({
-        projectIdOrKey: projectId
-      });
-      console.log('Wiki pages fetched successfully with backlog-js:', response.body?.length || 0, 'pages');
-      return response.body || [];
-    } catch (error: any) {
-      console.error('Error with backlog-js for wiki pages, trying direct fetch API:', error);
-      
-      // backlog-jsでエラーが発生した場合、直接fetch APIを使用してフォールバック
-      try {
-        console.log('Falling back to direct fetch API for wiki pages...');
-        const wikisResult = await this.fetchWikisDirectly(projectId);
-        
-        if (wikisResult.length >= 0) {
-          console.log('Fallback successful for wiki pages, got', wikisResult.length, 'pages');
-          return wikisResult;
-        } else {
-          throw new Error('No wiki data received from fallback API');
-        }
-      } catch (fallbackError: any) {
-        console.error('Fallback also failed for wiki pages:', fallbackError);
-        // Wikiが存在しない場合や権限がない場合は空配列を返す
-        return [];
-      }
+      const initializedService = await initializationPromise;
+      this.serviceState = initializedService;
+      return initializedService;
+    } catch (error) {
+      this.serviceState = {
+        state: 'uninitialized',
+        error: error as Error,
+      };
+      throw error;
     }
   }
 
-  // 直接fetch APIを使用してWikiを取得するヘルパーメソッド
-  private async fetchWikisDirectly(projectId: number): Promise<any[]> {
-    const apiUrl = this.configService.getApiUrl();
-    const apiKey = await this.configService.getApiKey();
 
-    if (!apiUrl || !apiKey) {
-      throw new Error('API URL or API Key is not configured');
-    }
+  async getProjects(): Promise<Entity.Project.Project[]> {
+    console.log('=== getProjects START ===');
 
-    const normalizedUrl = this.normalizeApiUrl(apiUrl);
-    const wikisUrl = `${normalizedUrl}/api/v2/wikis?apiKey=${apiKey}&projectIdOrKey=${projectId}`;
-    
-    console.log('Direct fetch wikis URL:', wikisUrl.replace(apiKey, '[HIDDEN]'));
-    
-    const response = await fetch(wikisUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'VS Code Backlog Extension'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data || [];
-  }
-
-  async getDocuments(projectId: number): Promise<any[]> {
     // 初期化完了を待つ
-    await this.ensureInitialized();
-    
-    if (!this.backlog) {
-      throw new Error(
-        'Backlog API client is not initialized. Please configure API URL and API Key.'
-      );
-    }
-
+    console.log('Waiting for service initialization...');
     try {
-      console.log('Fetching documents from Backlog API using shared files...');
-      // Backlog APIでは共有ファイルAPIを使用してドキュメントを取得
-      const response = await this.backlog.getSharedFiles({
-        projectIdOrKey: projectId
-      });
-      console.log('Documents fetched successfully with backlog-js:', response.body?.length || 0, 'documents');
-      return response.body || [];
-    } catch (error: any) {
-      console.error('Error with backlog-js for documents, trying direct fetch API:', error);
+      const initializedService = await this.ensureInitialized();
+      console.log('Service initialized successfully');
+
+      console.log('=== API REQUEST DETAILS ===');
+      console.log('Backlog client host:', (initializedService.backlog as any).host);
+      console.log('API Key present:', !!(initializedService.backlog as any).apiKey);
+      console.log('User-Agent:', (initializedService.backlog as any).userAgent || 'Not set');
+
+      console.log('Fetching projects from Backlog API using backlog-js...');
+      const response = await initializedService.backlog.getProjects();
+      console.log('Projects fetched successfully with backlog-js:', response.length || 0, 'projects');
+      console.log('First project data:', response[0] ? JSON.stringify(response[0], null, 2) : 'No projects');
+      console.log('=== getProjects END (SUCCESS) ===');
+      return response || [];
+    } catch (error) {
+      console.error('=== getProjects ERROR ===');
+      console.error('Error type:', typeof error);
+      console.error('Error name:', error instanceof Error ? error.name : 'Unknown');
+      console.error('Error message:', error instanceof Error ? error.message : error);
+      console.error('Error cause:', (error as any).cause || 'No cause');
+      console.error('Error code:', (error as any).code || 'No code');
+      console.error('Error errno:', (error as any).errno || 'No errno');
+      console.error('Error syscall:', (error as any).syscall || 'No syscall');
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
       
-      // backlog-jsでエラーが発生した場合、直接fetch APIを使用してフォールバック
-      try {
-        console.log('Falling back to direct fetch API for documents...');
-        const documentsResult = await this.fetchDocumentsDirectly(projectId);
-        
-        if (documentsResult.length >= 0) {
-          console.log('Fallback successful for documents, got', documentsResult.length, 'documents');
-          return documentsResult;
-        } else {
-          throw new Error('No documents data received from fallback API');
+      // より詳細なエラー解析
+      if (error instanceof Error) {
+        if (error.message.includes('fetch failed')) {
+          console.error('FETCH FAILED ERROR DETECTED:');
+          console.error('This typically indicates:');
+          console.error('1. Network connectivity issues');
+          console.error('2. DNS resolution problems');
+          console.error('3. SSL/TLS certificate issues');
+          console.error('4. Server not responding');
+          console.error('5. Firewall blocking the request');
+          
+          // 追加の診断情報
+          const apiUrl = this.configService.getDomain();
+          if (apiUrl) {
+            console.error('Problematic URL:', apiUrl);
+            
+            try {
+              // APIのURLが完全でない場合、httpsを付加して解析
+              let testUrl = apiUrl;
+              if (!testUrl.startsWith('http://') && !testUrl.startsWith('https://')) {
+                testUrl = 'https://' + testUrl;
+              }
+              const url = new URL(testUrl);
+              console.error('URL breakdown:');
+              console.error('- Protocol:', url.protocol);
+              console.error('- Hostname:', url.hostname);
+              console.error('- Port:', url.port || (url.protocol === 'https:' ? '443' : '80'));
+              console.error('- Pathname:', url.pathname);
+            } catch (urlError) {
+              console.error('URL parsing failed:', urlError);
+            }
+          }
         }
-      } catch (fallbackError: any) {
-        console.error('Fallback also failed for documents:', fallbackError);
-        // ドキュメントが存在しない場合や権限がない場合は空配列を返す
-        return [];
       }
+      
+      console.error('=== getProjects ERROR END ===');
+      throw error;
     }
   }
 
-  // 直接fetch APIを使用してドキュメント（共有ファイル）を取得するヘルパーメソッド
-  private async fetchDocumentsDirectly(projectId: number): Promise<any[]> {
-    const apiUrl = this.configService.getApiUrl();
-    const apiKey = await this.configService.getApiKey();
+  async getProjectIssues(projectId: number, options?: any): Promise<Entity.Issue.Issue[]> {
+    // 初期化完了を待つ
+    const initializedService = await this.ensureInitialized();
 
-    if (!apiUrl || !apiKey) {
-      throw new Error('API URL or API Key is not configured');
-    }
-
-    const normalizedUrl = this.normalizeApiUrl(apiUrl);
-    const documentsUrl = `${normalizedUrl}/api/v2/projects/${projectId}/files/metadata?apiKey=${apiKey}`;
-    
-    console.log('Direct fetch documents URL:', documentsUrl.replace(apiKey, '[HIDDEN]'));
-    
-    const response = await fetch(documentsUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'VS Code Backlog Extension'
-      }
+    console.log('Fetching issues from Backlog API using backlog-js...');
+    const response = await initializedService.backlog.getIssues({
+      projectId: [projectId],
+      ...options,
     });
+    console.log('Issues fetched successfully with backlog-js:', response.length || 0, 'issues');
+    return response || [];
+  }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
-    }
+  async getIssue(issueId: number): Promise<Entity.Issue.Issue> {
+    // 初期化完了を待つ
+    const initializedService = await this.ensureInitialized();
 
-    const data = await response.json();
-    return data || [];
+    console.log('Fetching issue from Backlog API using backlog-js...');
+    const response = await initializedService.backlog.getIssue(issueId);
+    console.log('Issue fetched successfully with backlog-js');
+    return response;
+  }
+
+  async getIssueComments(issueId: number): Promise<Entity.Issue.Comment[]> {
+    // 初期化完了を待つ
+    const initializedService = await this.ensureInitialized();
+
+    console.log('Fetching issue comments from Backlog API using backlog-js...');
+    const response = await initializedService.backlog.getIssueComments(issueId, {});
+    console.log(
+      'Issue comments fetched successfully with backlog-js:',
+      response.length || 0,
+      'comments'
+    );
+    return response || [];
+  }
+
+  async getUser(): Promise<Entity.User.User> {
+    const initializedService = await this.ensureInitialized();
+    return await initializedService.backlog.getMyself();
+  }
+
+  async getWikiPages(projectId: number): Promise<Entity.Wiki.WikiListItem[]> {
+    // 初期化完了を待つ
+    const initializedService = await this.ensureInitialized();
+
+    console.log('Fetching wiki pages from Backlog API using backlog-js...');
+    // backlog-jsの正しい関数名を使用
+    const response = await initializedService.backlog.getWikis({
+      projectIdOrKey: projectId,
+    });
+    console.log('Wiki pages fetched successfully with backlog-js:', response.length || 0, 'pages');
+    return response || [];
+  }
+
+  async getWiki(wikiId: number): Promise<Entity.Wiki.Wiki> {
+    // 初期化完了を待つ
+    const initializedService = await this.ensureInitialized();
+
+    console.log('Fetching wiki details from Backlog API using backlog-js...');
+    const response = await initializedService.backlog.getWiki(wikiId);
+    console.log('Wiki details fetched successfully with backlog-js');
+    return response;
+  }
+
+  async getDocuments(projectId: number): Promise<Entity.Document.DocumentTree> {
+    this.log('=== DOCUMENTS API DEBUG START ===');
+    this.log(`getDocuments called with projectId: ${projectId}`);
+    this.log(`Project ID type: ${typeof projectId}`);
+
+    // 初期化完了を待つ
+    const initializedService = await this.ensureInitialized();
+    this.log('API service initialized successfully');
+
+    this.log('=== CALLING BACKLOG-JS getDocumentTree ===');
+    this.log(`Calling backlog.getDocumentTree with projectId: ${projectId}`);
+
+    // ドキュメントツリーAPIを使用（backlog-jsに既存のメソッド）
+    const response = await initializedService.backlog.getDocumentTree(projectId);
+    this.log('Document tree API call successful');
+    this.log(`Response type: ${typeof response}`);
+    this.log(`Response is array: ${Array.isArray(response)}`);
+    this.log(`Document tree raw response: ${JSON.stringify(response, null, 2)}`);
+
+    this.log('=== DOCUMENTS API DEBUG END (SUCCESS) ===');
+    // Tree構造をそのまま返す
+    return response;
   }
 
   async reinitialize(): Promise<void> {
-    await this.initializeClient();
+    // 状態をリセットして再初期化
+    this.serviceState = { state: 'uninitialized' };
+    this.checkInitialConfiguration();
+
+    // 新しい初期化を強制実行
+    await this.ensureInitialized();
   }
 
   async isConfigured(): Promise<boolean> {
     return await this.configService.isConfigured();
-  }
-
-  // デバッグ用: 直接fetch APIを使ったテスト
-  async testApiConnection(): Promise<{ success: boolean; message: string; data?: any }> {
-    const apiUrl = this.configService.getApiUrl();
-    const apiKey = await this.configService.getApiKey();
-
-    if (!apiUrl || !apiKey) {
-      return {
-        success: false,
-        message: 'API URL or API Key is not configured'
-      };
-    }
-
-    try {
-      const normalizedUrl = this.normalizeApiUrl(apiUrl);
-      const testUrl = `${normalizedUrl}/api/v2/projects?apiKey=${apiKey}`;
-      
-      console.log('Testing API connection with URL:', testUrl.replace(apiKey, '[HIDDEN]'));
-      
-      const response = await fetch(testUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'VS Code Backlog Extension'
-        }
-      });
-
-      console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.log('Error response body:', errorText);
-        return {
-          success: false,
-          message: `HTTP ${response.status}: ${response.statusText} - ${errorText}`
-        };
-      }
-
-      const data = await response.json();
-      console.log('API test successful, received', data.length, 'projects');
-      
-      return {
-        success: true,
-        message: `Successfully connected to Backlog API. Found ${data.length} projects.`,
-        data: data
-      };
-
-    } catch (error: any) {
-      console.error('API connection test failed:', error);
-      return {
-        success: false,
-        message: `Connection failed: ${error.message}`
-      };
-    }
   }
 }

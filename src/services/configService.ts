@@ -8,8 +8,8 @@ export class ConfigService {
     this.secretStorage = secretStorage;
   }
 
-  getApiUrl(): string | undefined {
-    return vscode.workspace.getConfiguration(this.configSection).get<string>('apiUrl');
+  getDomain(): string | undefined {
+    return vscode.workspace.getConfiguration(this.configSection).get<string>('domain');
   }
 
   async getApiKey(): Promise<string | undefined> {
@@ -44,10 +44,10 @@ export class ConfigService {
       .get<number>('refreshInterval', 300);
   }
 
-  async setApiUrl(apiUrl: string): Promise<void> {
+  async setDomain(domain: string): Promise<void> {
     await vscode.workspace
       .getConfiguration(this.configSection)
-      .update('apiUrl', apiUrl, vscode.ConfigurationTarget.Global);
+      .update('domain', domain, vscode.ConfigurationTarget.Global);
   }
 
   async setApiKey(apiKey: string): Promise<void> {
@@ -56,13 +56,13 @@ export class ConfigService {
   }
 
   async isConfigured(): Promise<boolean> {
-    const apiUrl = this.getApiUrl();
+    const apiDomain = this.getDomain();
     const apiKey = await this.getApiKey();
-    return !!(apiUrl && apiKey);
+    return !!(apiDomain && apiKey);
   }
 
   getBaseUrl(): string | undefined {
-    const apiUrl = this.getApiUrl();
+    const apiUrl = this.getDomain();
     if (!apiUrl) {
       return undefined;
     }

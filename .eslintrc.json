@@ -1,24 +1,52 @@
 {
+  "$schema": "https://www.schemastore.org/eslintrc",
   "root": true,
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
-    "ecmaVersion": 6,
-    "sourceType": "module"
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "project": "./tsconfig.json"
   },
-  "plugins": ["@typescript-eslint"],
+  "plugins": [
+    "@typescript-eslint"
+  ],
+  "extends": [
+    "eslint:recommended"
+  ],
   "rules": {
     "@typescript-eslint/naming-convention": [
       "warn",
       {
-        "selector": "import",
+        "selector": "variable",
         "format": ["camelCase", "PascalCase"]
       }
     ],
     "@typescript-eslint/semi": "warn",
+    "@typescript-eslint/no-unused-vars": "warn",
+    "@typescript-eslint/explicit-function-return-type": "off",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unsafe-assignment": "off",
+    "@typescript-eslint/no-unsafe-member-access": "off",
+    "@typescript-eslint/no-unsafe-call": "off",
+    "@typescript-eslint/no-unsafe-return": "off",
+    "@typescript-eslint/no-unsafe-argument": "off",
     "curly": "warn",
     "eqeqeq": "warn",
     "no-throw-literal": "warn",
+    "no-console": "off",
+    "prefer-const": "warn",
+    "no-var": "error",
     "semi": "off"
   },
-  "ignorePatterns": ["out", "dist", "**/*.d.ts"]
+  "ignorePatterns": [
+    "out",
+    "dist",
+    "**/*.d.ts",
+    "node_modules",
+    ".vscode-test"
+  ],
+  "env": {
+    "node": true,
+    "es2022": true
+  }
 }

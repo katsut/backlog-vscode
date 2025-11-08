@@ -1,16 +1,17 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
+import { Entity } from 'backlog-js';
 
-export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<IssueTreeItem> {
-  private _onDidChangeTreeData: vscode.EventEmitter<IssueTreeItem | undefined | null | void> =
-    new vscode.EventEmitter<IssueTreeItem | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<IssueTreeItem | undefined | null | void> =
+export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+  private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
+    new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> =
     this._onDidChangeTreeData.event;
 
-  private issues: any[] = [];
-  private filteredIssues: any[] = [];
+  private issues: Entity.Issue.Issue[] = [];
+  private filteredIssues: Entity.Issue.Issue[] = [];
   private currentProjectId: number | null = null;
-  
+
   // 課題検索とフィルタ
   private searchQuery: string = '';
   private statusFilter: string[] = [];
@@ -43,35 +44,20 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<Is
     }
   }
 
-  getTreeItem(element: IssueTreeItem): vscode.TreeItem {
+  getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
     return element;
   }
 
-  async getChildren(element?: IssueTreeItem): Promise<IssueTreeItem[]> {
+  async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+    // プロジェクトが選択されていない場合は空を返す
     if (!this.currentProjectId) {
-      return [
-        new IssueTreeItem({
-          id: 0,
-          issueKey: '',
-          summary: 'No project selected',
-          status: { name: '' },
-          priority: { name: '', id: 0 },
-          assignee: null
-        })
-      ];
+      return [];
     }
 
-    if (!(await this.backlogApi.isConfigured())) {
-      return [
-        new IssueTreeItem({
-          id: 0,
-          issueKey: '',
-          summary: 'Configuration Required',
-          status: { name: '' },
-          priority: { name: '', id: 0 },
-          assignee: null
-        })
-      ];
+    // Backlogが設定されていない場合は設定を促すアイテムを表示
+    // ただし、既に課題がロードされている場合は設定済みとみなす
+    if (!(await this.backlogApi.isConfigured()) && this.issues.length === 0) {
+      return [this.createConfigurationItem()];
     }
 
     if (!element) {
@@ -80,6 +66,24 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<Is
     }
 
     return [];
+  }
+
+  // 設定を促すTreeItemを作成
+  private createConfigurationItem(): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      'Configure Backlog Settings',
+      vscode.TreeItemCollapsibleState.None
+    );
+    item.description = 'Click to configure API settings';
+    item.iconPath = new vscode.ThemeIcon('gear', new vscode.ThemeColor('charts.orange'));
+    item.tooltip = 'Configure Backlog API URL and credentials to start using the extension';
+    item.command = {
+      command: 'backlog.openSettings',
+      title: 'Open Settings',
+      arguments: [],
+    };
+    item.contextValue = 'configuration';
+    return item;
   }
 
   // 課題検索
@@ -111,7 +115,10 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<Is
   }
 
   // ソート
-  async sortIssues(sortBy: 'updated' | 'created' | 'priority' | 'status' | 'summary', order: 'asc' | 'desc'): Promise<void> {
+  async sortIssues(
+    sortBy: 'updated' | 'created' | 'priority' | 'status' | 'summary',
+    order: 'asc' | 'desc'
+  ): Promise<void> {
     this.sortBy = sortBy;
     this.sortOrder = order;
     this.applyFilters();
@@ -128,36 +135,75 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<Is
     this._onDidChangeTreeData.fire();
   }
 
+  // クイックフィルタ: クローズされていない課題
+  async filterOpenIssues(): Promise<void> {
+    this.statusFilter = ['Open', 'In Progress', 'オープン', '処理中'];
+    this.applyFilters();
+    this._onDidChangeTreeData.fire();
+  }
+
+  // クイックフィルタ: 自分が担当の課題
+  async filterMyIssues(): Promise<void> {
+    try {
+      const user = await this.backlogApi.getUser();
+      this.assigneeFilter = [user.name];
+      this.applyFilters();
+      this._onDidChangeTreeData.fire();
+    } catch (error) {
+      console.error('Error getting user for filter:', error);
+    }
+  }
+
+  // クイックフィルタ: 期限切れの課題
+  async filterOverdueIssues(): Promise<void> {
+    // まず全ての課題をロードしてから期限切れをフィルタ
+    let filtered = [...this.issues];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    filtered = filtered.filter((issue) => {
+      if (!issue.dueDate) {
+        return false;
+      }
+      const dueDate = new Date(issue.dueDate);
+      dueDate.setHours(0, 0, 0, 0);
+      return (
+        dueDate < today &&
+        !['Resolved', 'Closed', '解決済み', 'クローズ'].includes(issue.status.name)
+      );
+    });
+
+    this.filteredIssues = filtered;
+    this._onDidChangeTreeData.fire();
+  }
+
   // フィルタとソートの適用
   private applyFilters(): void {
     let filtered = [...this.issues];
 
     // 検索フィルタ
     if (this.searchQuery) {
-      filtered = filtered.filter(issue =>
-        issue.summary.toLowerCase().includes(this.searchQuery) ||
-        issue.issueKey.toLowerCase().includes(this.searchQuery) ||
-        (issue.description && issue.description.toLowerCase().includes(this.searchQuery))
+      filtered = filtered.filter(
+        (issue) =>
+          issue.summary.toLowerCase().includes(this.searchQuery) ||
+          issue.issueKey.toLowerCase().includes(this.searchQuery) ||
+          (issue.description && issue.description.toLowerCase().includes(this.searchQuery))
       );
     }
 
     // ステータスフィルタ
     if (this.statusFilter.length > 0) {
-      filtered = filtered.filter(issue =>
-        this.statusFilter.includes(issue.status.name)
-      );
+      filtered = filtered.filter((issue) => this.statusFilter.includes(issue.status.name));
     }
 
     // 優先度フィルタ
     if (this.priorityFilter.length > 0) {
-      filtered = filtered.filter(issue =>
-        this.priorityFilter.includes(issue.priority.name)
-      );
+      filtered = filtered.filter((issue) => this.priorityFilter.includes(issue.priority.name));
     }
 
     // 担当者フィルタ
     if (this.assigneeFilter.length > 0) {
-      filtered = filtered.filter(issue => {
+      filtered = filtered.filter((issue) => {
         const assigneeName = issue.assignee?.name || 'Unassigned';
         return this.assigneeFilter.includes(assigneeName);
       });
@@ -166,7 +212,7 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<Is
     // ソート
     filtered.sort((a, b) => {
       let comparison = 0;
-      
+
       switch (this.sortBy) {
         case 'updated':
           comparison = new Date(a.updated).getTime() - new Date(b.updated).getTime();
@@ -198,13 +244,13 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<Is
 
     try {
       console.log('Loading issues for project:', this.currentProjectId);
-      
+
       const issues = await this.backlogApi.getProjectIssues(this.currentProjectId, {
         count: 100,
         sort: 'updated',
-        order: 'desc'
+        order: 'desc',
       });
-      
+
       this.issues = issues;
       this.applyFilters();
       console.log('Issues loaded successfully:', this.issues.length, 'issues');
@@ -215,12 +261,12 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<Is
   }
 
   // 課題を取得
-  getIssues(): any[] {
+  getIssues(): Entity.Issue.Issue[] {
     return this.issues;
   }
 
   // フィルタされた課題を取得
-  getFilteredIssues(): any[] {
+  getFilteredIssues(): Entity.Issue.Issue[] {
     return this.filteredIssues;
   }
 
@@ -239,20 +285,17 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<Is
       priorityFilter: [...this.priorityFilter],
       assigneeFilter: [...this.assigneeFilter],
       sortBy: this.sortBy,
-      sortOrder: this.sortOrder
+      sortOrder: this.sortOrder,
     };
   }
 }
 
 export class IssueTreeItem extends vscode.TreeItem {
-  constructor(public readonly issue: any) {
+  constructor(public readonly issue: Entity.Issue.Issue) {
     const statusIcon = IssueTreeItem.getStatusIcon(issue.status.name);
     const priorityColor = IssueTreeItem.getPriorityColor(issue.priority.name);
 
-    super(
-      `${issue.issueKey}: ${issue.summary}`,
-      vscode.TreeItemCollapsibleState.None
-    );
+    super(`${issue.issueKey}: ${issue.summary}`, vscode.TreeItemCollapsibleState.None);
 
     this.tooltip = `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${
       issue.priority.name

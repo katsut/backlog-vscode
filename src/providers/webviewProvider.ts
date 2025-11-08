@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
+import { Entity } from 'backlog-js';
 
 export class BacklogWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'backlogIssueDetail';
@@ -11,11 +12,7 @@ export class BacklogWebviewProvider implements vscode.WebviewViewProvider {
     private readonly backlogApi: BacklogApiService
   ) {}
 
-  public resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
-  ) {
+  public resolveWebviewView(webviewView: vscode.WebviewView) {
     this._view = webviewView;
 
     webviewView.webview.options = {
@@ -39,7 +36,7 @@ export class BacklogWebviewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  public async showIssueDetail(issue: any) {
+  public async showIssueDetail(issue: Entity.Issue.Issue) {
     if (this._view) {
       this._view.show?.(true); // `show` is not implemented in 1.49 but is for 1.50 insiders
       try {

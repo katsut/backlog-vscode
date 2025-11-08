@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
+import { Entity } from 'backlog-js';
 
 export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<WikiTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<WikiTreeItem | undefined | null | void> =
@@ -7,11 +8,11 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
   readonly onDidChangeTreeData: vscode.Event<WikiTreeItem | undefined | null | void> =
     this._onDidChangeTreeData.event;
 
-  private wikis: any[] = [];
-  private filteredWikis: any[] = [];
+  private wikis: Entity.Wiki.WikiListItem[] = [];
+  private filteredWikis: Entity.Wiki.WikiListItem[] = [];
   private wikiTree: WikiTreeItem[] = [];
   private currentProjectId: number | null = null;
-  
+
   // Wiki検索
   private searchQuery: string = '';
 
@@ -46,34 +47,19 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
 
   async getChildren(element?: WikiTreeItem): Promise<WikiTreeItem[]> {
     if (!this.currentProjectId) {
-      return [
-        new WikiTreeItem({
-          id: 0,
-          name: 'No project selected',
-          content: '',
-          tags: []
-        })
-      ];
+      return [];
     }
 
     if (!(await this.backlogApi.isConfigured())) {
-      return [
-        new WikiTreeItem({
-          id: 0,
-          name: 'Configuration Required',
-          content: '',
-          tags: []
-        })
-      ];
+      return [];
     }
 
     if (!element) {
-      // Root level - show wiki tree structure
-      return this.wikiTree;
+      // Root level - show filtered wikis
+      return this.filteredWikis.map((wiki) => new WikiTreeItem(wiki));
     }
 
-    // If element has children, return them
-    return element.children || [];
+    return [];
   }
 
   // Wiki検索
@@ -96,10 +82,13 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
 
     // 検索フィルタ
     if (this.searchQuery) {
-      filtered = filtered.filter(wiki =>
-        wiki.name.toLowerCase().includes(this.searchQuery) ||
-        (wiki.content && wiki.content.toLowerCase().includes(this.searchQuery)) ||
-        (wiki.tags && wiki.tags.some((tag: any) => tag.name.toLowerCase().includes(this.searchQuery)))
+      filtered = filtered.filter(
+        (wiki) =>
+          wiki.name.toLowerCase().includes(this.searchQuery) ||
+          (wiki.tags &&
+            wiki.tags.some((tag: Entity.Wiki.Tag) =>
+              tag.name.toLowerCase().includes(this.searchQuery)
+            ))
       );
     }
 
@@ -107,50 +96,15 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
     this.buildWikiTree();
   }
 
-  // Wikiのツリー構造を構築
+  // Wikiのツリー構造を構築（フラットリスト）
   private buildWikiTree(): void {
-    const rootWikis: WikiTreeItem[] = [];
-    const wikiMap = new Map<number, WikiTreeItem>();
+    // フィルタされたWikiをソートしてフラットリストとして表示
+    const wikiItems = this.filteredWikis.map((wiki) => new WikiTreeItem(wiki));
 
-    // すべてのWikiアイテムを作成
-    this.filteredWikis.forEach(wiki => {
-      const item = new WikiTreeItem(wiki);
-      wikiMap.set(wiki.id, item);
-    });
+    // 名前順でソート
+    wikiItems.sort((a, b) => a.wiki.name.localeCompare(b.wiki.name));
 
-    // 親子関係を構築
-    this.filteredWikis.forEach(wiki => {
-      const item = wikiMap.get(wiki.id);
-      if (!item) return;
-
-      if (wiki.parentWikiId && wikiMap.has(wiki.parentWikiId)) {
-        // 親がある場合
-        const parent = wikiMap.get(wiki.parentWikiId);
-        if (parent) {
-          if (!parent.children) {
-            parent.children = [];
-          }
-          parent.children.push(item);
-          parent.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
-        }
-      } else {
-        // ルートレベル
-        rootWikis.push(item);
-      }
-    });
-
-    // 子がいる場合はソート
-    const sortChildren = (items: WikiTreeItem[]) => {
-      items.sort((a, b) => a.wiki.name.localeCompare(b.wiki.name));
-      items.forEach(item => {
-        if (item.children) {
-          sortChildren(item.children);
-        }
-      });
-    };
-
-    sortChildren(rootWikis);
-    this.wikiTree = rootWikis;
+    this.wikiTree = wikiItems;
   }
 
   private async loadWikis(): Promise<void> {
@@ -160,9 +114,9 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
 
     try {
       console.log('Loading wikis for project:', this.currentProjectId);
-      
+
       const wikis = await this.backlogApi.getWikiPages(this.currentProjectId);
-      
+
       this.wikis = wikis;
       this.applyFilters();
       console.log('Wikis loaded successfully:', this.wikis.length, 'wikis');
@@ -175,12 +129,12 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
   }
 
   // Wikiを取得
-  getWikis(): any[] {
+  getWikis(): Entity.Wiki.WikiListItem[] {
     return this.wikis;
   }
 
   // フィルタされたWikiを取得
-  getFilteredWikis(): any[] {
+  getFilteredWikis(): Entity.Wiki.WikiListItem[] {
     return this.filteredWikis;
   }
 
@@ -189,7 +143,7 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
     searchQuery: string;
   } {
     return {
-      searchQuery: this.searchQuery
+      searchQuery: this.searchQuery,
     };
   }
 }
@@ -198,15 +152,15 @@ export class WikiTreeItem extends vscode.TreeItem {
   public children?: WikiTreeItem[];
 
   constructor(
-    public readonly wiki: any,
+    public readonly wiki: Entity.Wiki.WikiListItem,
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None
   ) {
     super(wiki.name, collapsibleState);
-    
+
     this.tooltip = this.buildTooltip();
     this.iconPath = new vscode.ThemeIcon('book', new vscode.ThemeColor('charts.green'));
     this.contextValue = 'wiki';
-    
+
     if (wiki.id && wiki.id > 0) {
       this.command = {
         command: 'backlog.openWiki',
@@ -218,7 +172,7 @@ export class WikiTreeItem extends vscode.TreeItem {
 
   private buildTooltip(): string {
     let tooltip = this.wiki.name;
-    
+
     if (this.wiki.created) {
       tooltip += `\nCreated: ${new Date(this.wiki.created).toLocaleDateString()}`;
     }
@@ -229,9 +183,9 @@ export class WikiTreeItem extends vscode.TreeItem {
       tooltip += `\nCreated by: ${this.wiki.createdUser.name}`;
     }
     if (this.wiki.tags && this.wiki.tags.length > 0) {
-      tooltip += `\nTags: ${this.wiki.tags.map((tag: any) => tag.name).join(', ')}`;
+      tooltip += `\nTags: ${this.wiki.tags.map((tag) => tag.name).join(', ')}`;
     }
-    
+
     return tooltip;
   }
 }

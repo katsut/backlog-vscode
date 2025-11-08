@@ -1,33 +1,25 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
+import { Entity } from 'backlog-js';
 
 export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'backlogProjectsWebview';
 
   private _view?: vscode.WebviewView;
-  private projects: any[] = [];
-  private filteredProjects: any[] = [];
+  private projects: Entity.Project.Project[] = [];
+  private filteredProjects: Entity.Project.Project[] = [];
   private searchQuery: string = '';
 
-  constructor(
-    private readonly _extensionUri: vscode.Uri,
-    private backlogApi: BacklogApiService
-  ) {
+  constructor(private readonly _extensionUri: vscode.Uri, private backlogApi: BacklogApiService) {
     this.loadProjects();
   }
 
-  public resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken,
-  ) {
+  public resolveWebviewView(webviewView: vscode.WebviewView) {
     this._view = webviewView;
 
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        this._extensionUri
-      ]
+      localResourceRoots: [this._extensionUri],
     };
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -59,16 +51,15 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
   private async selectProject(projectId: number): Promise<void> {
     try {
       console.log('Selecting project with ID:', projectId);
-      
+
       // プロジェクトフォーカスコマンドを実行
       console.log('Executing backlog.focusProject command...');
       await vscode.commands.executeCommand('backlog.focusProject', projectId);
-      
+
       console.log('Project focus command completed successfully');
-      
+
       // 成功メッセージを表示
       vscode.window.showInformationMessage(`Selected project: ${projectId}`);
-      
     } catch (error) {
       console.error('Error focusing project:', error);
       vscode.window.showErrorMessage(`Failed to select project: ${error}`);
@@ -79,10 +70,10 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
     let filtered = [...this.projects];
 
     if (this.searchQuery) {
-      filtered = filtered.filter(project =>
-        project.name.toLowerCase().includes(this.searchQuery) ||
-        project.projectKey.toLowerCase().includes(this.searchQuery) ||
-        (project.description && project.description.toLowerCase().includes(this.searchQuery))
+      filtered = filtered.filter(
+        (project) =>
+          project.name.toLowerCase().includes(this.searchQuery) ||
+          project.projectKey.toLowerCase().includes(this.searchQuery)
       );
     }
 
@@ -91,10 +82,10 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
 
   private async loadProjects(): Promise<void> {
     console.log('loadProjects called');
-    
+
     const isConfigured = await this.backlogApi.isConfigured();
     console.log('API configured:', isConfigured);
-    
+
     if (!isConfigured) {
       console.log('API not configured, showing empty projects');
       this.projects = [];
@@ -106,7 +97,7 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
     try {
       console.log('Loading projects for webview...');
       const projects = await this.backlogApi.getProjects();
-      
+
       console.log('Raw projects from API:', projects);
       this.projects = projects || [];
       this.applyFilters();
@@ -119,12 +110,12 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
       this.projects = [];
       this.applyFilters();
       this.updateWebview();
-      
+
       // Webviewにエラーを表示
       if (this._view) {
         this._view.webview.postMessage({
           type: 'showError',
-          error: `Failed to load projects: ${error}`
+          error: `Failed to load projects: ${error}`,
         });
       }
     }
@@ -139,15 +130,21 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
       this._view.webview.postMessage({
         type: 'updateProjects',
         projects: this.filteredProjects,
-        searchQuery: this.searchQuery
+        searchQuery: this.searchQuery,
       });
     }
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
-    const styleResetUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'reset.css'));
-    const styleVSCodeUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'vscode.css'));
-    const styleMainUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css'));
+    const styleResetUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'media', 'reset.css')
+    );
+    const styleVSCodeUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'media', 'vscode.css')
+    );
+    const styleMainUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css')
+    );
 
     const nonce = getNonce();
 

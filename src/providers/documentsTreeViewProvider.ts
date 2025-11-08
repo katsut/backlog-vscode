@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
+import { Entity } from 'backlog-js';
+
+// Document Tree type
+type DocumentTree = Entity.Document.DocumentTree;
 
 export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider<DocumentTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<DocumentTreeItem | undefined | null | void> =
@@ -7,11 +11,9 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   readonly onDidChangeTreeData: vscode.Event<DocumentTreeItem | undefined | null | void> =
     this._onDidChangeTreeData.event;
 
-  private documents: any[] = [];
-  private filteredDocuments: any[] = [];
-  private documentTree: DocumentTreeItem[] = [];
+  private documentTree: DocumentTree | null = null; // Tree構造をそのまま保持
   private currentProjectId: number | null = null;
-  
+
   // Document検索
   private searchQuery: string = '';
 
@@ -27,9 +29,7 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   // プロジェクトをクリア
   clearProject(): void {
     this.currentProjectId = null;
-    this.documents = [];
-    this.filteredDocuments = [];
-    this.documentTree = [];
+    this.documentTree = null;
     this._onDidChangeTreeData.fire();
   }
 
@@ -46,182 +46,101 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
 
   async getChildren(element?: DocumentTreeItem): Promise<DocumentTreeItem[]> {
     if (!this.currentProjectId) {
-      return [
-        new DocumentTreeItem({
-          id: 0,
-          name: 'No project selected',
-          dir: '/',
-          size: 0
-        })
-      ];
+      return [];
     }
 
     if (!(await this.backlogApi.isConfigured())) {
-      return [
-        new DocumentTreeItem({
-          id: 0,
-          name: 'Configuration Required', 
-          dir: '/',
-          size: 0
-        })
-      ];
+      return [];
     }
 
     if (!element) {
-      // Root level - show document tree structure
-      return this.documentTree;
-    }
+      // Root level - show activeTree as a single item
+      if (!this.documentTree || !this.documentTree.activeTree) {
+        return [];
+      }
 
-    // If element has children, return them
-    return element.children || [];
+      // activeTree自体を一つのアイテムとして表示
+      const activeTreeItem = new DocumentTreeItem(
+        {
+          id: this.documentTree.activeTree.id,
+          name: 'Documents',
+          title: 'Documents',
+          type: 'folder'
+        },
+        vscode.TreeItemCollapsibleState.Collapsed,
+        this.documentTree.activeTree.children
+      );
+      
+      return [activeTreeItem];
+    } else {
+      // Child level - show children of the element
+      if (element.children) {
+        return this.buildTreeItems(element.children);
+      }
+      return [];
+    }
+  }
+
+  // Tree構造からTreeItemを構築
+  private buildTreeItems(nodes: any[]): DocumentTreeItem[] {
+    return nodes.map((node) => {
+      const hasChildren = node.children && Array.isArray(node.children) && node.children.length > 0;
+      const collapsibleState = hasChildren
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None;
+
+      return new DocumentTreeItem(node, collapsibleState, node.children);
+    });
   }
 
   // Document検索
   async searchDocuments(query: string): Promise<void> {
     this.searchQuery = query.toLowerCase();
-    this.applyFilters();
+    // Tree構造での検索は後で実装
     this._onDidChangeTreeData.fire();
   }
 
   // フィルタクリア
   clearFilters(): void {
     this.searchQuery = '';
-    this.applyFilters();
+    // Tree構造での検索は後で実装
     this._onDidChangeTreeData.fire();
-  }
-
-  // フィルタの適用とツリー構造の再構築
-  private applyFilters(): void {
-    let filtered = [...this.documents];
-
-    // 検索フィルタ
-    if (this.searchQuery) {
-      filtered = filtered.filter(document =>
-        document.name.toLowerCase().includes(this.searchQuery) ||
-        (document.dir && document.dir.toLowerCase().includes(this.searchQuery))
-      );
-    }
-
-    this.filteredDocuments = filtered;
-    this.buildDocumentTree();
-  }
-
-  // Documentのツリー構造を構築（ディレクトリ構造で）
-  private buildDocumentTree(): void {
-    const rootItems: DocumentTreeItem[] = [];
-    const dirMap = new Map<string, DocumentTreeItem>();
-
-    // ディレクトリ構造を構築
-    this.filteredDocuments.forEach(document => {
-      const pathParts = document.dir.split('/').filter((part: string) => part);
-      let currentPath = '';
-      let currentParent: DocumentTreeItem | null = null;
-
-      // パス階層を作成
-      pathParts.forEach((part: string, index: number) => {
-        currentPath += '/' + part;
-        
-        if (!dirMap.has(currentPath)) {
-          const dirItem = new DocumentTreeItem(
-            {
-              id: 0,
-              name: part,
-              dir: currentPath,
-              size: 0,
-              isDirectory: true
-            },
-            vscode.TreeItemCollapsibleState.Collapsed
-          );
-          dirMap.set(currentPath, dirItem);
-        }
-
-        const dirItem = dirMap.get(currentPath)!;
-
-        if (index === 0) {
-          // ルートディレクトリ
-          if (!rootItems.includes(dirItem)) {
-            rootItems.push(dirItem);
-          }
-          currentParent = dirItem;
-        } else {
-          // サブディレクトリ
-          if (currentParent && !currentParent.children?.includes(dirItem)) {
-            if (!currentParent.children) {
-              currentParent.children = [];
-            }
-            currentParent.children.push(dirItem);
-          }
-          currentParent = dirItem;
-        }
-      });
-
-      // ファイルを適切なディレクトリに追加
-      const fileItem = new DocumentTreeItem(document);
-      
-      if (pathParts.length === 0) {
-        // ルートにあるファイル
-        rootItems.push(fileItem);
-      } else {
-        // ディレクトリ内のファイル
-        const parentDir = dirMap.get(document.dir);
-        if (parentDir) {
-          if (!parentDir.children) {
-            parentDir.children = [];
-          }
-          parentDir.children.push(fileItem);
-        }
-      }
-    });
-
-    // ソート（ディレクトリ優先、名前順）
-    const sortItems = (items: DocumentTreeItem[]) => {
-      items.sort((a, b) => {
-        // ディレクトリを優先
-        if (a.document.isDirectory && !b.document.isDirectory) return -1;
-        if (!a.document.isDirectory && b.document.isDirectory) return 1;
-        return a.document.name.localeCompare(b.document.name);
-      });
-      
-      items.forEach(item => {
-        if (item.children) {
-          sortItems(item.children);
-        }
-      });
-    };
-
-    sortItems(rootItems);
-    this.documentTree = rootItems;
   }
 
   private async loadDocuments(): Promise<void> {
     if (!this.currentProjectId || !(await this.backlogApi.isConfigured())) {
+      console.log('Documents load skipped - no project or not configured');
       return;
     }
 
     try {
       console.log('Loading documents for project:', this.currentProjectId);
-      
-      const documents = await this.backlogApi.getDocuments(this.currentProjectId);
-      
-      this.documents = documents;
-      this.applyFilters();
-      console.log('Documents loaded successfully:', this.documents.length, 'documents');
+      console.log('API configured:', await this.backlogApi.isConfigured());
+
+      const documentTree = await this.backlogApi.getDocuments(this.currentProjectId);
+
+      console.log('Raw document tree response:', documentTree);
+      console.log('Document tree type:', typeof documentTree);
+      console.log('Document tree is array:', Array.isArray(documentTree));
+
+      this.documentTree = documentTree;
+      console.log('Document tree loaded successfully');
     } catch (error) {
-      console.error('Error loading documents:', error);
-      // Documentが取得できない場合は空の配列を設定
-      this.documents = [];
-      this.applyFilters();
+      console.error('Error loading documents - full error:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
+      // Documentが取得できない場合はnullを設定
+      this.documentTree = null;
+
+      // より詳細なエラー情報をユーザーに表示
+      vscode.window.showErrorMessage(
+        `Failed to load documents: ${error instanceof Error ? error.message : error}`
+      );
     }
   }
 
-  // Documentを取得
-  getDocuments(): any[] {
-    return this.documents;
-  }
-
-  // フィルタされたDocumentを取得
-  getFilteredDocuments(): any[] {
-    return this.filteredDocuments;
+  // Document Tree を取得
+  getDocumentTree(): any {
+    return this.documentTree;
   }
 
   // 現在のフィルタ状態を取得
@@ -229,66 +148,63 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
     searchQuery: string;
   } {
     return {
-      searchQuery: this.searchQuery
+      searchQuery: this.searchQuery,
     };
   }
 }
 
 export class DocumentTreeItem extends vscode.TreeItem {
-  public children?: DocumentTreeItem[];
+  public children?: any[];
 
   constructor(
-    public readonly document: any,
-    public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None
+    public readonly document: any, // Tree構造のnodeを受け取る
+    public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None,
+    children?: any[]
   ) {
-    super(document.name, collapsibleState);
-    
+    // document.titleまたはdocument.nameのどちらかが存在する場合に対応
+    const displayName = document.title || document.name || 'Unnamed Document';
+    super(displayName, collapsibleState);
+
+    this.children = children;
     this.tooltip = this.buildTooltip();
-    
-    if (document.isDirectory) {
+
+    // Treeノードのタイプに応じてアイコンを設定
+    if (document.type === 'folder' || document.type === 'directory') {
       this.iconPath = new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.yellow'));
-      this.contextValue = 'documentDirectory';
+      this.contextValue = 'documentFolder';
     } else {
       this.iconPath = new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue'));
       this.contextValue = 'document';
-      
-      if (document.id && document.id > 0) {
-        this.command = {
-          command: 'backlog.openDocument',
-          title: 'Open Document',
-          arguments: [this.document],
-        };
-      }
+
+      // ファイル/ドキュメントの場合のみコマンドを設定
+      this.command = {
+        command: 'backlog.openDocument',
+        title: 'Open Document',
+        arguments: [this.document],
+      };
     }
   }
 
   private buildTooltip(): string {
-    let tooltip = this.document.name;
-    
-    if (!this.document.isDirectory) {
-      if (this.document.size) {
-        tooltip += `\nSize: ${this.formatFileSize(this.document.size)}`;
-      }
-      if (this.document.created) {
-        tooltip += `\nCreated: ${new Date(this.document.created).toLocaleDateString()}`;
-      }
-      if (this.document.createdUser) {
-        tooltip += `\nCreated by: ${this.document.createdUser.name}`;
-      }
-    } else {
-      tooltip += '\nDirectory';
-    }
-    
-    return tooltip;
-  }
+    const name = this.document.title || this.document.name || 'Unnamed Document';
+    let tooltip = name;
 
-  private formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    if (this.document.type) {
+      tooltip += `\nType: ${this.document.type}`;
+    }
+    if (this.document.created) {
+      tooltip += `\nCreated: ${new Date(this.document.created).toLocaleDateString()}`;
+    }
+    if (this.document.createdUser && this.document.createdUser.name) {
+      tooltip += `\nCreated by: ${this.document.createdUser.name}`;
+    }
+    if (this.document.updated) {
+      tooltip += `\nUpdated: ${new Date(this.document.updated).toLocaleDateString()}`;
+    }
+    if (this.document.updatedUser && this.document.updatedUser.name) {
+      tooltip += `\nUpdated by: ${this.document.updatedUser.name}`;
+    }
+
+    return tooltip;
   }
 }

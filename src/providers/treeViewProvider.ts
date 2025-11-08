@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
+import { Entity } from 'backlog-js';
 
 export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> =
@@ -7,16 +8,16 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> =
     this._onDidChangeTreeData.event;
 
-  private projects: any[] = [];
-  private filteredProjects: any[] = [];
-  private projectIssues: Map<number, any[]> = new Map();
-  private filteredIssues: Map<number, any[]> = new Map();
-  private projectWikis: Map<number, any[]> = new Map();
-  private projectDocuments: Map<number, any[]> = new Map();
-  
+  private projects: Entity.Project.Project[] = [];
+  private filteredProjects: Entity.Project.Project[] = [];
+  private projectIssues: Map<number, Entity.Issue.Issue[]> = new Map();
+  private filteredIssues: Map<number, Entity.Issue.Issue[]> = new Map();
+  private projectWikis: Map<number, Entity.Wiki.WikiListItem[]> = new Map();
+  private projectDocuments: Map<number, Entity.Document.DocumentTree | null> = new Map();
+
   // フォーカス状態
   private focusedProjectId: number | null = null;
-  
+
   // フィルタ・検索・ソート状態
   private searchQuery: string = '';
   private statusFilter: string[] = [];
@@ -26,7 +27,12 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   private sortOrder: 'asc' | 'desc' = 'desc';
 
   constructor(private backlogApi: BacklogApiService) {
-    this.loadInitialData();
+    console.log('=== BacklogTreeViewProvider constructor called ===');
+    // 初期データ読み込みを非同期で実行
+    this.loadInitialData().catch(error => {
+      console.error('Error in loadInitialData from constructor:', error);
+    });
+    console.log('=== BacklogTreeViewProvider constructor completed ===');
   }
 
   refresh(): void {
@@ -40,10 +46,10 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
 
   async getChildren(element?: TreeItem): Promise<TreeItem[]> {
     console.log('TreeViewProvider.getChildren called with element:', element?.label || 'root');
-    
+
     const isConfigured = await this.backlogApi.isConfigured();
     console.log('API configured:', isConfigured);
-    
+
     if (!isConfigured) {
       console.log('API not configured, showing configuration required message');
       return [
@@ -59,12 +65,12 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
     if (!element) {
       // Root level - フォーカスされたプロジェクトがある場合はそのプロジェクトのみ表示
       if (this.focusedProjectId) {
-        const focusedProject = this.projects.find(p => p.id === this.focusedProjectId);
+        const focusedProject = this.projects.find((p) => p.id === this.focusedProjectId);
         if (focusedProject) {
           return [
             new CategoryTreeItem('Issues', 'issues', this.focusedProjectId),
             new CategoryTreeItem('Wiki', 'wiki', this.focusedProjectId),
-            new CategoryTreeItem('Documents', 'documents', this.focusedProjectId)
+            new CategoryTreeItem('Documents', 'documents', this.focusedProjectId),
           ];
         }
       }
@@ -76,117 +82,115 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
       return displayProjects.map((project) => new ProjectTreeItem(project));
     }
 
-    if (element instanceof ProjectTreeItem) {
-      // Project level - show filtered issues
-      const filteredIssues = this.filteredIssues.get(element.project.id);
-      const issues = filteredIssues || this.projectIssues.get(element.project.id) || [];
-      return issues.map((issue) => new IssueTreeItem(issue));
-    }
-
     if (element instanceof CategoryTreeItem) {
       switch (element.category) {
-        case 'issues':
+        case 'issues': {
+          // 課題データが未読み込みの場合のみ取得
+          if (!this.projectIssues.has(element.projectId)) {
+            const issues = await this.backlogApi.getProjectIssues(element.projectId, { count: 100 });
+            this.projectIssues.set(element.projectId, issues);
+          }
           const filteredIssues = this.filteredIssues.get(element.projectId);
           const issues = filteredIssues || this.projectIssues.get(element.projectId) || [];
-          return issues.map((issue) => new IssueTreeItem(issue));
-        case 'wiki':
+          // 親課題のみを表示（子課題は親課題の下にツリー表示）
+          const parentIssues = issues.filter((issue) => !issue.parentIssueId);
+          return parentIssues.map((issue) => new IssueTreeItem(issue, issues));
+        }
+        case 'wiki': {
+          // Wikiデータが未読み込みの場合のみ取得
+          if (!this.projectWikis.has(element.projectId)) {
+            const wikis = await this.backlogApi.getWikiPages(element.projectId);
+            this.projectWikis.set(element.projectId, wikis);
+          }
           const wikis = this.projectWikis.get(element.projectId) || [];
           return wikis.map((wiki) => new WikiTreeItem(wiki));
-        case 'documents':
-          const documents = this.projectDocuments.get(element.projectId) || [];
-          return documents.map((doc) => new DocumentTreeItem(doc));
+        }
+        case 'documents': {
+          // ドキュメントデータが未読み込みの場合のみ取得
+          if (!this.projectDocuments.has(element.projectId)) {
+            const documents = await this.backlogApi.getDocuments(element.projectId);
+            this.projectDocuments.set(element.projectId, documents);
+          }
+          const documentTree = this.projectDocuments.get(element.projectId);
+          if (!documentTree || !documentTree.activeTree) {
+            return [];
+          }
+          return this.convertDocumentTreeToItems(documentTree.activeTree.children, element.projectId);
+        }
       }
+    }
+
+    // IssueTreeItemの子課題を処理
+    if (element instanceof IssueTreeItem) {
+      const childIssues = element.getChildIssues();
+      return childIssues.map((childIssue) => new IssueTreeItem(childIssue, element.allIssues));
+    }
+
+    // DocumentTreeItemの子ノードを処理
+    if (element instanceof DocumentTreeNodeItem) {
+      return this.convertDocumentTreeToItems(element.node.children, element.projectId);
     }
 
     return [];
   }
 
-  // プロジェクトにフォーカスする
+  // プロジェクトにフォーカスする（データは遅延読み込み）
   async focusProject(projectId: number): Promise<void> {
     this.focusedProjectId = projectId;
-    
-    // 課題、Wiki、ドキュメントを読み込み
-    try {
-      const [issues, wikis, documents] = await Promise.all([
-        this.backlogApi.getProjectIssues(projectId, { count: 50 }),
-        this.backlogApi.getWikiPages(projectId),
-        this.backlogApi.getDocuments(projectId)
-      ]);
-      
-      this.projectIssues.set(projectId, issues);
-      this.projectWikis.set(projectId, wikis);
-      this.projectDocuments.set(projectId, documents);
-      
-      this.applyFilters();
-    } catch (error) {
-      console.error('Error loading project data:', error);
-      vscode.window.showErrorMessage(`Failed to load project data: ${error}`);
-    }
-    
+    // データは各カテゴリが展開された時に取得する
     this._onDidChangeTreeData.fire();
   }
 
   // プロジェクトフォーカスを解除
   unfocusProject(): void {
     this.focusedProjectId = null;
+    // プロジェクトデータもクリアして課題などが表示されないようにする
+    this.projectIssues.clear();
+    this.projectWikis.clear();
+    this.projectDocuments.clear();
+    this.filteredIssues.clear();
     this._onDidChangeTreeData.fire();
   }
 
   private async loadInitialData(): Promise<void> {
-    console.log('loadInitialData called');
-    
+    console.log('=== loadInitialData START ===');
+
+    // 設定状況を詳細に確認
+    const domain = this.backlogApi['configService'].getDomain();
+    const apiKey = await this.backlogApi['configService'].getApiKey();
+    console.log('Config details:');
+    console.log('- Domain:', domain ? `configured (${domain})` : 'NOT CONFIGURED');
+    console.log('- API Key:', apiKey ? 'configured (length: ' + apiKey.length + ')' : 'NOT CONFIGURED');
+
     const isConfigured = await this.backlogApi.isConfigured();
-    console.log('loadInitialData - API configured:', isConfigured);
-    
+    console.log('API configured (final result):', isConfigured);
+
     if (!isConfigured) {
-      console.log('loadInitialData - API not configured, returning early');
+      console.log('API not configured, showing configuration message');
+      console.log('=== loadInitialData END (NOT CONFIGURED) ===');
       this._onDidChangeTreeData.fire();
       return;
     }
 
+    console.log('Configuration OK, attempting to get projects...');
     try {
-      console.log('Starting to load Backlog data...');
-      
-      // まず直接fetch APIでテスト
-      const testResult = await this.backlogApi.testApiConnection();
-      console.log('API connection test result:', testResult);
-      
-      if (testResult.success) {
-        console.log('API connection successful, using test data for now');
-        // テストが成功した場合、直接取得したデータを使用
-        this.projects = testResult.data || [];
-        console.log('Projects loaded:', this.projects.length, 'projects');
-        vscode.window.showInformationMessage(testResult.message);
-        
-        // データが更新されたことを通知
-        this._onDidChangeTreeData.fire();
-      } else {
-        console.error('API connection test failed:', testResult.message);
-        vscode.window.showErrorMessage(`API Connection Failed: ${testResult.message}`);
-        return;
+      this.projects = await this.backlogApi.getProjects();
+      console.log('Projects loaded successfully:', this.projects.length, 'projects');
+      if (this.projects.length > 0) {
+        console.log('Sample project:', this.projects[0].name, '(' + this.projects[0].projectKey + ')');
       }
-
-      // Issues loading is commented out for now to focus on project loading
-      /*
-      // Load issues for each project (limit to avoid API rate limits)
-      for (const project of this.projects.slice(0, 5)) {
-        try {
-          const issues = await this.backlogApi.getProjectIssues(project.id, {
-            count: 20, // Limit to recent 20 issues
-            sort: 'updated',
-            order: 'desc',
-          });
-          this.projectIssues.set(project.id, issues);
-        } catch (error) {
-          console.error(`Error loading issues for project ${project.name}:`, error);
-        }
-      }
-      */
-      
     } catch (error) {
       console.error('Error loading projects:', error);
-      vscode.window.showErrorMessage(`Failed to load Backlog data: ${error}`);
+      console.error('Error details:', error instanceof Error ? error.stack : 'No stack');
+      this.projects = [];
+
+      // ユーザーにエラーを表示
+      vscode.window.showErrorMessage(`Failed to load Backlog projects: ${error instanceof Error ? error.message : error}`);
     }
+
+    console.log('Firing tree data change event...');
+    this._onDidChangeTreeData.fire();
+    console.log('=== loadInitialData END ===');
   }
 
   // 検索機能
@@ -216,7 +220,10 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   }
 
   // ソート機能
-  async sort(sortBy: 'updated' | 'created' | 'priority' | 'status' | 'summary', order: 'asc' | 'desc'): Promise<void> {
+  async sort(
+    sortBy: 'updated' | 'created' | 'priority' | 'status' | 'summary',
+    order: 'asc' | 'desc'
+  ): Promise<void> {
     this.sortBy = sortBy;
     this.sortOrder = order;
     this.applyFilters();
@@ -237,10 +244,10 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   private applyFilters(): void {
     // プロジェクト検索フィルタ
     if (this.searchQuery) {
-      this.filteredProjects = this.projects.filter(project =>
-        project.name.toLowerCase().includes(this.searchQuery) ||
-        project.projectKey.toLowerCase().includes(this.searchQuery) ||
-        (project.description && project.description.toLowerCase().includes(this.searchQuery))
+      this.filteredProjects = this.projects.filter(
+        (project) =>
+          project.name.toLowerCase().includes(this.searchQuery) ||
+          project.projectKey.toLowerCase().includes(this.searchQuery)
       );
     } else {
       this.filteredProjects = [...this.projects];
@@ -253,30 +260,27 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
 
       // 検索フィルタ
       if (this.searchQuery) {
-        filtered = filtered.filter(issue =>
-          issue.summary.toLowerCase().includes(this.searchQuery) ||
-          issue.issueKey.toLowerCase().includes(this.searchQuery) ||
-          (issue.description && issue.description.toLowerCase().includes(this.searchQuery))
+        filtered = filtered.filter(
+          (issue) =>
+            issue.summary.toLowerCase().includes(this.searchQuery) ||
+            issue.issueKey.toLowerCase().includes(this.searchQuery) ||
+            (issue.description && issue.description.toLowerCase().includes(this.searchQuery))
         );
       }
 
       // ステータスフィルタ
       if (this.statusFilter.length > 0) {
-        filtered = filtered.filter(issue =>
-          this.statusFilter.includes(issue.status.name)
-        );
+        filtered = filtered.filter((issue) => this.statusFilter.includes(issue.status.name));
       }
 
       // 優先度フィルタ
       if (this.priorityFilter.length > 0) {
-        filtered = filtered.filter(issue =>
-          this.priorityFilter.includes(issue.priority.name)
-        );
+        filtered = filtered.filter((issue) => this.priorityFilter.includes(issue.priority.name));
       }
 
       // 担当者フィルタ
       if (this.assigneeFilter.length > 0) {
-        filtered = filtered.filter(issue => {
+        filtered = filtered.filter((issue) => {
           const assigneeName = issue.assignee?.name || 'Unassigned';
           return this.assigneeFilter.includes(assigneeName);
         });
@@ -285,7 +289,7 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
       // ソート
       filtered.sort((a, b) => {
         let comparison = 0;
-        
+
         switch (this.sortBy) {
           case 'updated':
             comparison = new Date(a.updated).getTime() - new Date(b.updated).getTime();
@@ -311,6 +315,34 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
     }
   }
 
+  // DocumentTreeNodeをTreeItemに変換するヘルパーメソッド
+  private convertDocumentTreeToItems(nodes: Entity.Document.DocumentTreeNode[], projectId: number): TreeItem[] {
+    return nodes.map((node) => {
+      if (node.children && node.children.length > 0) {
+        // フォルダノード
+        return new DocumentTreeNodeItem(
+          node.name || node.id,
+          vscode.TreeItemCollapsibleState.Collapsed,
+          `Folder: ${node.name || node.id}`,
+          new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.blue')),
+          node,
+          projectId
+        );
+      } else {
+        // ドキュメントノード（遅延読み込み対応）
+        return new DocumentTreeNodeItem(
+          node.name || node.id,
+          vscode.TreeItemCollapsibleState.None,
+          `Document: ${node.name || node.id}${node.updated ? `\nUpdated: ${new Date(node.updated).toLocaleDateString()}` : ''
+          }`,
+          new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue')),
+          node,
+          projectId
+        );
+      }
+    });
+  }
+
   // 現在のフィルタ状態を取得
   getFilterState(): {
     searchQuery: string;
@@ -326,7 +358,7 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
       priorityFilter: [...this.priorityFilter],
       assigneeFilter: [...this.assigneeFilter],
       sortBy: this.sortBy,
-      sortOrder: this.sortOrder
+      sortOrder: this.sortOrder,
     };
   }
 }
@@ -345,16 +377,16 @@ export class TreeItem extends vscode.TreeItem {
 }
 
 export class ProjectTreeItem extends TreeItem {
-  constructor(public readonly project: any) {
+  constructor(public readonly project: Entity.Project.Project) {
     super(
-      project.name,
-      vscode.TreeItemCollapsibleState.Collapsed,
-      `${project.name} (${project.projectKey})\nDouble-click to focus on this project`,
+      `${project.projectKey}: ${project.name}`,
+      vscode.TreeItemCollapsibleState.None,
+      `${project.name} (${project.projectKey})\nClick to focus on this project`,
       new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.blue'))
     );
     this.contextValue = 'project';
-    
-    // ダブルクリックでプロジェクトにフォーカス
+
+    // クリックでプロジェクトにフォーカス
     this.command = {
       command: 'backlog.focusProject',
       title: 'Focus Project',
@@ -370,12 +402,7 @@ export class CategoryTreeItem extends TreeItem {
     public readonly projectId: number
   ) {
     const icon = CategoryTreeItem.getCategoryIcon(category);
-    super(
-      label,
-      vscode.TreeItemCollapsibleState.Collapsed,
-      `${label} for project`,
-      icon
-    );
+    super(label, vscode.TreeItemCollapsibleState.Collapsed, `${label} for project`, icon);
     this.contextValue = 'category';
   }
 
@@ -392,15 +419,20 @@ export class CategoryTreeItem extends TreeItem {
 }
 
 export class IssueTreeItem extends TreeItem {
-  constructor(public readonly issue: any) {
+  constructor(
+    public readonly issue: Entity.Issue.Issue,
+    public readonly allIssues?: Entity.Issue.Issue[]
+  ) {
     const statusIcon = IssueTreeItem.getStatusIcon(issue.status.name);
     const priorityColor = IssueTreeItem.getPriorityColor(issue.priority.name);
 
+    // 子課題があるかチェック
+    const hasChildren = allIssues ? allIssues.some((i) => i.parentIssueId === issue.id) : false;
+
     super(
       `${issue.issueKey}: ${issue.summary}`,
-      vscode.TreeItemCollapsibleState.None,
-      `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${
-        issue.priority.name
+      hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+      `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${issue.priority.name
       }\nAssignee: ${issue.assignee?.name || 'Unassigned'}`,
       new vscode.ThemeIcon(statusIcon, priorityColor)
     );
@@ -411,6 +443,14 @@ export class IssueTreeItem extends TreeItem {
       title: 'Open Issue',
       arguments: [this.issue],
     };
+  }
+
+  // 子課題を取得するヘルパーメソッド
+  getChildIssues(): Entity.Issue.Issue[] {
+    if (!this.allIssues) {
+      return [];
+    }
+    return this.allIssues.filter((issue) => issue.parentIssueId === this.issue.id);
   }
 
   private static getStatusIcon(statusName: string): string {
@@ -450,11 +490,13 @@ export class IssueTreeItem extends TreeItem {
 }
 
 export class WikiTreeItem extends TreeItem {
-  constructor(public readonly wiki: any) {
+  constructor(public readonly wiki: Entity.Wiki.WikiListItem) {
     super(
       wiki.name,
       vscode.TreeItemCollapsibleState.None,
-      `${wiki.name}\nCreated: ${new Date(wiki.created).toLocaleDateString()}\nUpdated: ${new Date(wiki.updated).toLocaleDateString()}`,
+      `${wiki.name}\nCreated: ${new Date(wiki.created).toLocaleDateString()}\nUpdated: ${new Date(
+        wiki.updated
+      ).toLocaleDateString()}`,
       new vscode.ThemeIcon('book', new vscode.ThemeColor('charts.green'))
     );
 
@@ -468,11 +510,11 @@ export class WikiTreeItem extends TreeItem {
 }
 
 export class DocumentTreeItem extends TreeItem {
-  constructor(public readonly document: any) {
+  constructor(public readonly document: Entity.Document.Document) {
     super(
-      document.name,
+      document.title,
       vscode.TreeItemCollapsibleState.None,
-      `${document.name}\nSize: ${document.size || 'Unknown'}\nCreated: ${new Date(document.created).toLocaleDateString()}`,
+      `${document.title}\nCreated: ${new Date(document.created).toLocaleDateString()}`,
       new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue'))
     );
 
@@ -482,5 +524,28 @@ export class DocumentTreeItem extends TreeItem {
       title: 'Open Document',
       arguments: [this.document],
     };
+  }
+}
+
+export class DocumentTreeNodeItem extends TreeItem {
+  constructor(
+    label: string,
+    collapsibleState: vscode.TreeItemCollapsibleState,
+    tooltip: string,
+    iconPath: vscode.ThemeIcon,
+    public readonly node: Entity.Document.DocumentTreeNode,
+    public readonly projectId: number
+  ) {
+    super(label, collapsibleState, tooltip, iconPath);
+    this.contextValue = node.children && node.children.length > 0 ? 'documentFolder' : 'documentFile';
+
+    // ドキュメントファイルの場合、クリックで開く
+    if (!(node.children && node.children.length > 0)) {
+      this.command = {
+        command: 'backlog.openDocumentFromNode',
+        title: 'Open Document',
+        arguments: [this.node.id, this.projectId],
+      };
+    }
   }
 }
