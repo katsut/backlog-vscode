@@ -230,10 +230,29 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Handle messages from the webview
         panel.webview.onDidReceiveMessage(
-          message => {
+          async message => {
             switch (message.command) {
               case 'openExternal':
                 vscode.env.openExternal(vscode.Uri.parse(message.url));
+                break;
+              case 'refreshIssue':
+                try {
+                  // Fetch updated issue details
+                  const refreshedIssue = await backlogApi.getIssue(message.issueId);
+                  const refreshedComments = await backlogApi.getIssueComments(message.issueId);
+                  // Update webview content
+                  panel.webview.html = IssueWebview.getWebviewContent(
+                    panel.webview,
+                    context.extensionUri,
+                    refreshedIssue,
+                    refreshedComments,
+                    configService.getBaseUrl()
+                  );
+                  vscode.window.showInformationMessage('Issue refreshed successfully');
+                } catch (error) {
+                  console.error('Error refreshing issue:', error);
+                  vscode.window.showErrorMessage(`Failed to refresh issue: ${error}`);
+                }
                 break;
             }
           },
@@ -543,10 +562,27 @@ export function activate(context: vscode.ExtensionContext) {
 
           // Handle messages from the webview
           panel.webview.onDidReceiveMessage(
-            message => {
+            async message => {
               switch (message.command) {
                 case 'openExternal':
                   vscode.env.openExternal(vscode.Uri.parse(message.url));
+                  break;
+                case 'refreshWiki':
+                  try {
+                    // Fetch updated wiki details
+                    const refreshedWiki = await backlogApi.getWiki(message.wikiId);
+                    // Update webview content
+                    panel.webview.html = WikiWebview.getWebviewContent(
+                      panel.webview,
+                      context.extensionUri,
+                      refreshedWiki,
+                      configService.getBaseUrl()
+                    );
+                    vscode.window.showInformationMessage('Wiki refreshed successfully');
+                  } catch (error) {
+                    console.error('Error refreshing wiki:', error);
+                    vscode.window.showErrorMessage(`Failed to refresh wiki: ${error}`);
+                  }
                   break;
               }
             },
@@ -626,10 +662,35 @@ export function activate(context: vscode.ExtensionContext) {
 
           // Handle messages from the webview
           panel.webview.onDidReceiveMessage(
-            message => {
+            async message => {
               switch (message.command) {
                 case 'openExternal':
                   vscode.env.openExternal(vscode.Uri.parse(message.url));
+                  break;
+                case 'refreshDocument':
+                  try {
+                    // Fetch updated document details
+                    const refreshedDocument = await backlogApi.getDocument(message.documentId);
+                    // Get project key
+                    let refreshProjectKey = '';
+                    try {
+                      refreshProjectKey = backlogDocumentsProvider.getCurrentProjectKey() || '';
+                    } catch (error) {
+                      console.log('Could not get project key for refresh:', error);
+                    }
+                    // Update webview content
+                    panel.webview.html = DocumentWebview.getWebviewContent(
+                      panel.webview,
+                      context.extensionUri,
+                      refreshedDocument,
+                      configService,
+                      refreshProjectKey
+                    );
+                    vscode.window.showInformationMessage('Document refreshed successfully');
+                  } catch (error) {
+                    console.error('Error refreshing document:', error);
+                    vscode.window.showErrorMessage(`Failed to refresh document: ${error}`);
+                  }
                   break;
               }
             },

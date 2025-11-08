@@ -173,6 +173,39 @@ export class IssueWebview {
           background: var(--vscode-button-secondaryHoverBackground);
           text-decoration: none;
         }
+        
+        /* Refresh button styles */
+        .refresh-button {
+          background: var(--vscode-button-background, #0078d4);
+          color: var(--vscode-button-foreground, #ffffff);
+          border: 1px solid var(--vscode-button-border, transparent);
+          border-radius: 4px;
+          padding: 6px 8px;
+          margin-left: 12px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          min-width: 32px;
+          min-height: 32px;
+        }
+        
+        .refresh-button:hover {
+          background: var(--vscode-button-hoverBackground, #005a9e);
+          transform: scale(1.05);
+        }
+        
+        .refresh-button:active {
+          background: var(--vscode-button-activeBackground, #004578);
+          transform: scale(0.95);
+        }
+        
+        .refresh-button .codicon {
+          font-size: 16px;
+          color: var(--vscode-button-foreground, #ffffff);
+          font-weight: bold;
+        }
     `;
 
     return `<!DOCTYPE html>
@@ -180,7 +213,12 @@ export class IssueWebview {
       ${WebviewHelper.getHtmlHead(webview, extensionUri, `Issue ${issue.issueKey}`, additionalStyles, nonce)}
       <body>
         <div class="issue-header">
-          <h1>${WebviewHelper.escapeHtml(issue.summary)}</h1>
+          <h1>
+            ${WebviewHelper.escapeHtml(issue.summary)}
+            <button class="refresh-button" id="refreshButton" title="Refresh issue content">
+              <span class="codicon codicon-refresh"></span>
+            </button>
+          </h1>
           <div class="issue-meta">
             <span class="issue-key">${WebviewHelper.escapeHtml(issue.issueKey)}</span>
             <span class="status-badge ${this.getStatusClass(issue.status)}">${WebviewHelper.escapeHtml(issue.status.name)}</span>
@@ -241,12 +279,26 @@ export class IssueWebview {
         <script nonce="${nonce}">
           console.log('Issue webview loaded:', '${WebviewHelper.escapeHtml(issue.issueKey)}');
           
+          const vscode = acquireVsCodeApi();
+          
+          // Handle refresh button click
+          document.addEventListener('DOMContentLoaded', function() {
+            const refreshButton = document.getElementById('refreshButton');
+            if (refreshButton) {
+              refreshButton.addEventListener('click', function() {
+                vscode.postMessage({
+                  command: 'refreshIssue',
+                  issueId: '${issue.id || ''}'
+                });
+              });
+            }
+          });
+          
           // Handle external link clicks
           document.addEventListener('click', function(event) {
             const target = event.target;
             if (target && target.tagName === 'A' && target.href && target.target === '_blank') {
               event.preventDefault();
-              const vscode = acquireVsCodeApi();
               vscode.postMessage({
                 command: 'openExternal',
                 url: target.href

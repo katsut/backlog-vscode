@@ -294,6 +294,39 @@ export class DocumentWebview {
         .prosemirror-content del {
           text-decoration: line-through;
         }
+        
+        /* Refresh button styles */
+        .refresh-button {
+          background: var(--vscode-button-background, #0078d4);
+          color: var(--vscode-button-foreground, #ffffff);
+          border: 1px solid var(--vscode-button-border, transparent);
+          border-radius: 4px;
+          padding: 6px 8px;
+          margin-left: 12px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          min-width: 32px;
+          min-height: 32px;
+        }
+        
+        .refresh-button:hover {
+          background: var(--vscode-button-hoverBackground, #005a9e);
+          transform: scale(1.05);
+        }
+        
+        .refresh-button:active {
+          background: var(--vscode-button-activeBackground, #004578);
+          transform: scale(0.95);
+        }
+        
+        .refresh-button .codicon {
+          font-size: 16px;
+          color: var(--vscode-button-foreground, #ffffff);
+          font-weight: bold;
+        }
     `;
 
     return `<!DOCTYPE html>
@@ -303,6 +336,9 @@ export class DocumentWebview {
         <div class="document-header">
           <h1>
             ${WebviewHelper.escapeHtml(displayTitle)}
+            <button class="refresh-button" id="refreshButton" title="Refresh document content">
+              <span class="codicon codicon-refresh"></span>
+            </button>
           </h1>
           <div class="document-meta">
             ${document.created ? `<span class="meta-item">Created: ${new Date(document.created).toLocaleDateString()}</span>` : ''}
@@ -334,12 +370,26 @@ export class DocumentWebview {
           // Add any client-side interactivity here if needed
           console.log('Document webview loaded:', '${WebviewHelper.escapeHtml(displayTitle)}');
           
+          const vscode = acquireVsCodeApi();
+          
+          // Handle refresh button click
+          document.addEventListener('DOMContentLoaded', function() {
+            const refreshButton = document.getElementById('refreshButton');
+            if (refreshButton) {
+              refreshButton.addEventListener('click', function() {
+                vscode.postMessage({
+                  command: 'refreshDocument',
+                  documentId: '${document.id || ''}'
+                });
+              });
+            }
+          });
+          
           // Handle external link clicks
           document.addEventListener('click', function(event) {
             const target = event.target;
             if (target && target.tagName === 'A' && target.href && target.target === '_blank') {
               event.preventDefault();
-              const vscode = acquireVsCodeApi();
               vscode.postMessage({
                 command: 'openExternal',
                 url: target.href
