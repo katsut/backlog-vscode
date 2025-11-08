@@ -229,7 +229,7 @@ export class DocumentWebview {
           border-collapse: collapse;
           margin: 16px 0;
           background: var(--vscode-editor-background);
-          border: 1px solid var(--vscode-panel-border);
+          border: 2px solid var(--vscode-panel-border);
         }
         
         .document-table th,
@@ -244,9 +244,37 @@ export class DocumentWebview {
           background: var(--vscode-editor-inactiveSelectionBackground);
           font-weight: 600;
           color: var(--vscode-foreground);
+          border-bottom: 2px solid var(--vscode-panel-border);
         }
         
         .document-table td {
+          color: var(--vscode-foreground);
+        }
+        
+        /* Ensure table borders are visible in all themes */
+        .prosemirror-content table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 16px 0;
+          border: 2px solid var(--vscode-panel-border);
+        }
+        
+        .prosemirror-content table th,
+        .prosemirror-content table td {
+          border: 1px solid var(--vscode-panel-border);
+          padding: 8px 12px;
+          text-align: left;
+          vertical-align: top;
+        }
+        
+        .prosemirror-content table th {
+          background: var(--vscode-editor-inactiveSelectionBackground);
+          font-weight: 600;
+          color: var(--vscode-foreground);
+          border-bottom: 2px solid var(--vscode-panel-border);
+        }
+        
+        .prosemirror-content table td {
           color: var(--vscode-foreground);
         }
         
@@ -295,6 +323,13 @@ export class DocumentWebview {
           ${document.updatedUser ? `<p><strong>Last Updated by:</strong> ${WebviewHelper.escapeHtml(document.updatedUser.name)}</p>` : ''}
         </div>
 
+        <div class="document-content">
+          <h3>Content</h3>
+          <div class="prosemirror-content">
+            ${contentHtml}
+          </div>
+        </div>
+
         <script nonce="${nonce}">
           // Add any client-side interactivity here if needed
           console.log('Document webview loaded:', '${WebviewHelper.escapeHtml(displayTitle)}');
@@ -321,12 +356,56 @@ export class DocumentWebview {
    * Convert document content to HTML
    */
   private static convertDocumentContent(document: Entity.Document.Document): string {
-    // Use plain text content and render with markdown
-    if (document.plain) {
+    // Try different content fields in order of preference
+    if (document.plain && document.plain.trim()) {
       return this.markdownRenderer.renderMarkdown(document.plain);
     }
+    
+    // Try JSON content if available and plain is not available
+    if (document.json && document.json.trim()) {
+      try {
+        const jsonContent = JSON.parse(document.json);
+        // If it's ProseMirror format, try to extract text content
+        if (jsonContent.type === 'doc' && jsonContent.content) {
+          const textContent = this.extractTextFromProseMirror(jsonContent);
+          if (textContent.trim()) {
+            return this.markdownRenderer.renderMarkdown(textContent);
+          }
+        }
+      } catch (error) {
+        console.log('Failed to parse JSON content:', error);
+      }
+    }
+    
 
     // Fallback - no content available
     return '<p class="no-content">Document content preview is not available. Click the link above to view the full document in Backlog.</p>';
+  }
+  
+  /**
+   * Extract text content from ProseMirror JSON structure
+   */
+  private static extractTextFromProseMirror(node: any): string {
+    if (!node) return '';
+    
+    let text = '';
+    
+    // If this node has text content
+    if (node.text) {
+      text += node.text;
+    }
+    
+    // Process child nodes
+    if (node.content && Array.isArray(node.content)) {
+      for (const child of node.content) {
+        text += this.extractTextFromProseMirror(child);
+        // Add line breaks for paragraph nodes
+        if (child.type === 'paragraph') {
+          text += '\n\n';
+        }
+      }
+    }
+    
+    return text;
   }
 }

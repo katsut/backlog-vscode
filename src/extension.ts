@@ -23,6 +23,9 @@ let backlogDocumentsProvider: BacklogDocumentsTreeViewProvider;
 // 開いているIssue Webviewを追跡
 const openIssueWebviews: Map<string, vscode.WebviewPanel> = new Map();
 
+// 開いているDocument Webviewを追跡
+const openDocumentWebviews: Map<string, vscode.WebviewPanel> = new Map();
+
 export function activate(context: vscode.ExtensionContext) {
   console.log('=== BACKLOG EXTENSION ACTIVATION START ===');
   console.log('Backlog extension is now active!');
@@ -532,8 +535,8 @@ export function activate(context: vscode.ExtensionContext) {
         try {
           const wikiDetail = await backlogApi.getWiki(wiki.id);
           panel.webview.html = WikiWebview.getWebviewContent(
-            panel.webview, 
-            context.extensionUri, 
+            panel.webview,
+            context.extensionUri,
             wikiDetail,
             configService.getBaseUrl()
           );
@@ -560,12 +563,25 @@ export function activate(context: vscode.ExtensionContext) {
   // ドキュメントを開くコマンド - エディタでWebviewを開く
   const openDocumentCommand = vscode.commands.registerCommand(
     'backlog.openDocument',
-    async (document: Entity.Document.Document) => {
+    async (document: Entity.Document.DocumentTreeNode) => {
       if (document) {
+        // ドキュメントの適切なタイトルを取得（ツリーノードのnameプロパティを使用）
+        const documentTitle = document.name || 'Unnamed Document';
+        const documentKey = document.id ? document.id.toString() : documentTitle;
+
+        // 既に開いているWebviewがあるかチェック
+        const existingPanel = openDocumentWebviews.get(documentKey);
+        if (existingPanel) {
+          // 既存のパネルをフォーカスしてリフレッシュ
+          existingPanel.reveal(vscode.ViewColumn.One);
+          vscode.window.showInformationMessage(`Document ${documentTitle} is already open`);
+          return;
+        }
+
         // エディタでWebviewを開く
         const panel = vscode.window.createWebviewPanel(
           'backlogDocument',
-          `Document: ${document.title}`,
+          `Document: ${documentTitle}`,
           vscode.ViewColumn.One,
           {
             enableScripts: true,
@@ -573,9 +589,16 @@ export function activate(context: vscode.ExtensionContext) {
           }
         );
 
+        // Webviewを追跡に追加
+        openDocumentWebviews.set(documentKey, panel);
+
+        // パネルが閉じられた時に追跡から削除
+        panel.onDidDispose(() => {
+          openDocumentWebviews.delete(documentKey);
+        });
+
         // ドキュメント詳細を取得してWebviewの内容を設定
         try {
-          let documentDetail = document;
           let projectKey = '';
 
           // プロジェクト情報を取得してプロジェクトキーを特定
@@ -586,14 +609,12 @@ export function activate(context: vscode.ExtensionContext) {
             console.log('Could not get project key:', error);
           }
 
-          // ドキュメントIDがある場合は詳細情報を取得
-          if (document.id) {
-            try {
-              documentDetail = await backlogApi.getDocument(document.id.toString());
-            } catch (error) {
-              console.log('Could not fetch document details, using tree data:', error);
-            }
+          // ドキュメントIDを使って詳細情報を必ず取得
+          if (!document.id) {
+            throw new Error('Document ID is required to load document details');
           }
+
+          const documentDetail = await backlogApi.getDocument(document.id.toString());
 
           panel.webview.html = DocumentWebview.getWebviewContent(
             panel.webview,

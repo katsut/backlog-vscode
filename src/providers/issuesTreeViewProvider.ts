@@ -20,7 +20,7 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
   private sortBy: 'updated' | 'created' | 'priority' | 'status' | 'summary' = 'updated';
   private sortOrder: 'asc' | 'desc' = 'desc';
 
-  constructor(private backlogApi: BacklogApiService) {}
+  constructor(private backlogApi: BacklogApiService) { }
 
   // プロジェクトを設定して課題を読み込み
   async setProject(projectId: number): Promise<void> {
@@ -312,9 +312,8 @@ export class IssueTreeItem extends vscode.TreeItem {
 
     super(`${issue.issueKey}: ${issue.summary}`, vscode.TreeItemCollapsibleState.None);
 
-    this.tooltip = `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${
-      issue.priority.name
-    }\nAssignee: ${issue.assignee?.name || 'Unassigned'}`;
+    this.tooltip = `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${issue.priority.name
+      }\nAssignee: ${issue.assignee?.name || 'Unassigned'}`;
     this.iconPath = new vscode.ThemeIcon(statusIcon, priorityColor);
     this.contextValue = 'issue';
     this.command = {

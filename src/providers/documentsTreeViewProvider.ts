@@ -203,13 +203,15 @@ export class DocumentTreeItem extends vscode.TreeItem {
       this.contextValue = 'document';
     }
 
-    // すべてのノード（フォルダとファイル両方）にコマンドを設定
-    // ブランチノードもドキュメントとして表示可能
-    this.command = {
-      command: 'backlog.openDocument',
-      title: 'Open Document',
-      arguments: [this.document],
-    };
+    // フォルダの場合はコマンドを設定せず、ファイルの場合のみコマンドを設定
+    if (!isFolder) {
+      this.command = {
+        command: 'backlog.openDocument',
+        title: 'Open Document',
+        arguments: [this.document],
+      };
+    }
+    // フォルダの場合は`command`を設定しないことで、VS Codeのデフォルトの展開/折りたたみ動作が使用される
   }
 
   private buildTooltip(): string {
