@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { WebviewHelper } from './common';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
 import { ConfigService } from '../services/configService';
+import { Entity } from 'backlog-js';
+
 
 /**
  * Document webview content generator
@@ -15,19 +17,17 @@ export class DocumentWebview {
   static getWebviewContent(
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
-    document: any, // Accept any document structure from tree or API
-    configService: ConfigService
+    document: Entity.Document.Document,
+    configService: ConfigService,
+    projectKey?: string
   ): string {
     const nonce = WebviewHelper.getNonce();
     const baseUrl = configService.getBaseUrl();
-    const docUrl = baseUrl && document.id ? `${baseUrl}/file/${document.id}` : '#';
+    const docUrl = baseUrl && document.id && projectKey ? `${baseUrl}/document/${projectKey}/${document.id}` : '#';
 
     // Get the display title, handling both tree nodes and document entities
-    const displayTitle = document.title || document.name || 'Unnamed Document';
+    const displayTitle = document.title || 'Unnamed Document';
 
-    // Check if document is a markdown file based on title
-    const isMarkdownFile = this.isMarkdownDocument(document);
-    
     // Convert document content if available
     const contentHtml = this.convertDocumentContent(document);
 
@@ -275,7 +275,6 @@ export class DocumentWebview {
         <div class="document-header">
           <h1>
             ${WebviewHelper.escapeHtml(displayTitle)}
-            ${isMarkdownFile ? '<span class="content-type-indicator">Markdown</span>' : ''}
           </h1>
           <div class="document-meta">
             ${document.created ? `<span class="meta-item">Created: ${new Date(document.created).toLocaleDateString()}</span>` : ''}
@@ -286,9 +285,6 @@ export class DocumentWebview {
           </div>
         </div>
 
-        <div class="document-content">
-          ${isMarkdownFile ? `<div class="markdown-content">${contentHtml}</div>` : contentHtml}
-        </div>
 
         <div class="document-info">
           <h3>Document Information</h3>
@@ -320,199 +316,17 @@ export class DocumentWebview {
       </html>`;
   }
 
-  /**
-   * Check if document is a markdown file
-   */
-  private static isMarkdownDocument(document: any): boolean {
-    const title = document.title || document.name || '';
-    if (!title) return false;
-    
-    const titleLower = title.toLowerCase();
-    return titleLower.endsWith('.md') || 
-           titleLower.endsWith('.markdown') || 
-           titleLower.includes('readme');
-  }
 
   /**
    * Convert document content to HTML
    */
-  private static convertDocumentContent(document: any): string {
-    // Check if document has JSON content (ProseMirror format)
-    if (document.json && typeof document.json === 'object') {
-      return this.convertProseMirrorToHtml(document.json);
+  private static convertDocumentContent(document: Entity.Document.Document): string {
+    // Use plain text content and render with markdown
+    if (document.plain) {
+      return this.markdownRenderer.renderMarkdown(document.plain);
     }
-    
-    // Check if document has plain text content
-    if (document.content && typeof document.content === 'string') {
-      return this.markdownRenderer.renderMarkdown(document.content);
-    }
-    
+
     // Fallback - no content available
     return '<p class="no-content">Document content preview is not available. Click the link above to view the full document in Backlog.</p>';
-  }
-
-  /**
-   * Convert ProseMirror JSON to HTML
-   */
-  private static convertProseMirrorToHtml(json: any): string {
-    if (!json || !json.content || !Array.isArray(json.content)) {
-      return '<p class="no-content">No content available.</p>';
-    }
-
-    return `<div class="prosemirror-content">${json.content.map((node: any) => this.convertProseMirrorNode(node)).join('')}</div>`;
-  }
-
-  /**
-   * Convert a single ProseMirror node to HTML
-   */
-  private static convertProseMirrorNode(node: any): string {
-    if (!node) return '';
-
-    switch (node.type) {
-      case 'heading': {
-        const level = node.attrs?.level || 1;
-        const headingContent = this.convertNodeContent(node.content || []);
-        return `<h${level}>${headingContent}</h${level}>`;
-      }
-
-      case 'paragraph': {
-        const paragraphContent = this.convertNodeContent(node.content || []);
-        return `<p>${paragraphContent}</p>`;
-      }
-
-      case 'bulletList': {
-        const listItems = (node.content || []).map((item: any) => this.convertProseMirrorNode(item)).join('');
-        return `<ul>${listItems}</ul>`;
-      }
-
-      case 'orderedList': {
-        const orderedListItems = (node.content || []).map((item: any) => this.convertProseMirrorNode(item)).join('');
-        return `<ol>${orderedListItems}</ol>`;
-      }
-
-      case 'listItem': {
-        const itemContent = (node.content || []).map((item: any) => this.convertProseMirrorNode(item)).join('');
-        return `<li>${itemContent}</li>`;
-      }
-
-      case 'table': {
-        const tableContent = (node.content || []).map((row: any) => this.convertProseMirrorNode(row)).join('');
-        return `<table class="document-table">${tableContent}</table>`;
-      }
-
-      case 'tableRow': {
-        const rowContent = (node.content || []).map((cell: any) => this.convertProseMirrorNode(cell)).join('');
-        return `<tr>${rowContent}</tr>`;
-      }
-
-      case 'tableCell':
-      case 'tableHeader': {
-        const cellContent = this.convertNodeContent(node.content || []);
-        const tag = node.type === 'tableHeader' ? 'th' : 'td';
-        return `<${tag}>${cellContent}</${tag}>`;
-      }
-
-      case 'blockquote': {
-        const quoteContent = (node.content || []).map((item: any) => this.convertProseMirrorNode(item)).join('');
-        return `<blockquote>${quoteContent}</blockquote>`;
-      }
-
-      case 'codeBlock': {
-        const codeContent = this.extractTextFromContent(node.content || []);
-        return `<pre><code>${WebviewHelper.escapeHtml(codeContent)}</code></pre>`;
-      }
-
-      case 'hardBreak':
-        return '<br>';
-
-      case 'text':
-        return this.applyTextMarks(node.text || '', node.marks || []);
-
-      default:
-        // For unknown types, try to render content if available
-        if (node.content && Array.isArray(node.content)) {
-          return (node.content || []).map((item: any) => this.convertProseMirrorNode(item)).join('');
-        }
-        return '';
-    }
-  }
-
-  /**
-   * Convert node content array to HTML
-   */
-  private static convertNodeContent(content: any[]): string {
-    return content.map(node => this.convertProseMirrorNode(node)).join('');
-  }
-
-  /**
-   * Apply text marks (bold, italic, etc.) to text content
-   */
-  private static applyTextMarks(text: string, marks: any[]): string {
-    let result = WebviewHelper.escapeHtml(text);
-    
-    for (const mark of marks) {
-      switch (mark.type) {
-        case 'bold':
-          result = `<strong>${result}</strong>`;
-          break;
-        case 'italic':
-          result = `<em>${result}</em>`;
-          break;
-        case 'code':
-          result = `<code>${result}</code>`;
-          break;
-        case 'underline':
-          result = `<u>${result}</u>`;
-          break;
-        case 'strike':
-          result = `<del>${result}</del>`;
-          break;
-        case 'link': {
-          const href = mark.attrs?.href || '#';
-          result = `<a href="${WebviewHelper.escapeHtml(href)}" target="_blank">${result}</a>`;
-          break;
-        }
-      }
-    }
-    
-    return result;
-  }
-
-  /**
-   * Extract plain text from content array
-   */
-  private static extractTextFromContent(content: any[]): string {
-    return content.map(node => {
-      if (node.type === 'text') {
-        return node.text || '';
-      }
-      if (node.content && Array.isArray(node.content)) {
-        return this.extractTextFromContent(node.content);
-      }
-      return '';
-    }).join('');
-  }
-
-  /**
-   * Heuristic to detect if content looks like markdown
-   */
-  private static looksLikeMarkdown(content: string): boolean {
-    if (!content) return false;
-    
-    // Check for common markdown patterns
-    const markdownPatterns = [
-      /^#{1,6}\s/m,           // Headers
-      /\*\*.*?\*\*/,          // Bold
-      /\*.*?\*/,              // Italic
-      /`.*?`/,                // Inline code
-      /```[\s\S]*?```/,       // Code blocks
-      /^\* /m,                // Unordered lists
-      /^\d+\. /m,             // Ordered lists
-      /^> /m,                 // Blockquotes
-      /\[.*?\]\(.*?\)/,       // Links
-      /!\[.*?\]\(.*?\)/       // Images
-    ];
-
-    return markdownPatterns.some(pattern => pattern.test(content));
   }
 }

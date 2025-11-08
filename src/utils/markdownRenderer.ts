@@ -152,7 +152,9 @@ export class MarkdownRenderer {
    * Sanitize URLs to prevent XSS
    */
   private sanitizeUrl(url: string): string {
-    if (!url) return '#';
+    if (!url) {
+      return '#';
+    }
     
     // Allow http, https, and data URLs only
     const allowedProtocols = /^(https?:|data:|#)/i;

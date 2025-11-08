@@ -221,7 +221,21 @@ export function activate(context: vscode.ExtensionContext) {
           panel.webview,
           context.extensionUri,
           issueDetail,
-          issueComments
+          issueComments,
+          configService.getBaseUrl()
+        );
+
+        // Handle messages from the webview
+        panel.webview.onDidReceiveMessage(
+          message => {
+            switch (message.command) {
+              case 'openExternal':
+                vscode.env.openExternal(vscode.Uri.parse(message.url));
+                break;
+            }
+          },
+          undefined,
+          context.subscriptions
         );
       } catch (error) {
         panel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to load issue: ${error}`);
@@ -456,6 +470,10 @@ export function activate(context: vscode.ExtensionContext) {
         await backlogTreeViewProvider.focusProject(projectId);
 
         console.log('Project focus completed successfully');
+
+        // Focus Backlog sidebar
+        await vscode.commands.executeCommand('workbench.view.extension.backlogContainer');
+
         vscode.window.showInformationMessage(`Focused on project ID: ${projectId}`);
       } catch (error) {
         console.error('Error in focusProject command:', error);
@@ -499,7 +517,25 @@ export function activate(context: vscode.ExtensionContext) {
         // Wiki詳細を取得してWebviewの内容を設定
         try {
           const wikiDetail = await backlogApi.getWiki(wiki.id);
-          panel.webview.html = WikiWebview.getWebviewContent(panel.webview, context.extensionUri, wikiDetail);
+          panel.webview.html = WikiWebview.getWebviewContent(
+            panel.webview, 
+            context.extensionUri, 
+            wikiDetail,
+            configService.getBaseUrl()
+          );
+
+          // Handle messages from the webview
+          panel.webview.onDidReceiveMessage(
+            message => {
+              switch (message.command) {
+                case 'openExternal':
+                  vscode.env.openExternal(vscode.Uri.parse(message.url));
+                  break;
+              }
+            },
+            undefined,
+            context.subscriptions
+          );
         } catch (error) {
           panel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to load wiki: ${error}`);
         }
@@ -526,6 +562,15 @@ export function activate(context: vscode.ExtensionContext) {
         // ドキュメント詳細を取得してWebviewの内容を設定
         try {
           let documentDetail = document;
+          let projectKey = '';
+
+          // プロジェクト情報を取得してプロジェクトキーを特定
+          try {
+            // 現在フォーカス中のプロジェクトのキーを取得
+            projectKey = backlogDocumentsProvider.getCurrentProjectKey() || '';
+          } catch (error) {
+            console.log('Could not get project key:', error);
+          }
 
           // ドキュメントIDがある場合は詳細情報を取得
           if (document.id) {
@@ -540,7 +585,8 @@ export function activate(context: vscode.ExtensionContext) {
             panel.webview,
             context.extensionUri,
             documentDetail,
-            configService
+            configService,
+            projectKey
           );
 
           // Handle messages from the webview
@@ -636,7 +682,7 @@ export function activate(context: vscode.ExtensionContext) {
     'backlog.openProjectByKey',
     async () => {
       const projectKey = await vscode.window.showInputBox({
-        prompt: 'Enter project key to open',
+        prompt: 'Enter Backlog project key to open',
         placeHolder: 'e.g., PROJ, DEV, TEST',
         validateInput: (value) => {
           if (!value || value.trim().length === 0) {
@@ -679,7 +725,7 @@ export function activate(context: vscode.ExtensionContext) {
     'backlog.openIssueByKey',
     async () => {
       const issueKey = await vscode.window.showInputBox({
-        prompt: 'Enter issue key to open',
+        prompt: 'Enter Backlog issue key to open',
         placeHolder: 'e.g., PROJ-123, DEV-456',
         validateInput: (value) => {
           if (!value || value.trim().length === 0) {

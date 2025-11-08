@@ -16,21 +16,23 @@ export class IssueWebview {
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
     issue: Entity.Issue.Issue,
-    comments: Entity.Issue.Comment[]
+    comments: Entity.Issue.Comment[],
+    baseUrl?: string
   ): string {
     const nonce = WebviewHelper.getNonce();
+    const issueUrl = baseUrl && issue.issueKey ? `${baseUrl}/view/${issue.issueKey}` : '#';
 
     // Render description as markdown if present
-    const descriptionHtml = issue.description 
+    const descriptionHtml = issue.description
       ? this.markdownRenderer.renderMarkdown(issue.description)
       : '';
 
     // Render comments as markdown
     const commentsHtml = comments && comments.length > 0
       ? comments.map(comment => ({
-          ...comment,
-          contentHtml: this.markdownRenderer.renderMarkdown(comment.content)
-        }))
+        ...comment,
+        contentHtml: this.markdownRenderer.renderMarkdown(comment.content)
+      }))
       : [];
 
     const additionalStyles = `
@@ -155,6 +157,22 @@ export class IssueWebview {
         .comment-content {
           padding: 16px;
         }
+        
+        .issue-link {
+          color: var(--vscode-textLink-foreground);
+          text-decoration: none;
+          padding: 6px 12px;
+          border: 1px solid var(--vscode-button-border);
+          border-radius: 4px;
+          background: var(--vscode-button-secondaryBackground);
+          transition: background-color 0.2s;
+          font-size: 0.9em;
+        }
+        
+        .issue-link:hover {
+          background: var(--vscode-button-secondaryHoverBackground);
+          text-decoration: none;
+        }
     `;
 
     return `<!DOCTYPE html>
@@ -167,6 +185,7 @@ export class IssueWebview {
             <span class="issue-key">${WebviewHelper.escapeHtml(issue.issueKey)}</span>
             <span class="status-badge ${this.getStatusClass(issue.status)}">${WebviewHelper.escapeHtml(issue.status.name)}</span>
             <span class="priority-badge ${this.getPriorityClass(issue.priority)}">${WebviewHelper.escapeHtml(issue.priority.name)}</span>
+            ${baseUrl && issue.id ? `<a href="${issueUrl}" class="issue-link" target="_blank">Open in Backlog</a>` : ''}
           </div>
         </div>
 
@@ -221,6 +240,19 @@ export class IssueWebview {
 
         <script nonce="${nonce}">
           console.log('Issue webview loaded:', '${WebviewHelper.escapeHtml(issue.issueKey)}');
+          
+          // Handle external link clicks
+          document.addEventListener('click', function(event) {
+            const target = event.target;
+            if (target && target.tagName === 'A' && target.href && target.target === '_blank') {
+              event.preventDefault();
+              const vscode = acquireVsCodeApi();
+              vscode.postMessage({
+                command: 'openExternal',
+                url: target.href
+              });
+            }
+          });
         </script>
       </body>
       </html>`;
@@ -230,8 +262,10 @@ export class IssueWebview {
    * Get CSS class for status badge
    */
   private static getStatusClass(status: Entity.Project.ProjectStatus): string {
-    if (!status) return '';
-    
+    if (!status) {
+      return '';
+    }
+
     const name = status.name.toLowerCase();
     if (name.includes('open') || name.includes('オープン')) {
       return 'open';
@@ -252,8 +286,9 @@ export class IssueWebview {
    * Get CSS class for priority badge
    */
   private static getPriorityClass(priority: Entity.Issue.Priority): string {
-    if (!priority) return '';
-    
+    if (!priority) {
+      return '';
+    }
     const name = priority.name.toLowerCase();
     if (name.includes('high') || name.includes('高')) {
       return 'high';

@@ -39,9 +39,13 @@ export class WebviewHelper {
    * Format file size in human readable format
    */
   static formatFileSize(bytes: number): string {
-    if (!bytes) return 'Unknown';
+    if (!bytes) {
+      return 'Unknown';
+    }
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) {
+      return '0 Bytes';
+    }
     const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)).toString());
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   }
@@ -77,8 +81,8 @@ export class WebviewHelper {
     const styleNonce = nonce || this.getNonce();
 
     // Wrap additional styles with nonce if provided
-    const wrappedStyles = additionalStyles ? 
-      `<style nonce="${styleNonce}">${additionalStyles.replace(/<\/?style[^>]*>/g, '')}</style>` : 
+    const wrappedStyles = additionalStyles ?
+      `<style nonce="${styleNonce}">${additionalStyles.replace(/<\/?style[^>]*>/g, '')}</style>` :
       '';
 
     return `

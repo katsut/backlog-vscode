@@ -13,15 +13,27 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
 
   private documentTree: DocumentTree | null = null; // Tree構造をそのまま保持
   private currentProjectId: number | null = null;
+  private currentProjectKey: string | null = null;
 
   // Document検索
   private searchQuery: string = '';
 
-  constructor(private backlogApi: BacklogApiService) {}
+  constructor(private backlogApi: BacklogApiService) { }
 
   // プロジェクトを設定してDocumentを読み込み
   async setProject(projectId: number): Promise<void> {
     this.currentProjectId = projectId;
+
+    // プロジェクトキーも取得して保存
+    try {
+      const projects = await this.backlogApi.getProjects();
+      const currentProject = projects.find((p) => p.id === projectId);
+      this.currentProjectKey = currentProject ? currentProject.projectKey : null;
+    } catch (error) {
+      console.log('Could not get project key:', error);
+      this.currentProjectKey = null;
+    }
+
     await this.loadDocuments();
     this._onDidChangeTreeData.fire();
   }
@@ -64,13 +76,14 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
         {
           id: this.documentTree.activeTree.id,
           name: 'Documents',
+          children: this.documentTree.activeTree.children,
           title: 'Documents',
-          type: 'folder'
-        },
+          type: 'folder',
+        } as Entity.Document.DocumentTreeNode & { title: string; type: string },
         vscode.TreeItemCollapsibleState.Collapsed,
         this.documentTree.activeTree.children
       );
-      
+
       return [activeTreeItem];
     } else {
       // Child level - show children of the element
@@ -82,7 +95,7 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   }
 
   // Tree構造からTreeItemを構築
-  private buildTreeItems(nodes: any[]): DocumentTreeItem[] {
+  private buildTreeItems(nodes: Entity.Document.DocumentTreeNode[]): DocumentTreeItem[] {
     return nodes.map((node) => {
       const hasChildren = node.children && Array.isArray(node.children) && node.children.length > 0;
       const collapsibleState = hasChildren
@@ -139,8 +152,13 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   }
 
   // Document Tree を取得
-  getDocumentTree(): any {
+  getDocumentTree(): DocumentTree | null {
     return this.documentTree;
+  }
+
+  // 現在のプロジェクトキーを取得
+  getCurrentProjectKey(): string | null {
+    return this.currentProjectKey;
   }
 
   // 現在のフィルタ状態を取得
@@ -154,55 +172,64 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
 }
 
 export class DocumentTreeItem extends vscode.TreeItem {
-  public children?: any[];
+  public children?: Entity.Document.DocumentTreeNode[];
 
   constructor(
-    public readonly document: any, // Tree構造のnodeを受け取る
+    public readonly document:
+      | Entity.Document.DocumentTreeNode
+      | (Entity.Document.DocumentTreeNode & { title?: string; type?: string }),
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None,
-    children?: any[]
+    children?: Entity.Document.DocumentTreeNode[]
   ) {
-    // document.titleまたはdocument.nameのどちらかが存在する場合に対応
-    const displayName = document.title || document.name || 'Unnamed Document';
+    // document.nameまたはdocument.titleのどちらかが存在する場合に対応
+    const displayName =
+      document.name || ('title' in document ? document.title : undefined) || 'Unnamed Document';
     super(displayName, collapsibleState);
 
     this.children = children;
     this.tooltip = this.buildTooltip();
 
-    // Treeノードのタイプに応じてアイコンを設定
-    if (document.type === 'folder' || document.type === 'directory') {
+    // childrenがある場合はフォルダとして扱う
+    const hasChildren = children && children.length > 0;
+    const isFolder =
+      hasChildren ||
+      ('type' in document && (document.type === 'folder' || document.type === 'directory'));
+
+    if (isFolder) {
       this.iconPath = new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.yellow'));
       this.contextValue = 'documentFolder';
     } else {
       this.iconPath = new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue'));
       this.contextValue = 'document';
-
-      // ファイル/ドキュメントの場合のみコマンドを設定
-      this.command = {
-        command: 'backlog.openDocument',
-        title: 'Open Document',
-        arguments: [this.document],
-      };
     }
+
+    // すべてのノード（フォルダとファイル両方）にコマンドを設定
+    // ブランチノードもドキュメントとして表示可能
+    this.command = {
+      command: 'backlog.openDocument',
+      title: 'Open Document',
+      arguments: [this.document],
+    };
   }
 
   private buildTooltip(): string {
-    const name = this.document.title || this.document.name || 'Unnamed Document';
+    const name =
+      this.document.name ||
+      ('title' in this.document ? this.document.title : undefined) ||
+      'Unnamed Document';
     let tooltip = name;
 
-    if (this.document.type) {
+    if ('type' in this.document && this.document.type) {
       tooltip += `\nType: ${this.document.type}`;
-    }
-    if (this.document.created) {
-      tooltip += `\nCreated: ${new Date(this.document.created).toLocaleDateString()}`;
-    }
-    if (this.document.createdUser && this.document.createdUser.name) {
-      tooltip += `\nCreated by: ${this.document.createdUser.name}`;
     }
     if (this.document.updated) {
       tooltip += `\nUpdated: ${new Date(this.document.updated).toLocaleDateString()}`;
     }
-    if (this.document.updatedUser && this.document.updatedUser.name) {
-      tooltip += `\nUpdated by: ${this.document.updatedUser.name}`;
+    if (this.document.statusId) {
+      tooltip += `\nStatus ID: ${this.document.statusId}`;
+    }
+    if (this.document.emoji) {
+      tooltip += `\nEmoji: ${this.document.emoji}`;
     }
 
     return tooltip;

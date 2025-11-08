@@ -15,9 +15,11 @@ export class WikiWebview {
   static getWebviewContent(
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
-    wiki: Entity.Wiki.Wiki
+    wiki: Entity.Wiki.Wiki,
+    baseUrl?: string
   ): string {
     const nonce = WebviewHelper.getNonce();
+    const wikiUrl = baseUrl && wiki.id ? `${baseUrl}/alias/wiki/${wiki.id}` : '#';
 
     // Render wiki content as markdown
     const contentHtml = wiki.content 
@@ -144,6 +146,22 @@ export class WikiWebview {
           border-radius: 6px;
           border: 1px dashed var(--vscode-panel-border);
         }
+        
+        .wiki-link {
+          color: var(--vscode-textLink-foreground);
+          text-decoration: none;
+          padding: 6px 12px;
+          border: 1px solid var(--vscode-button-border);
+          border-radius: 4px;
+          background: var(--vscode-button-secondaryBackground);
+          transition: background-color 0.2s;
+          font-size: 0.9em;
+        }
+        
+        .wiki-link:hover {
+          background: var(--vscode-button-secondaryHoverBackground);
+          text-decoration: none;
+        }
     `;
 
     return `<!DOCTYPE html>
@@ -159,6 +177,7 @@ export class WikiWebview {
             ${wiki.created ? `<span class="meta-item">Created: ${new Date(wiki.created).toLocaleDateString()}</span>` : ''}
             ${wiki.updatedUser ? `<span class="meta-item">Updated by: ${WebviewHelper.escapeHtml(wiki.updatedUser.name)}</span>` : ''}
             ${wiki.updated ? `<span class="meta-item">Updated: ${new Date(wiki.updated).toLocaleDateString()}</span>` : ''}
+            ${baseUrl && wiki.id ? `<a href="${wikiUrl}" class="wiki-link" target="_blank">Open in Backlog</a>` : ''}
             ${wiki.tags && wiki.tags.length > 0 ? `
               <div class="wiki-tags">
                 <span class="meta-label">Tags:</span>
@@ -215,6 +234,19 @@ export class WikiWebview {
 
         <script nonce="${nonce}">
           console.log('Wiki webview loaded:', '${WebviewHelper.escapeHtml(wiki.name)}');
+          
+          // Handle external link clicks
+          document.addEventListener('click', function(event) {
+            const target = event.target;
+            if (target && target.tagName === 'A' && target.href && target.target === '_blank') {
+              event.preventDefault();
+              const vscode = acquireVsCodeApi();
+              vscode.postMessage({
+                command: 'openExternal',
+                url: target.href
+              });
+            }
+          });
         </script>
       </body>
       </html>`;
