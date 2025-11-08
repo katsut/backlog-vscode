@@ -204,6 +204,7 @@ export function activate(context: vscode.ExtensionContext) {
         {
           enableScripts: true,
           retainContextWhenHidden: true,
+          localResourceRoots: [context.extensionUri],
         }
       );
 
@@ -547,6 +548,7 @@ export function activate(context: vscode.ExtensionContext) {
           {
             enableScripts: true,
             retainContextWhenHidden: true,
+            localResourceRoots: [context.extensionUri],
           }
         );
 
@@ -622,6 +624,7 @@ export function activate(context: vscode.ExtensionContext) {
           {
             enableScripts: true,
             retainContextWhenHidden: true,
+            localResourceRoots: [context.extensionUri],
           }
         );
 
@@ -743,6 +746,7 @@ export function activate(context: vscode.ExtensionContext) {
             {
               enableScripts: true,
               retainContextWhenHidden: true,
+              localResourceRoots: [context.extensionUri],
             }
           );
 
