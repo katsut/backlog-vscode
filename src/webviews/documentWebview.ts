@@ -37,64 +37,107 @@ export class DocumentWebview {
     const additionalStyles = `
         ${this.markdownRenderer.getMarkdownStyles()}
         
+        /* Root container styling */
+        body {
+          font-family: var(--vscode-font-family);
+          font-size: var(--vscode-font-size);
+          line-height: 1.6;
+          color: var(--vscode-foreground);
+          background: var(--vscode-editor-background);
+          margin: 0;
+          padding: 20px;
+          max-width: none;
+        }
+        
+        /* Document header with improved typography */
         .document-header {
-          border-bottom: 2px solid var(--vscode-panel-border);
-          padding-bottom: 16px;
-          margin-bottom: 24px;
+          border-bottom: 1px solid var(--vscode-panel-border);
+          padding-bottom: 20px;
+          margin-bottom: 32px;
+          background: var(--vscode-editor-background);
         }
         
         .document-header h1 {
-          margin: 0 0 12px 0;
+          margin: 0 0 16px 0;
           color: var(--vscode-foreground);
-          font-size: 1.8em;
+          font-size: 1.75rem;
+          font-weight: 600;
+          line-height: 1.3;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 12px;
         }
         
         .document-meta {
           display: flex;
           flex-wrap: wrap;
-          gap: 16px;
+          gap: 12px;
           color: var(--vscode-descriptionForeground);
-          font-size: 0.9em;
+          font-size: 0.875rem;
           align-items: center;
+          margin-top: 8px;
         }
         
         .meta-item {
           background: var(--vscode-badge-background);
           color: var(--vscode-badge-foreground);
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.85em;
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 0.8rem;
+          font-weight: 500;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
         }
         
         .document-link {
           color: var(--vscode-textLink-foreground);
           text-decoration: none;
-          padding: 6px 12px;
-          border: 1px solid var(--vscode-button-border);
-          border-radius: 4px;
+          padding: 8px 16px;
+          border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+          border-radius: 6px;
           background: var(--vscode-button-secondaryBackground);
-          transition: background-color 0.2s;
+          transition: all 0.2s ease;
+          font-size: 0.875rem;
+          font-weight: 500;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
         }
         
         .document-link:hover {
           background: var(--vscode-button-secondaryHoverBackground);
           text-decoration: none;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
+        .document-link::before {
+          content: "🔗";
+          font-size: 14px;
+        }
+        
+        /* Document content section */
         .document-content {
-          margin-top: 24px;
+          margin-top: 32px;
+        }
+        
+        .document-content h3 {
+          color: var(--vscode-foreground);
+          font-size: 1.25rem;
+          font-weight: 600;
+          margin: 0 0 16px 0;
+          padding-bottom: 8px;
+          border-bottom: 1px solid var(--vscode-panel-border);
         }
         
         .content-type-indicator {
           display: inline-block;
           background: var(--vscode-button-secondaryBackground);
           color: var(--vscode-button-secondaryForeground);
-          padding: 2px 6px;
+          padding: 3px 8px;
           border-radius: 12px;
-          font-size: 0.8em;
+          font-size: 0.75rem;
           font-weight: 500;
           margin-left: 8px;
         }
@@ -102,89 +145,145 @@ export class DocumentWebview {
         .plain-text-content {
           background: var(--vscode-textCodeBlock-background);
           border: 1px solid var(--vscode-panel-border);
-          border-radius: 6px;
-          padding: 16px;
+          border-radius: 8px;
+          padding: 20px;
           white-space: pre-wrap;
           font-family: var(--vscode-editor-font-family);
-          line-height: 1.6;
+          line-height: 1.7;
           overflow-x: auto;
+          font-size: 0.9rem;
         }
         
         .no-content {
           color: var(--vscode-descriptionForeground);
           font-style: italic;
           text-align: center;
-          padding: 32px 20px;
+          padding: 40px 24px;
           background: var(--vscode-editor-inactiveSelectionBackground);
-          border-radius: 6px;
-          border: 1px dashed var(--vscode-panel-border);
+          border-radius: 8px;
+          border: 2px dashed var(--vscode-panel-border);
+          font-size: 0.95rem;
         }
         
+        /* Document info card with better styling */
         .document-info {
           background: var(--vscode-editor-inactiveSelectionBackground);
           border-left: 4px solid var(--vscode-textBlockQuote-border);
-          padding: 16px;
-          margin: 20px 0;
-          border-radius: 0 6px 6px 0;
+          padding: 20px;
+          margin: 24px 0;
+          border-radius: 0 8px 8px 0;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
         .document-info h3 {
-          margin: 0 0 12px 0;
+          margin: 0 0 16px 0;
           color: var(--vscode-foreground);
-          font-size: 1.1em;
+          font-size: 1.1rem;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .document-info h3::before {
+          content: "ℹ️";
+          font-size: 16px;
+          color: var(--vscode-textBlockQuote-border);
         }
         
         .document-info p {
-          margin: 8px 0;
+          margin: 10px 0;
           color: var(--vscode-foreground);
+          line-height: 1.5;
+          font-size: 0.9rem;
         }
         
         .document-info strong {
           color: var(--vscode-foreground);
+          font-weight: 600;
         }
         
-        /* ProseMirror content styles */
+        /* Enhanced ProseMirror content styles matching markdown styling */
         .prosemirror-content {
-          line-height: 1.6;
+          line-height: 1.7;
           color: var(--vscode-foreground);
+          font-size: 0.95rem;
         }
         
+        /* Typography hierarchy consistent with markdown */
         .prosemirror-content h1,
         .prosemirror-content h2,
         .prosemirror-content h3,
         .prosemirror-content h4,
         .prosemirror-content h5,
         .prosemirror-content h6 {
-          margin: 24px 0 16px 0;
-          font-weight: 600;
-          line-height: 1.25;
           color: var(--vscode-foreground);
+          margin-top: 32px;
+          margin-bottom: 20px;
+          font-weight: 600;
+          line-height: 1.3;
         }
         
         .prosemirror-content h1 {
+          font-size: 1.75rem;
+          border-bottom: 2px solid var(--vscode-panel-border);
+          padding-bottom: 12px;
+          margin-top: 0;
+        }
+        
+        .prosemirror-content h2 {
+          font-size: 1.5rem;
           border-bottom: 1px solid var(--vscode-panel-border);
           padding-bottom: 10px;
         }
         
-        .prosemirror-content h2 {
-          border-bottom: 1px solid var(--vscode-panel-border);
-          padding-bottom: 8px;
+        .prosemirror-content h3 {
+          font-size: 1.25rem;
         }
         
+        .prosemirror-content h4 {
+          font-size: 1.1rem;
+        }
+        
+        .prosemirror-content h5 {
+          font-size: 1rem;
+        }
+        
+        .prosemirror-content h6 {
+          font-size: 0.95rem;
+          color: var(--vscode-descriptionForeground);
+        }
+        
+        /* Better paragraph and list spacing */
         .prosemirror-content p {
-          margin: 16px 0;
+          margin-bottom: 20px;
+          line-height: 1.7;
         }
         
         .prosemirror-content ul,
         .prosemirror-content ol {
-          margin: 16px 0;
-          padding-left: 32px;
+          margin-bottom: 20px;
+          padding-left: 28px;
         }
         
         .prosemirror-content li {
-          margin: 4px 0;
+          margin-bottom: 6px;
+          line-height: 1.6;
         }
         
+        .prosemirror-content ul li {
+          list-style-type: disc;
+        }
+        
+        .prosemirror-content ul ul li {
+          list-style-type: circle;
+        }
+        
+        .prosemirror-content ul ul ul li {
+          list-style-type: square;
+        }
+        
+        /* Enhanced text formatting */
         .prosemirror-content strong {
           font-weight: 600;
           color: var(--vscode-foreground);
@@ -192,102 +291,6 @@ export class DocumentWebview {
         
         .prosemirror-content em {
           font-style: italic;
-        }
-        
-        .prosemirror-content code {
-          background: var(--vscode-textCodeBlock-background);
-          color: var(--vscode-textPreformat-foreground);
-          padding: 2px 4px;
-          border-radius: 3px;
-          font-size: 0.9em;
-          font-family: var(--vscode-editor-font-family);
-        }
-        
-        .prosemirror-content pre {
-          background: var(--vscode-textCodeBlock-background);
-          border: 1px solid var(--vscode-panel-border);
-          border-radius: 6px;
-          padding: 16px;
-          overflow-x: auto;
-          margin: 16px 0;
-        }
-        
-        .prosemirror-content pre code {
-          background: none;
-          padding: 0;
-          border-radius: 0;
-          font-size: inherit;
-        }
-        
-        .prosemirror-content blockquote {
-          border-left: 4px solid var(--vscode-textBlockQuote-border);
-          background: var(--vscode-textBlockQuote-background);
-          padding: 16px;
-          margin: 16px 0;
-          font-style: italic;
-        }
-        
-        .document-table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 16px 0;
-          background: var(--vscode-editor-background);
-          border: 2px solid var(--vscode-panel-border);
-        }
-        
-        .document-table th,
-        .document-table td {
-          border: 1px solid var(--vscode-panel-border);
-          padding: 8px 12px;
-          text-align: left;
-          vertical-align: top;
-        }
-        
-        .document-table th {
-          background: var(--vscode-editor-inactiveSelectionBackground);
-          font-weight: 600;
-          color: var(--vscode-foreground);
-          border-bottom: 2px solid var(--vscode-panel-border);
-        }
-        
-        .document-table td {
-          color: var(--vscode-foreground);
-        }
-        
-        /* Ensure table borders are visible in all themes */
-        .prosemirror-content table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 16px 0;
-          border: 2px solid var(--vscode-panel-border);
-        }
-        
-        .prosemirror-content table th,
-        .prosemirror-content table td {
-          border: 1px solid var(--vscode-panel-border);
-          padding: 8px 12px;
-          text-align: left;
-          vertical-align: top;
-        }
-        
-        .prosemirror-content table th {
-          background: var(--vscode-editor-inactiveSelectionBackground);
-          font-weight: 600;
-          color: var(--vscode-foreground);
-          border-bottom: 2px solid var(--vscode-panel-border);
-        }
-        
-        .prosemirror-content table td {
-          color: var(--vscode-foreground);
-        }
-        
-        .prosemirror-content a {
-          color: var(--vscode-textLink-foreground);
-          text-decoration: none;
-        }
-        
-        .prosemirror-content a:hover {
-          text-decoration: underline;
         }
         
         .prosemirror-content u {
@@ -298,37 +301,154 @@ export class DocumentWebview {
           text-decoration: line-through;
         }
         
-        /* Refresh button styles */
-        .refresh-button {
-          background: var(--vscode-button-background, #0078d4);
-          color: var(--vscode-button-foreground, #ffffff);
-          border: 1px solid var(--vscode-button-border, transparent);
+        /* Enhanced code styling */
+        .prosemirror-content code {
+          background: var(--vscode-textCodeBlock-background);
+          color: var(--vscode-textPreformat-foreground);
+          padding: 3px 6px;
           border-radius: 4px;
-          padding: 6px 8px;
-          margin-left: 12px;
+          font-family: var(--vscode-editor-font-family);
+          font-size: 0.9em;
+          border: 1px solid var(--vscode-panel-border);
+        }
+        
+        .prosemirror-content pre {
+          background: var(--vscode-textCodeBlock-background);
+          border: 1px solid var(--vscode-panel-border);
+          border-radius: 8px;
+          padding: 20px;
+          overflow-x: auto;
+          margin: 24px 0;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .prosemirror-content pre code {
+          background: none;
+          padding: 0;
+          border: none;
+          font-size: 0.9rem;
+          line-height: 1.5;
+        }
+        
+        /* Enhanced blockquote styling */
+        .prosemirror-content blockquote {
+          margin: 24px 0;
+          padding: 16px 20px;
+          color: var(--vscode-descriptionForeground);
+          border-left: 4px solid var(--vscode-textBlockQuote-border);
+          background: var(--vscode-textBlockQuote-background);
+          border-radius: 0 6px 6px 0;
+          font-style: italic;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        /* Enhanced table styling unified */
+        .prosemirror-content table,
+        .document-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 24px 0;
+          border: 2px solid var(--vscode-panel-border);
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .prosemirror-content table th,
+        .prosemirror-content table td,
+        .document-table th,
+        .document-table td {
+          border: 1px solid var(--vscode-panel-border);
+          padding: 12px 16px;
+          text-align: left;
+          vertical-align: top;
+        }
+        
+        .prosemirror-content table th,
+        .document-table th {
+          background: var(--vscode-editor-inactiveSelectionBackground);
+          font-weight: 600;
+          color: var(--vscode-foreground);
+          border-bottom: 2px solid var(--vscode-panel-border);
+        }
+        
+        .prosemirror-content table td,
+        .document-table td {
+          color: var(--vscode-foreground);
+        }
+        
+        .prosemirror-content table tr:nth-child(even),
+        .document-table tr:nth-child(even) {
+          background: var(--vscode-editor-inactiveSelectionBackground);
+        }
+        
+        .prosemirror-content table tr:hover,
+        .document-table tr:hover {
+          background: var(--vscode-list-hoverBackground);
+        }
+        
+        /* Enhanced link styling */
+        .prosemirror-content a {
+          color: var(--vscode-textLink-foreground);
+          text-decoration: none;
+          border-bottom: 1px solid transparent;
+          transition: all 0.2s ease;
+        }
+        
+        .prosemirror-content a:hover {
+          color: var(--vscode-textLink-activeForeground);
+          border-bottom-color: var(--vscode-textLink-activeForeground);
+        }
+        
+        /* Horizontal rule styling */
+        .prosemirror-content hr {
+          border: none;
+          height: 2px;
+          background: linear-gradient(to right, transparent, var(--vscode-panel-border), transparent);
+          margin: 32px 0;
+        }
+        
+        /* Improved refresh button with VS Code styling */
+        .refresh-button {
+          background: var(--vscode-button-secondaryBackground);
+          color: var(--vscode-button-secondaryForeground);
+          border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+          border-radius: 6px;
+          padding: 8px 12px;
+          margin-left: 16px;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          transition: all 0.2s;
-          min-width: 32px;
-          min-height: 32px;
+          transition: all 0.2s ease;
+          min-width: 36px;
+          min-height: 36px;
+          font-size: 0.875rem;
+          font-weight: 500;
+          gap: 6px;
         }
         
         .refresh-button:hover {
-          background: var(--vscode-button-hoverBackground, #005a9e);
-          transform: scale(1.05);
+          background: var(--vscode-button-secondaryHoverBackground);
+          border-color: var(--vscode-button-border);
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
         .refresh-button:active {
-          background: var(--vscode-button-activeBackground, #004578);
-          transform: scale(0.95);
+          background: var(--vscode-button-secondaryHoverBackground);
+          transform: translateY(0);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
         
         .refresh-button .codicon {
-          font-size: 16px;
-          color: var(--vscode-button-foreground, #ffffff);
-          font-weight: bold;
+          font-size: 14px;
+          color: var(--vscode-button-secondaryForeground);
+        }
+        
+        .refresh-button::before {
+          content: "🔄";
+          font-size: 14px;
         }
         
         /* Embedded image styles */
@@ -358,7 +478,6 @@ export class DocumentWebview {
           <h1>
             ${WebviewHelper.escapeHtml(displayTitle)}
             <button class="refresh-button" id="refreshButton" title="Refresh document content">
-              <span class="codicon codicon-refresh"></span>
             </button>
           </h1>
           <div class="document-meta">

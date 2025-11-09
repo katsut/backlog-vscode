@@ -88,12 +88,27 @@ export class WebviewHelper {
     return `
       <head>
         <meta charset="UTF-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${styleNonce}'; script-src 'nonce-${styleNonce}'; img-src https: data: ${webview.cspSource};">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${styleNonce}'; script-src 'nonce-${styleNonce}'; font-src ${webview.cspSource}; img-src https: data: ${webview.cspSource};">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${styles.styleResetUri}" rel="stylesheet">
         <link href="${styles.styleVSCodeUri}" rel="stylesheet">
         <link href="${styles.styleMainUri}" rel="stylesheet">
         <title>${this.escapeHtml(title)}</title>
+        <style nonce="${styleNonce}">
+          /* Simple icon replacements using Unicode and symbols */
+          .icon-refresh::before { content: "🔄"; }
+          .icon-link-external::before { content: "🔗"; }
+          .icon-info::before { content: "ℹ️"; }
+          .icon-issue::before { content: "🐛"; }
+          .icon-person::before { content: "👤"; }
+          
+          /* Alternative text-based icons */
+          .text-icon-refresh::before { content: "↻"; }
+          .text-icon-link::before { content: "⧉"; }
+          .text-icon-info::before { content: "i"; border: 1px solid; border-radius: 50%; width: 1em; height: 1em; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8em; font-weight: bold; }
+          .text-icon-issue::before { content: "#"; }
+          .text-icon-person::before { content: "@"; }
+        </style>
         ${wrappedStyles}
       </head>
     `;

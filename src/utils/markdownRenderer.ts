@@ -85,7 +85,7 @@ export class MarkdownRenderer {
       // Parse and render markdown
       const result = marked.parse(processedContent);
       const html = typeof result === 'string' ? result : result.toString();
-      
+
       // Additional post-processing for Backlog-specific features
       return this.processBacklogFeatures(html);
     } catch (error) {
@@ -204,13 +204,16 @@ export class MarkdownRenderer {
    */
   public getMarkdownStyles(): string {
     return `
-      /* Markdown content styles */
+      /* Enhanced Markdown content styles for better readability */
       .markdown-content {
-        line-height: 1.6;
+        line-height: 1.7;
         font-family: var(--vscode-font-family);
         color: var(--vscode-foreground);
+        font-size: 0.95rem;
+        max-width: none;
       }
 
+      /* Typography hierarchy with improved sizing */
       .markdown-content h1,
       .markdown-content h2,
       .markdown-content h3,
@@ -218,55 +221,88 @@ export class MarkdownRenderer {
       .markdown-content h5,
       .markdown-content h6 {
         color: var(--vscode-foreground);
-        margin-top: 24px;
-        margin-bottom: 16px;
+        margin-top: 32px;
+        margin-bottom: 20px;
         font-weight: 600;
-        line-height: 1.25;
+        line-height: 1.3;
       }
 
       .markdown-content h1 {
-        font-size: 2em;
-        border-bottom: 1px solid var(--vscode-panel-border);
-        padding-bottom: 8px;
+        font-size: 1.75rem;
+        border-bottom: 2px solid var(--vscode-panel-border);
+        padding-bottom: 12px;
+        margin-top: 0;
       }
 
       .markdown-content h2 {
-        font-size: 1.5em;
+        font-size: 1.5rem;
         border-bottom: 1px solid var(--vscode-panel-border);
-        padding-bottom: 8px;
+        padding-bottom: 10px;
       }
 
       .markdown-content h3 {
-        font-size: 1.25em;
+        font-size: 1.25rem;
       }
 
+      .markdown-content h4 {
+        font-size: 1.1rem;
+      }
+
+      .markdown-content h5 {
+        font-size: 1rem;
+      }
+
+      .markdown-content h6 {
+        font-size: 0.95rem;
+        color: var(--vscode-descriptionForeground);
+      }
+
+      /* Better paragraph spacing */
       .markdown-content p {
-        margin-bottom: 16px;
+        margin-bottom: 20px;
+        line-height: 1.7;
       }
 
+      /* Enhanced list styles */
       .markdown-content ul,
       .markdown-content ol {
-        margin-bottom: 16px;
-        padding-left: 24px;
+        margin-bottom: 20px;
+        padding-left: 28px;
       }
 
       .markdown-content li {
-        margin-bottom: 4px;
+        margin-bottom: 6px;
+        line-height: 1.6;
       }
 
-      /* Task list items (checkboxes) */
+      .markdown-content ul li {
+        list-style-type: disc;
+      }
+
+      .markdown-content ul ul li {
+        list-style-type: circle;
+      }
+
+      .markdown-content ul ul ul li {
+        list-style-type: square;
+      }
+
+      /* Task list items (checkboxes) with better styling */
       .markdown-content li.task-list-item {
         list-style: none;
-        margin-left: -20px;
+        margin-left: -24px;
         display: flex;
         align-items: flex-start;
-        gap: 8px;
+        gap: 12px;
       }
 
       .markdown-content li.task-list-item input[type="checkbox"] {
         margin: 0;
-        margin-top: 2px;
+        margin-top: 4px;
         flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
       }
 
       .markdown-content li.task-list-item > p {
@@ -274,115 +310,196 @@ export class MarkdownRenderer {
         flex: 1;
       }
 
+      /* Enhanced blockquote styling */
       .markdown-content blockquote {
-        margin: 16px 0;
-        padding: 0 16px;
+        margin: 24px 0;
+        padding: 16px 20px;
         color: var(--vscode-descriptionForeground);
         border-left: 4px solid var(--vscode-textBlockQuote-border);
         background: var(--vscode-textBlockQuote-background);
+        border-radius: 0 6px 6px 0;
+        font-style: italic;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
 
+      .markdown-content blockquote p {
+        margin-bottom: 12px;
+      }
+
+      .markdown-content blockquote p:last-child {
+        margin-bottom: 0;
+      }
+
+      /* Better code styling */
       .markdown-content code {
-        background: var(--vscode-textPreformat-background);
+        background: var(--vscode-textCodeBlock-background);
         color: var(--vscode-textPreformat-foreground);
-        padding: 2px 4px;
-        border-radius: 3px;
+        padding: 3px 6px;
+        border-radius: 4px;
         font-family: var(--vscode-editor-font-family);
         font-size: 0.9em;
+        border: 1px solid var(--vscode-panel-border);
       }
 
       .markdown-content pre {
         background: var(--vscode-textCodeBlock-background);
         border: 1px solid var(--vscode-panel-border);
-        border-radius: 6px;
-        padding: 16px;
+        border-radius: 8px;
+        padding: 20px;
         overflow-x: auto;
-        margin: 16px 0;
+        margin: 24px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
 
       .markdown-content pre code {
         background: none;
         padding: 0;
-        font-size: inherit;
+        border: none;
+        font-size: 0.9rem;
+        line-height: 1.5;
       }
 
+      /* Enhanced table styling */
       .markdown-content .markdown-table {
         border-collapse: collapse;
-        margin: 16px 0;
+        margin: 24px 0;
         width: 100%;
+        border: 2px solid var(--vscode-panel-border);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
 
       .markdown-content .markdown-table th,
       .markdown-content .markdown-table td {
         border: 1px solid var(--vscode-panel-border);
-        padding: 8px 12px;
+        padding: 12px 16px;
         text-align: left;
+        vertical-align: top;
       }
 
       .markdown-content .markdown-table th {
         background: var(--vscode-editor-inactiveSelectionBackground);
         font-weight: 600;
+        color: var(--vscode-foreground);
+        border-bottom: 2px solid var(--vscode-panel-border);
       }
 
       .markdown-content .markdown-table tr:nth-child(even) {
         background: var(--vscode-editor-inactiveSelectionBackground);
       }
 
-      .markdown-content img {
-        max-width: 100%;
-        height: auto;
-        margin: 16px 0;
-        border-radius: 4px;
+      .markdown-content .markdown-table tr:hover {
+        background: var(--vscode-list-hoverBackground);
       }
 
+      /* Enhanced image styling */
+      .markdown-content img,
+      .markdown-content .markdown-image {
+        max-width: 100%;
+        height: auto;
+        margin: 24px 0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border: 1px solid var(--vscode-panel-border);
+      }
+
+      /* Enhanced link styling */
       .markdown-content a {
         color: var(--vscode-textLink-foreground);
         text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: all 0.2s ease;
       }
 
       .markdown-content a:hover {
         color: var(--vscode-textLink-activeForeground);
-        text-decoration: underline;
+        border-bottom-color: var(--vscode-textLink-activeForeground);
       }
 
-      /* Backlog-specific styles */
+      /* Horizontal rule styling */
+      .markdown-content hr {
+        border: none;
+        height: 2px;
+        background: linear-gradient(to right, transparent, var(--vscode-panel-border), transparent);
+        margin: 32px 0;
+      }
+
+      /* Enhanced Backlog-specific styles */
       .issue-mention {
         background: var(--vscode-badge-background);
         color: var(--vscode-badge-foreground);
-        padding: 2px 6px;
+        padding: 3px 8px;
         border-radius: 12px;
-        font-size: 0.9em;
+        font-size: 0.85rem;
         font-weight: 500;
         cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .issue-mention:hover {
+        background: var(--vscode-badge-foreground);
+        color: var(--vscode-badge-background);
+        transform: translateY(-1px);
+      }
+
+      .issue-mention::before {
+        content: "🐛";
+        font-size: 12px;
       }
 
       .user-mention {
         background: var(--vscode-button-secondaryBackground);
         color: var(--vscode-button-secondaryForeground);
-        padding: 2px 6px;
+        padding: 3px 8px;
         border-radius: 12px;
-        font-size: 0.9em;
+        font-size: 0.85rem;
         font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        transition: all 0.2s ease;
       }
 
+      .user-mention:hover {
+        background: var(--vscode-button-secondaryHoverBackground);
+        transform: translateY(-1px);
+      }
+
+      .user-mention::before {
+        content: "👤";
+        font-size: 12px;
+      }
+
+      /* Enhanced no-content styling */
       .no-content {
         color: var(--vscode-descriptionForeground);
         font-style: italic;
         text-align: center;
-        padding: 20px;
+        padding: 40px 24px;
+        background: var(--vscode-editor-inactiveSelectionBackground);
+        border-radius: 8px;
+        border: 2px dashed var(--vscode-panel-border);
+        margin: 24px 0;
       }
 
+      /* Enhanced error styling */
       .render-error {
         background: var(--vscode-inputValidation-errorBackground);
         border: 1px solid var(--vscode-inputValidation-errorBorder);
-        border-radius: 4px;
-        padding: 16px;
-        margin: 16px 0;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 24px 0;
+        box-shadow: 0 2px 8px rgba(255,0,0,0.1);
       }
 
       .render-error p {
         color: var(--vscode-errorForeground);
-        margin-bottom: 8px;
+        margin-bottom: 12px;
+        font-weight: 500;
       }
 
       .render-error pre {
@@ -390,6 +507,23 @@ export class MarkdownRenderer {
         color: var(--vscode-foreground);
         max-height: 200px;
         overflow-y: auto;
+        border-radius: 4px;
+        margin-top: 12px;
+      }
+
+      /* Responsive adjustments */
+      @media (max-width: 768px) {
+        .markdown-content h1 {
+          font-size: 1.5rem;
+        }
+        
+        .markdown-content h2 {
+          font-size: 1.3rem;
+        }
+        
+        .markdown-content h3 {
+          font-size: 1.1rem;
+        }
       }
     `;
   }
