@@ -7,6 +7,7 @@ import { BacklogServiceState, isInitialized, isInitializing } from '../types/bac
 interface InitializedBacklogService {
   readonly state: 'initialized';
   readonly backlog: Backlog;
+  readonly host: string;
 }
 
 export class BacklogApiService {
@@ -74,6 +75,7 @@ export class BacklogApiService {
       return {
         state: 'initialized',
         backlog,
+        host: hostOnly,
       };
     } catch (error) {
       console.error('Failed to initialize Backlog API:', error instanceof Error ? error.message : error);

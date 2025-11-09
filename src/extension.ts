@@ -620,11 +620,12 @@ export function activate(context: vscode.ExtensionContext) {
 
           const documentDetail = await backlogApi.getDocument(document.id.toString());
 
-          panel.webview.html = DocumentWebview.getWebviewContent(
+          panel.webview.html = await DocumentWebview.getWebviewContent(
             panel.webview,
             context.extensionUri,
             documentDetail,
             configService,
+            backlogApi,
             projectKey
           );
 
@@ -647,11 +648,12 @@ export function activate(context: vscode.ExtensionContext) {
                       console.log('Could not get project key for refresh:', error);
                     }
                     // Update webview content
-                    panel.webview.html = DocumentWebview.getWebviewContent(
+                    panel.webview.html = await DocumentWebview.getWebviewContent(
                       panel.webview,
                       context.extensionUri,
                       refreshedDocument,
                       configService,
+                      backlogApi,
                       refreshProjectKey
                     );
                   } catch (error) {

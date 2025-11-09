@@ -2,7 +2,9 @@ import * as vscode from 'vscode';
 import { WebviewHelper } from './common';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
 import { ConfigService } from '../services/configService';
+import { BacklogApiService } from '../services/backlogApi';
 import { Entity } from 'backlog-js';
+
 
 
 /**
@@ -14,13 +16,14 @@ export class DocumentWebview {
   /**
    * Generate document webview content
    */
-  static getWebviewContent(
+  static async getWebviewContent(
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
     document: Entity.Document.Document,
     configService: ConfigService,
+    backlogApi: BacklogApiService,
     projectKey?: string
-  ): string {
+  ): Promise<string> {
     const nonce = WebviewHelper.getNonce();
     const baseUrl = configService.getBaseUrl();
     const docUrl = baseUrl && document.id && projectKey ? `${baseUrl}/document/${projectKey}/${document.id}` : '#';
@@ -29,7 +32,7 @@ export class DocumentWebview {
     const displayTitle = document.title || 'Unnamed Document';
 
     // Convert document content if available
-    const contentHtml = this.convertDocumentContent(document);
+    const contentHtml = await this.convertDocumentContent(document, configService, backlogApi);
 
     const additionalStyles = `
         ${this.markdownRenderer.getMarkdownStyles()}
@@ -327,6 +330,24 @@ export class DocumentWebview {
           color: var(--vscode-button-foreground, #ffffff);
           font-weight: bold;
         }
+        
+        /* Embedded image styles */
+        .embedded-image {
+          max-width: 100%;
+          height: auto;
+          border-radius: 4px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* Error message styles */
+        .attachment-error {
+          padding: 16px;
+          border: 1px dashed var(--vscode-panel-border);
+          border-radius: 4px;
+          color: var(--vscode-descriptionForeground);
+          text-align: center;
+          font-style: italic;
+        }
     `;
 
     return `<!DOCTYPE html>
@@ -405,46 +426,284 @@ export class DocumentWebview {
   /**
    * Convert document content to HTML
    */
-  private static convertDocumentContent(document: Entity.Document.Document): string {
+  private static async convertDocumentContent(
+    document: Entity.Document.Document,
+    configService: ConfigService,
+    backlogApi: BacklogApiService
+  ): Promise<string> {
     // Try different content fields in order of preference
     if (document.plain && document.plain.trim()) {
       return this.markdownRenderer.renderMarkdown(document.plain);
     }
-    
+
     // Try JSON content if available and plain is not available
     if (document.json && typeof document.json === 'string' && document.json.trim()) {
       try {
         const jsonContent = JSON.parse(document.json);
-        // If it's ProseMirror format, try to extract text content
+        // If it's ProseMirror format, try to convert to HTML with images
         if (jsonContent.type === 'doc' && jsonContent.content) {
-          const textContent = this.extractTextFromProseMirror(jsonContent);
-          if (textContent.trim()) {
-            return this.markdownRenderer.renderMarkdown(textContent);
+          const htmlContent = await this.convertProseMirrorToHtml(jsonContent, configService, backlogApi, document);
+          if (htmlContent.trim()) {
+            return htmlContent;
           }
         }
       } catch (error) {
         console.log('Failed to parse JSON content:', error);
       }
     }
-    
+
 
     // Fallback - no content available
     return '<p class="no-content">Document content preview is not available. Click the link above to view the full document in Backlog.</p>';
   }
-  
+
+  /**
+   * Convert ProseMirror JSON to HTML
+   */
+  private static async convertProseMirrorToHtml(
+    node: Record<string, any>,
+    configService: ConfigService,
+    backlogApi: BacklogApiService,
+    document: Entity.Document.Document
+  ): Promise<string> {
+    if (!node) {
+      return '';
+    }
+
+    // Handle text nodes
+    if (node.text) {
+      let text = WebviewHelper.escapeHtml(node.text);
+      
+      // Apply text marks (bold, italic, links, etc.)
+      if (node.marks && Array.isArray(node.marks)) {
+        for (const mark of node.marks) {
+          switch (mark.type) {
+            case 'strong':
+              text = `<strong>${text}</strong>`;
+              break;
+            case 'em':
+              text = `<em>${text}</em>`;
+              break;
+            case 'code':
+              text = `<code>${text}</code>`;
+              break;
+            case 'underline':
+              text = `<u>${text}</u>`;
+              break;
+            case 'strike':
+              text = `<del>${text}</del>`;
+              break;
+            case 'link':
+              const href = mark.attrs?.href || '#';
+              text = `<a href="${WebviewHelper.escapeHtml(href)}" target="_blank">${text}</a>`;
+              break;
+          }
+        }
+      }
+      
+      return text;
+    }
+
+    // Handle different node types
+    let html = '';
+    
+    switch (node.type) {
+      case 'doc':
+        // Root document node - process content
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        break;
+        
+      case 'paragraph':
+        html += '<p>';
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += '</p>';
+        break;
+        
+      case 'heading': {
+        const level = node.attrs?.level || 1;
+        const headingTag = `h${Math.min(Math.max(level, 1), 6)}`;
+        html += `<${headingTag}>`;
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += `</${headingTag}>`;
+        break;
+      }
+        
+      case 'bulletList':
+        html += '<ul>';
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += '</ul>';
+        break;
+        
+      case 'orderedList': {
+        const start = node.attrs?.start || 1;
+        html += `<ol${start !== 1 ? ` start="${start}"` : ''}>`;
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += '</ol>';
+        break;
+      }
+        
+      case 'listItem':
+        html += '<li>';
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += '</li>';
+        break;
+        
+      case 'blockquote':
+        html += '<blockquote>';
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += '</blockquote>';
+        break;
+        
+      case 'codeBlock': {
+        const language = node.attrs?.language || '';
+        html += '<pre>';
+        if (language) {
+          html += `<code class="language-${WebviewHelper.escapeHtml(language)}">`;
+        } else {
+          html += '<code>';
+        }
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += '</code></pre>';
+        break;
+      }
+        
+      case 'table':
+        html += '<table class="document-table">';
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += '</table>';
+        break;
+        
+      case 'tableRow':
+        html += '<tr>';
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += '</tr>';
+        break;
+        
+      case 'tableCell':
+      case 'tableHeader': {
+        const tag = node.type === 'tableHeader' ? 'th' : 'td';
+        const colspan = node.attrs?.colspan || 1;
+        const rowspan = node.attrs?.rowspan || 1;
+        const colspanAttr = colspan > 1 ? ` colspan="${colspan}"` : '';
+        const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
+        
+        html += `<${tag}${colspanAttr}${rowspanAttr}>`;
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        html += `</${tag}>`;
+        break;
+      }
+        
+      case 'hardBreak':
+        html += '<br>';
+        break;
+        
+      case 'horizontalRule':
+        html += '<hr>';
+        break;
+        
+      case 'image': {
+        // Handle embedded images
+        const src = node.attrs?.src || '';
+        const alt = node.attrs?.alt || '';
+        const title = node.attrs?.title || '';
+        
+        if (src) {
+          // Check if it's a Backlog attachment reference
+          if (src.startsWith('/api/v2/attachments/')) {
+            try {
+              // Try to get the attachment data and embed it
+              const attachmentId = src.split('/').pop();
+              if (attachmentId && document.projectId) {
+                const baseUrl = configService.getBaseUrl();
+                const fullUrl = baseUrl ? `${baseUrl}${src}` : src;
+                html += `<img src="${WebviewHelper.escapeHtml(fullUrl)}" alt="${WebviewHelper.escapeHtml(alt)}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
+              } else {
+                html += `<div class="attachment-error">Image attachment could not be loaded</div>`;
+              }
+            } catch (error) {
+              console.log('Failed to load attachment:', error);
+              html += `<div class="attachment-error">Image attachment could not be loaded</div>`;
+            }
+          } else {
+            // Regular image URL
+            html += `<img src="${WebviewHelper.escapeHtml(src)}" alt="${WebviewHelper.escapeHtml(alt)}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
+          }
+        }
+        break;
+      }
+        
+      default:
+        // For unknown node types, process content if available
+        if (node.content && Array.isArray(node.content)) {
+          for (const child of node.content) {
+            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+          }
+        }
+        break;
+    }
+
+    return html;
+  }
+
   /**
    * Extract text content from ProseMirror JSON structure
    */
-  private static extractTextFromProseMirror(node: any): string {
-    if (!node) return '';
-    
+  private static extractTextFromProseMirror(node: Record<string, unknown>): string {
+    if (!node) {
+      return '';
+    }
+
     let text = '';
-    
+
     // If this node has text content
     if (node.text) {
       text += node.text;
     }
-    
+
     // Process child nodes
     if (node.content && Array.isArray(node.content)) {
       for (const child of node.content) {
@@ -455,7 +714,7 @@ export class DocumentWebview {
         }
       }
     }
-    
+
     return text;
   }
 }

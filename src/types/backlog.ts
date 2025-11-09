@@ -12,6 +12,7 @@ export interface UninitializedBacklogService {
 export interface InitializedBacklogService {
   readonly state: 'initialized';
   readonly backlog: Backlog;
+  readonly host: string;
 }
 
 export interface InitializingBacklogService {

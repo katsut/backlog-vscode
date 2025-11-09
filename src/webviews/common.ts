@@ -88,7 +88,7 @@ export class WebviewHelper {
     return `
       <head>
         <meta charset="UTF-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${styleNonce}'; script-src 'nonce-${styleNonce}';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${styleNonce}'; script-src 'nonce-${styleNonce}'; img-src https: data: ${webview.cspSource};">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${styles.styleResetUri}" rel="stylesheet">
         <link href="${styles.styleVSCodeUri}" rel="stylesheet">
