@@ -39,7 +39,7 @@ export class MarkdownRenderer {
       const safeHref = this.sanitizeUrl(href);
       const titleAttr = title ? ` title="${this.escapeHtml(title)}"` : '';
       const altAttr = text ? ` alt="${this.escapeHtml(text)}"` : '';
-      return `<img src="${safeHref}"${titleAttr}${altAttr} style="max-width: 100%; height: auto;">`;
+      return `<img src="${safeHref}"${titleAttr}${altAttr} class="markdown-image">`;
     };
 
     // Custom code block rendering
@@ -50,11 +50,11 @@ export class MarkdownRenderer {
 
     // Table rendering with VS Code styling
     renderer.table = (token): string => {
-      const header = token.header.map(cell => 
+      const header = token.header.map(cell =>
         `<th>${cell.text}</th>`
       ).join('');
-      
-      const body = token.rows.map(row => 
+
+      const body = token.rows.map(row =>
         `<tr>${row.map(cell => `<td>${cell.text}</td>`).join('')}</tr>`
       ).join('');
 
@@ -70,14 +70,20 @@ export class MarkdownRenderer {
   /**
    * Render markdown content to HTML
    */
-  public renderMarkdown(content: string): string {
+  public renderMarkdown(content: string, attachments?: Array<{ id: number; name: string; dataUrl: string }>): string {
     if (!content) {
       return '<p class="no-content">No content available.</p>';
     }
 
     try {
+      // Replace attachment references in markdown content before parsing
+      let processedContent = content;
+      if (attachments && attachments.length > 0) {
+        processedContent = this.replaceAttachmentReferences(content, attachments);
+      }
+
       // Parse and render markdown
-      const result = marked.parse(content);
+      const result = marked.parse(processedContent);
       const html = typeof result === 'string' ? result : result.toString();
       
       // Additional post-processing for Backlog-specific features
@@ -89,6 +95,26 @@ export class MarkdownRenderer {
         <pre>${this.escapeHtml(content)}</pre>
       </div>`;
     }
+  }
+
+  /**
+   * Replace attachment references in markdown content with data URLs
+   */
+  private replaceAttachmentReferences(content: string, attachments: Array<{ id: number; name: string; dataUrl: string }>): string {
+    let processed = content;
+
+    // Replace Backlog attachment reference patterns
+    attachments.forEach(attachment => {
+      // Pattern: ![alt text](/document/.../file/123) - Backlog画像参照
+      const imagePattern = new RegExp(`!\\[([^\\]]*)\\]\\([^)]*\\/file\\/${attachment.id}\\)`, 'g');
+      processed = processed.replace(imagePattern, `![$1](${attachment.dataUrl})`);
+
+      // Pattern: [link text](/document/.../file/123) - Backlogリンク参照
+      const linkPattern = new RegExp(`\\[([^\\]]*)\\]\\([^)]*\\/file\\/${attachment.id}\\)`, 'g');
+      processed = processed.replace(linkPattern, `[$1](${attachment.dataUrl})`);
+    });
+
+    return processed;
   }
 
   /**
@@ -155,14 +181,14 @@ export class MarkdownRenderer {
     if (!url) {
       return '#';
     }
-    
+
     // Allow http, https, and data URLs only
     const allowedProtocols = /^(https?:|data:|#)/i;
-    
+
     if (allowedProtocols.test(url)) {
       return this.escapeHtml(url);
     }
-    
+
     return '#';
   }
 

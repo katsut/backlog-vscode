@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as https from 'https';
 import { Backlog, Entity, Option } from 'backlog-js';
 import { ConfigService } from './configService';
 import { BacklogServiceState, isInitialized, isInitializing } from '../types/backlog';
@@ -30,6 +31,48 @@ export class BacklogApiService {
     const logMessage = `[${timestamp}] ${message}`;
     console.log(logMessage);
     this.outputChannel.appendLine(logMessage);
+  }
+
+  private async downloadFromUrl(url: string): Promise<Buffer> {
+    this.log(`Starting download from URL: ${url}`);
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const request = https.get(url, (response) => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let totalLength = 0;
+
+        response.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+          totalLength += chunk.length;
+        });
+
+        response.on('end', () => {
+          const buffer = Buffer.concat(chunks, totalLength);
+          this.log(`Download completed, size: ${buffer.length} bytes`);
+          resolve(buffer);
+        });
+
+        response.on('error', (error) => {
+          this.log(`Download response error: ${error}`);
+          reject(error);
+        });
+      });
+
+      request.on('error', (error) => {
+        this.log(`Download request error: ${error}`);
+        reject(error);
+      });
+
+      request.setTimeout(30000, () => {
+        request.destroy();
+        reject(new Error('Download timeout after 30 seconds'));
+      });
+    });
   }
 
   private checkInitialConfiguration(): void {
@@ -175,6 +218,23 @@ export class BacklogApiService {
     const initializedService = await this.ensureInitialized();
     const response = await initializedService.backlog.getDocument(documentId);
     return response;
+  }
+
+  async downloadDocumentAttachment(documentId: string, attachmentId: number): Promise<Buffer> {
+    const initializedService = await this.ensureInitialized();
+
+    try {
+      const response = await initializedService.backlog.downloadDocumentAttachment(documentId, attachmentId);
+
+      // Backlog APIは常に {body: {}, url: "...", filename: "..."} 形式を返す
+      if (response && typeof response === 'object' && 'url' in response && typeof response.url === 'string') {
+        return await this.downloadFromUrl(response.url);
+      }
+
+      throw new Error(`Unexpected response format from Backlog API`);
+    } catch (error) {
+      throw new Error(`Failed to download attachment ${attachmentId}: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   async reinitialize(): Promise<void> {

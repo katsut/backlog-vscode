@@ -11,12 +11,9 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   readonly onDidChangeTreeData: vscode.Event<DocumentTreeItem | undefined | null | void> =
     this._onDidChangeTreeData.event;
 
-  private documentTree: DocumentTree | null = null; // Tree構造をそのまま保持
+  private documentTree: DocumentTree | null = null;
   private currentProjectId: number | null = null;
   private currentProjectKey: string | null = null;
-
-  // Document検索
-  private searchQuery: string = '';
 
   constructor(private backlogApi: BacklogApiService) { }
 
@@ -94,68 +91,28 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
     });
   }
 
-  // Document検索
-  async searchDocuments(query: string): Promise<void> {
-    this.searchQuery = query.toLowerCase();
-    // Tree構造での検索は後で実装
-    this._onDidChangeTreeData.fire();
-  }
-
-  // フィルタクリア
-  clearFilters(): void {
-    this.searchQuery = '';
-    // Tree構造での検索は後で実装
-    this._onDidChangeTreeData.fire();
-  }
-
   private async loadDocuments(): Promise<void> {
     if (!this.currentProjectId || !(await this.backlogApi.isConfigured())) {
-      console.log('Documents load skipped - no project or not configured');
       return;
     }
 
     try {
-      console.log('Loading documents for project:', this.currentProjectId);
-      console.log('API configured:', await this.backlogApi.isConfigured());
-
       const documentTree = await this.backlogApi.getDocuments(this.currentProjectId);
-
-      console.log('Raw document tree response:', documentTree);
-      console.log('Document tree type:', typeof documentTree);
-      console.log('Document tree is array:', Array.isArray(documentTree));
-
       this.documentTree = documentTree;
-      console.log('Document tree loaded successfully');
     } catch (error) {
-      console.error('Error loading documents - full error:', error);
-      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
-      // Documentが取得できない場合はnullを設定
       this.documentTree = null;
-
-      // より詳細なエラー情報をユーザーに表示
       vscode.window.showErrorMessage(
         `Failed to load documents: ${error instanceof Error ? error.message : error}`
       );
     }
   }
 
-  // Document Tree を取得
   getDocumentTree(): DocumentTree | null {
     return this.documentTree;
   }
 
-  // 現在のプロジェクトキーを取得
   getCurrentProjectKey(): string | null {
     return this.currentProjectKey;
-  }
-
-  // 現在のフィルタ状態を取得
-  getFilterState(): {
-    searchQuery: string;
-  } {
-    return {
-      searchQuery: this.searchQuery,
-    };
   }
 }
 

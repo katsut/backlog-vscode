@@ -431,27 +431,32 @@ export class DocumentWebview {
     configService: ConfigService,
     backlogApi: BacklogApiService
   ): Promise<string> {
-    // Try different content fields in order of preference
-    if (document.plain && document.plain.trim()) {
-      return this.markdownRenderer.renderMarkdown(document.plain);
-    }
-
-    // Try JSON content if available and plain is not available
-    if (document.json && typeof document.json === 'string' && document.json.trim()) {
-      try {
-        const jsonContent = JSON.parse(document.json);
-        // If it's ProseMirror format, try to convert to HTML with images
-        if (jsonContent.type === 'doc' && jsonContent.content) {
-          const htmlContent = await this.convertProseMirrorToHtml(jsonContent, configService, backlogApi, document);
-          if (htmlContent.trim()) {
-            return htmlContent;
-          }
+    // Download all attachments and convert to data URLs
+    const processedAttachments: Array<{ id: number; name: string; dataUrl: string }> = [];
+    
+    if (document.attachments && document.attachments.length > 0) {
+      for (const attachment of document.attachments) {
+        try {
+          const buffer = await backlogApi.downloadDocumentAttachment(document.id, attachment.id);
+          const mimeType = this.getMimeTypeFromFileName(attachment.name);
+          const base64Data = buffer.toString('base64');
+          const dataUrl = `data:${mimeType};base64,${base64Data}`;
+          
+          processedAttachments.push({
+            id: attachment.id,
+            name: attachment.name,
+            dataUrl: dataUrl
+          });
+        } catch (error) {
+          console.error(`Failed to download attachment ${attachment.id} (${attachment.name}):`, error);
+          // Continue with other attachments even if one fails
         }
-      } catch (error) {
-        console.log('Failed to parse JSON content:', error);
       }
     }
 
+    if (document.plain && document.plain.trim()) {
+      return this.markdownRenderer.renderMarkdown(document.plain, processedAttachments);
+    }
 
     // Fallback - no content available
     return '<p class="no-content">Document content preview is not available. Click the link above to view the full document in Backlog.</p>';
@@ -473,7 +478,7 @@ export class DocumentWebview {
     // Handle text nodes
     if (node.text) {
       let text = WebviewHelper.escapeHtml(node.text);
-      
+
       // Apply text marks (bold, italic, links, etc.)
       if (node.marks && Array.isArray(node.marks)) {
         for (const mark of node.marks) {
@@ -500,13 +505,13 @@ export class DocumentWebview {
           }
         }
       }
-      
+
       return text;
     }
 
     // Handle different node types
     let html = '';
-    
+
     switch (node.type) {
       case 'doc':
         // Root document node - process content
@@ -516,7 +521,7 @@ export class DocumentWebview {
           }
         }
         break;
-        
+
       case 'paragraph':
         html += '<p>';
         if (node.content && Array.isArray(node.content)) {
@@ -526,7 +531,7 @@ export class DocumentWebview {
         }
         html += '</p>';
         break;
-        
+
       case 'heading': {
         const level = node.attrs?.level || 1;
         const headingTag = `h${Math.min(Math.max(level, 1), 6)}`;
@@ -539,7 +544,7 @@ export class DocumentWebview {
         html += `</${headingTag}>`;
         break;
       }
-        
+
       case 'bulletList':
         html += '<ul>';
         if (node.content && Array.isArray(node.content)) {
@@ -549,7 +554,7 @@ export class DocumentWebview {
         }
         html += '</ul>';
         break;
-        
+
       case 'orderedList': {
         const start = node.attrs?.start || 1;
         html += `<ol${start !== 1 ? ` start="${start}"` : ''}>`;
@@ -561,7 +566,7 @@ export class DocumentWebview {
         html += '</ol>';
         break;
       }
-        
+
       case 'listItem':
         html += '<li>';
         if (node.content && Array.isArray(node.content)) {
@@ -571,7 +576,7 @@ export class DocumentWebview {
         }
         html += '</li>';
         break;
-        
+
       case 'blockquote':
         html += '<blockquote>';
         if (node.content && Array.isArray(node.content)) {
@@ -581,7 +586,7 @@ export class DocumentWebview {
         }
         html += '</blockquote>';
         break;
-        
+
       case 'codeBlock': {
         const language = node.attrs?.language || '';
         html += '<pre>';
@@ -598,7 +603,7 @@ export class DocumentWebview {
         html += '</code></pre>';
         break;
       }
-        
+
       case 'table':
         html += '<table class="document-table">';
         if (node.content && Array.isArray(node.content)) {
@@ -608,7 +613,7 @@ export class DocumentWebview {
         }
         html += '</table>';
         break;
-        
+
       case 'tableRow':
         html += '<tr>';
         if (node.content && Array.isArray(node.content)) {
@@ -618,7 +623,7 @@ export class DocumentWebview {
         }
         html += '</tr>';
         break;
-        
+
       case 'tableCell':
       case 'tableHeader': {
         const tag = node.type === 'tableHeader' ? 'th' : 'td';
@@ -626,7 +631,7 @@ export class DocumentWebview {
         const rowspan = node.attrs?.rowspan || 1;
         const colspanAttr = colspan > 1 ? ` colspan="${colspan}"` : '';
         const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
-        
+
         html += `<${tag}${colspanAttr}${rowspanAttr}>`;
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
@@ -636,37 +641,56 @@ export class DocumentWebview {
         html += `</${tag}>`;
         break;
       }
-        
+
       case 'hardBreak':
         html += '<br>';
         break;
-        
+
       case 'horizontalRule':
         html += '<hr>';
         break;
-        
+
       case 'image': {
         // Handle embedded images
         const src = node.attrs?.src || '';
         const alt = node.attrs?.alt || '';
         const title = node.attrs?.title || '';
-        
+
         if (src) {
           // Check if it's a Backlog attachment reference
           if (src.startsWith('/api/v2/attachments/')) {
             try {
-              // Try to get the attachment data and embed it
-              const attachmentId = src.split('/').pop();
-              if (attachmentId && document.projectId) {
-                const baseUrl = configService.getBaseUrl();
-                const fullUrl = baseUrl ? `${baseUrl}${src}` : src;
-                html += `<img src="${WebviewHelper.escapeHtml(fullUrl)}" alt="${WebviewHelper.escapeHtml(alt)}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
+              // Extract attachment ID from URL
+              const attachmentIdStr = src.split('/').pop();
+              const attachmentId = attachmentIdStr ? parseInt(attachmentIdStr, 10) : null;
+
+              if (attachmentId && !isNaN(attachmentId) && document.id) {
+                // Find the attachment info in document.attachments
+                const attachment = document.attachments?.find(att => att.id === attachmentId);
+
+                if (attachment) {
+                  // Download and embed the attachment as base64 data URL
+                  const base64Image = await this.downloadAndEncodeAttachment(
+                    document.id,
+                    attachmentId,
+                    attachment.name,
+                    backlogApi
+                  );
+
+                  if (base64Image) {
+                    html += `<img src="${base64Image}" alt="${WebviewHelper.escapeHtml(alt)}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
+                  } else {
+                    html += `<div class="attachment-error">Failed to load image attachment: ${WebviewHelper.escapeHtml(attachment.name)}</div>`;
+                  }
+                } else {
+                  html += `<div class="attachment-error">Image attachment not found in document attachments</div>`;
+                }
               } else {
-                html += `<div class="attachment-error">Image attachment could not be loaded</div>`;
+                html += `<div class="attachment-error">Invalid attachment ID in image source</div>`;
               }
             } catch (error) {
               console.log('Failed to load attachment:', error);
-              html += `<div class="attachment-error">Image attachment could not be loaded</div>`;
+              html += `<div class="attachment-error">Failed to load image attachment</div>`;
             }
           } else {
             // Regular image URL
@@ -675,7 +699,7 @@ export class DocumentWebview {
         }
         break;
       }
-        
+
       default:
         // For unknown node types, process content if available
         if (node.content && Array.isArray(node.content)) {
@@ -687,6 +711,84 @@ export class DocumentWebview {
     }
 
     return html;
+  }
+
+  /**
+   * Download attachment and encode as base64 data URL
+   */
+  private static async downloadAndEncodeAttachment(
+    documentId: string,
+    attachmentId: number,
+    fileName: string,
+    backlogApi: BacklogApiService
+  ): Promise<string | null> {
+    try {
+      // Download the attachment
+      const buffer = await backlogApi.downloadDocumentAttachment(documentId, attachmentId);
+
+      // Determine MIME type from file extension
+      const mimeType = this.getMimeTypeFromFileName(fileName);
+
+      // Convert Buffer to base64
+      const base64Data = buffer.toString('base64');
+
+      // Return as data URL
+      return `data:${mimeType};base64,${base64Data}`;
+    } catch (error) {
+      console.error('Failed to download and encode attachment:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get MIME type from file name extension
+   */
+  private static getMimeTypeFromFileName(fileName: string): string {
+    const extension = fileName.toLowerCase().split('.').pop() || '';
+
+    const mimeTypes: Record<string, string> = {
+      // Images
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'bmp': 'image/bmp',
+      'webp': 'image/webp',
+      'svg': 'image/svg+xml',
+      'ico': 'image/x-icon',
+      'tiff': 'image/tiff',
+      'tif': 'image/tiff',
+
+      // Documents
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+
+      // Text
+      'txt': 'text/plain',
+      'html': 'text/html',
+      'htm': 'text/html',
+      'css': 'text/css',
+      'js': 'text/javascript',
+      'json': 'application/json',
+      'xml': 'text/xml',
+
+      // Archives
+      'zip': 'application/zip',
+      'rar': 'application/x-rar-compressed',
+      '7z': 'application/x-7z-compressed',
+      'tar': 'application/x-tar',
+      'gz': 'application/gzip',
+
+      // Default
+      '': 'application/octet-stream'
+    };
+
+    return mimeTypes[extension] || 'application/octet-stream';
   }
 
   /**
