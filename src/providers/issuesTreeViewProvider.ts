@@ -165,7 +165,7 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
       this.applyFilters();
       this._onDidChangeTreeData.fire();
     } catch (error) {
-      console.error('Error getting user for filter:', error);
+      vscode.window.showErrorMessage(`Failed to get user information: ${error}`);
     }
   }
 
@@ -258,8 +258,6 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
     }
 
     try {
-      console.log('Loading issues for project:', this.currentProjectId);
-
       const issues = await this.backlogApi.getProjectIssues(this.currentProjectId, {
         count: 100,
         sort: 'updated',
@@ -268,7 +266,6 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
 
       this.issues = issues;
       this.applyFilters();
-      console.log('Issues loaded successfully:', this.issues.length, 'issues');
     } catch (error) {
       console.error('Error loading issues:', error);
       vscode.window.showErrorMessage(`Failed to load issues: ${error}`);

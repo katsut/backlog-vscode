@@ -14,28 +14,14 @@ interface InitializedBacklogService {
 export class BacklogApiService {
   private serviceState: BacklogServiceState;
   private configService: ConfigService;
-  private outputChannel: vscode.OutputChannel;
 
   constructor(configService: ConfigService) {
     this.configService = configService;
-    // VS Code Output Channel for debugging
-    this.outputChannel = vscode.window.createOutputChannel('Backlog Extension Debug');
-    // 初期状態は未初期化
     this.serviceState = { state: 'uninitialized' };
-    // 同期的に基本設定をチェック
     this.checkInitialConfiguration();
   }
 
-  private log(message: string): void {
-    const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] ${message}`;
-    console.log(logMessage);
-    this.outputChannel.appendLine(logMessage);
-  }
-
   private async downloadFromUrl(url: string): Promise<Buffer> {
-    this.log(`Starting download from URL: ${url}`);
-
     return new Promise<Buffer>((resolve, reject) => {
       const request = https.get(url, (response) => {
         if (response.statusCode !== 200) {
@@ -53,18 +39,15 @@ export class BacklogApiService {
 
         response.on('end', () => {
           const buffer = Buffer.concat(chunks, totalLength);
-          this.log(`Download completed, size: ${buffer.length} bytes`);
           resolve(buffer);
         });
 
         response.on('error', (error) => {
-          this.log(`Download response error: ${error}`);
           reject(error);
         });
       });
 
       request.on('error', (error) => {
-        this.log(`Download request error: ${error}`);
         reject(error);
       });
 

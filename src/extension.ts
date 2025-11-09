@@ -27,125 +27,61 @@ const openIssueWebviews: Map<string, vscode.WebviewPanel> = new Map();
 const openDocumentWebviews: Map<string, vscode.WebviewPanel> = new Map();
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('=== BACKLOG EXTENSION ACTIVATION START ===');
-  console.log('Backlog extension is now active!');
-
-  // Create output channel for debugging
-  const outputChannel = vscode.window.createOutputChannel('Backlog Extension Debug');
-  outputChannel.appendLine('=== EXTENSION ACTIVATION START ===');
-  outputChannel.show();
-
-  // Declare variables before try block
   let configService: ConfigService;
   let backlogApi: BacklogApiService;
 
   try {
-    // Initialize services
-    console.log('Initializing ConfigService...');
-    outputChannel.appendLine('Initializing ConfigService...');
     configService = new ConfigService(context.secrets);
-
-    console.log('Initializing BacklogApiService...');
-    outputChannel.appendLine('Initializing BacklogApiService...');
     backlogApi = new BacklogApiService(configService);
-
-    // Initialize providers
-    console.log('Initializing TreeViewProvider...');
-    outputChannel.appendLine('Initializing TreeViewProvider...');
     backlogTreeViewProvider = new BacklogTreeViewProvider(backlogApi);
-    outputChannel.appendLine('TreeViewProvider initialized successfully!');
-
-    console.log('Initializing WebviewProvider...');
-    outputChannel.appendLine('Initializing WebviewProvider...');
     backlogWebviewProvider = new BacklogWebviewProvider(context.extensionUri, backlogApi);
-    outputChannel.appendLine('WebviewProvider initialized successfully!');
   } catch (error) {
     console.error('ERROR during extension activation:', error);
-    outputChannel.appendLine(`ERROR during extension activation: ${error}`);
-    outputChannel.appendLine(`Stack: ${error instanceof Error ? error.stack : 'No stack available'}`);
     vscode.window.showErrorMessage(`Backlog Extension failed to activate: ${error}`);
     return;
   }
 
   try {
-    console.log('Initializing BacklogProjectsWebviewProvider...');
-    outputChannel.appendLine('Initializing BacklogProjectsWebviewProvider...');
-    backlogProjectsWebviewProvider = new BacklogProjectsWebviewProvider(
-      context.extensionUri,
-      backlogApi
-    );
-    outputChannel.appendLine('BacklogProjectsWebviewProvider initialized successfully!');
-
-    console.log('Initializing BacklogIssuesTreeViewProvider...');
-    outputChannel.appendLine('Initializing BacklogIssuesTreeViewProvider...');
+    backlogProjectsWebviewProvider = new BacklogProjectsWebviewProvider(context.extensionUri, backlogApi);
     backlogIssuesProvider = new BacklogIssuesTreeViewProvider(backlogApi);
-    outputChannel.appendLine('BacklogIssuesTreeViewProvider initialized successfully!');
-
-    console.log('Initializing BacklogWikiTreeViewProvider...');
-    outputChannel.appendLine('Initializing BacklogWikiTreeViewProvider...');
     backlogWikiProvider = new BacklogWikiTreeViewProvider(backlogApi);
-    outputChannel.appendLine('BacklogWikiTreeViewProvider initialized successfully!');
-
-    console.log('Initializing BacklogDocumentsTreeViewProvider...');
-    outputChannel.appendLine('Initializing BacklogDocumentsTreeViewProvider...');
     backlogDocumentsProvider = new BacklogDocumentsTreeViewProvider(backlogApi);
-    outputChannel.appendLine('BacklogDocumentsTreeViewProvider initialized successfully!');
   } catch (error) {
     console.error('ERROR during additional providers initialization:', error);
-    outputChannel.appendLine(`ERROR during additional providers initialization: ${error}`);
-    outputChannel.appendLine(`Stack: ${error instanceof Error ? error.stack : 'No stack available'}`);
     vscode.window.showErrorMessage(`Backlog Extension failed to initialize providers: ${error}`);
     return;
   }
-
-  // Register tree views
-  console.log('Registering tree views...');
-  outputChannel.appendLine('Registering tree views...');
 
   const projectsTreeView = vscode.window.createTreeView('backlogProjects', {
     treeDataProvider: backlogTreeViewProvider,
     showCollapseAll: true,
   });
-  outputChannel.appendLine('Projects tree view registered successfully!');
 
   const issuesTreeView = vscode.window.createTreeView('backlogIssues', {
     treeDataProvider: backlogIssuesProvider,
     showCollapseAll: true,
   });
-  outputChannel.appendLine('Issues tree view registered successfully!');
 
   const wikiTreeView = vscode.window.createTreeView('backlogWiki', {
     treeDataProvider: backlogWikiProvider,
     showCollapseAll: true,
   });
-  outputChannel.appendLine('Wiki tree view registered successfully!');
 
   const documentsTreeView = vscode.window.createTreeView('backlogDocuments', {
     treeDataProvider: backlogDocumentsProvider,
     showCollapseAll: true,
   });
-  outputChannel.appendLine('Documents tree view registered successfully!');
 
-  // Enable the views
-  console.log('Enabling views...');
-  outputChannel.appendLine('Enabling views...');
   vscode.commands.executeCommand('setContext', 'backlogExplorer.enabled', true);
   vscode.commands.executeCommand('setContext', 'backlogProjectFocused', false);
-  outputChannel.appendLine('Views enabled successfully!');
-
-  // Register commands
-  console.log('Registering commands...');
-  outputChannel.appendLine('Registering commands...');
 
   const refreshCommand = vscode.commands.registerCommand('backlog.refreshProjects', () => {
-    // 全てのプロバイダーをリフレッシュ
     backlogTreeViewProvider.refresh();
     backlogProjectsWebviewProvider.refresh();
     backlogIssuesProvider.refresh();
     backlogWikiProvider.refresh();
     backlogDocumentsProvider.refresh();
   });
-  outputChannel.appendLine('Refresh command registered successfully!');
 
   // 個別のリフレッシュコマンド
   const refreshIssuesCommand = vscode.commands.registerCommand('backlog.refreshIssues', () => {
@@ -455,31 +391,12 @@ export function activate(context: vscode.ExtensionContext) {
     'backlog.focusProject',
     async (projectId: number) => {
       try {
-        console.log('focusProject command called with projectId:', projectId);
-
-        // 各プロバイダーにプロジェクトを設定
-        console.log('Setting project for issues provider...');
         await backlogIssuesProvider.setProject(projectId);
-
-        console.log('Setting project for wiki provider...');
         await backlogWikiProvider.setProject(projectId);
-
-        console.log('Setting project for documents provider...');
         await backlogDocumentsProvider.setProject(projectId);
-
-        // プロジェクトフォーカス状態を有効にする
-        console.log('Setting context backlogProjectFocused to true...');
         await vscode.commands.executeCommand('setContext', 'backlogProjectFocused', true);
-
-        // 旧プロバイダーも更新（後方互換性のため）
-        console.log('Updating old tree view provider...');
         await backlogTreeViewProvider.focusProject(projectId);
-
-        console.log('Project focus completed successfully');
-
-        // Focus Backlog sidebar
         await vscode.commands.executeCommand('workbench.view.extension.backlogContainer');
-
       } catch (error) {
         console.error('Error in focusProject command:', error);
         vscode.window.showErrorMessage(`Failed to focus project: ${error}`);
@@ -896,14 +813,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
   }
 
-  // Check configuration on startup
-  console.log('Checking configuration...');
-  outputChannel.appendLine('Checking configuration...');
   checkConfiguration(configService);
-
-  console.log('=== BACKLOG EXTENSION ACTIVATION COMPLETED ===');
-  outputChannel.appendLine('=== BACKLOG EXTENSION ACTIVATION COMPLETED ===');
-  outputChannel.appendLine('Extension is ready to use!');
 }
 
 export function deactivate() {

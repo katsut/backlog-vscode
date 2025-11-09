@@ -27,12 +27,9 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   private sortOrder: 'asc' | 'desc' = 'desc';
 
   constructor(private backlogApi: BacklogApiService) {
-    console.log('=== BacklogTreeViewProvider constructor called ===');
-    // 初期データ読み込みを非同期で実行
     this.loadInitialData().catch(error => {
       console.error('Error in loadInitialData from constructor:', error);
     });
-    console.log('=== BacklogTreeViewProvider constructor completed ===');
   }
 
   refresh(): void {
@@ -45,13 +42,9 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   }
 
   async getChildren(element?: TreeItem): Promise<TreeItem[]> {
-    console.log('TreeViewProvider.getChildren called with element:', element?.label || 'root');
-
     const isConfigured = await this.backlogApi.isConfigured();
-    console.log('API configured:', isConfigured);
 
     if (!isConfigured) {
-      console.log('API not configured, showing configuration required message');
       return [
         new TreeItem(
           'Configuration Required',
@@ -76,9 +69,6 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
       }
       // 通常時はプロジェクト一覧を表示（検索フィルタ適用）
       const displayProjects = this.searchQuery ? this.filteredProjects : this.projects;
-      console.log('Returning projects list, count:', displayProjects.length);
-      console.log('Search query:', this.searchQuery);
-      console.log('Projects data:', displayProjects);
       return displayProjects.map((project) => new ProjectTreeItem(project));
     }
 
@@ -153,44 +143,22 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   }
 
   private async loadInitialData(): Promise<void> {
-    console.log('=== loadInitialData START ===');
-
-    // 設定状況を詳細に確認
-    const domain = this.backlogApi['configService'].getDomain();
-    const apiKey = await this.backlogApi['configService'].getApiKey();
-    console.log('Config details:');
-    console.log('- Domain:', domain ? `configured (${domain})` : 'NOT CONFIGURED');
-    console.log('- API Key:', apiKey ? 'configured (length: ' + apiKey.length + ')' : 'NOT CONFIGURED');
-
     const isConfigured = await this.backlogApi.isConfigured();
-    console.log('API configured (final result):', isConfigured);
 
     if (!isConfigured) {
-      console.log('API not configured, showing configuration message');
-      console.log('=== loadInitialData END (NOT CONFIGURED) ===');
       this._onDidChangeTreeData.fire();
       return;
     }
 
-    console.log('Configuration OK, attempting to get projects...');
     try {
       this.projects = await this.backlogApi.getProjects();
-      console.log('Projects loaded successfully:', this.projects.length, 'projects');
-      if (this.projects.length > 0) {
-        console.log('Sample project:', this.projects[0].name, '(' + this.projects[0].projectKey + ')');
-      }
     } catch (error) {
       console.error('Error loading projects:', error);
-      console.error('Error details:', error instanceof Error ? error.stack : 'No stack');
       this.projects = [];
-
-      // ユーザーにエラーを表示
       vscode.window.showErrorMessage(`Failed to load Backlog projects: ${error instanceof Error ? error.message : error}`);
     }
 
-    console.log('Firing tree data change event...');
     this._onDidChangeTreeData.fire();
-    console.log('=== loadInitialData END ===');
   }
 
   // 検索機能

@@ -113,16 +113,12 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
     }
 
     try {
-      console.log('Loading wikis for project:', this.currentProjectId);
-
       const wikis = await this.backlogApi.getWikiPages(this.currentProjectId);
-
       this.wikis = wikis;
       this.applyFilters();
-      console.log('Wikis loaded successfully:', this.wikis.length, 'wikis');
     } catch (error) {
       console.error('Error loading wikis:', error);
-      // Wikiが取得できない場合は空の配列を設定
+      vscode.window.showErrorMessage(`Failed to load wikis: ${error}`);
       this.wikis = [];
       this.applyFilters();
     }

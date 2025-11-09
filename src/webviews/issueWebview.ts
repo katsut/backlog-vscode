@@ -277,8 +277,6 @@ export class IssueWebview {
         ` : ''}
 
         <script nonce="${nonce}">
-          console.log('Issue webview loaded:', '${WebviewHelper.escapeHtml(issue.issueKey)}');
-          
           const vscode = acquireVsCodeApi();
           
           // Handle refresh button click

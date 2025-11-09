@@ -269,8 +269,6 @@ export class WikiWebview {
         </div>
 
         <script nonce="${nonce}">
-          console.log('Wiki webview loaded:', '${WebviewHelper.escapeHtml(wiki.name)}');
-          
           const vscode = acquireVsCodeApi();
           
           // Handle refresh button click

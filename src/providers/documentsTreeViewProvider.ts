@@ -27,7 +27,6 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
       const currentProject = projects.find((p) => p.id === projectId);
       this.currentProjectKey = currentProject ? currentProject.projectKey : null;
     } catch (error) {
-      console.log('Could not get project key:', error);
       this.currentProjectKey = null;
     }
 

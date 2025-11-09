@@ -50,16 +50,8 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
 
   private async selectProject(projectId: number): Promise<void> {
     try {
-      console.log('Selecting project with ID:', projectId);
-
-      // プロジェクトフォーカスコマンドを実行
-      console.log('Executing backlog.focusProject command...');
       await vscode.commands.executeCommand('backlog.focusProject', projectId);
-
-      console.log('Project focus command completed successfully');
-
     } catch (error) {
-      console.error('Error focusing project:', error);
       vscode.window.showErrorMessage(`Failed to select project: ${error}`);
     }
   }
@@ -79,13 +71,9 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
   }
 
   private async loadProjects(): Promise<void> {
-    console.log('loadProjects called');
-
     const isConfigured = await this.backlogApi.isConfigured();
-    console.log('API configured:', isConfigured);
 
     if (!isConfigured) {
-      console.log('API not configured, showing empty projects');
       this.projects = [];
       this.applyFilters();
       this.updateWebview();
@@ -93,23 +81,15 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
     }
 
     try {
-      console.log('Loading projects for webview...');
       const projects = await this.backlogApi.getProjects();
-
-      console.log('Raw projects from API:', projects);
       this.projects = projects || [];
       this.applyFilters();
-      console.log('Projects loaded successfully:', this.projects.length, 'projects');
-      console.log('Filtered projects:', this.filteredProjects.length);
       this.updateWebview();
     } catch (error) {
-      console.error('Error loading projects:', error);
-      console.error('Error details:', error);
       this.projects = [];
       this.applyFilters();
       this.updateWebview();
 
-      // Webviewにエラーを表示
       if (this._view) {
         this._view.webview.postMessage({
           type: 'showError',
@@ -241,13 +221,11 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
 
                       // クリックイベントリスナーを追加
                       projectItem.addEventListener('click', () => {
-                          console.log('Project clicked:', project.id, project.name);
                           selectProject(project.id);
                       });
 
                       // ダブルクリックイベントリスナーを追加
                       projectItem.addEventListener('dblclick', () => {
-                          console.log('Project double-clicked:', project.id, project.name);
                           selectProject(project.id);
                       });
 

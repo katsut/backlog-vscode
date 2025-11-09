@@ -388,9 +388,6 @@ export class DocumentWebview {
         </div>
 
         <script nonce="${nonce}">
-          // Add any client-side interactivity here if needed
-          console.log('Document webview loaded:', '${WebviewHelper.escapeHtml(displayTitle)}');
-          
           const vscode = acquireVsCodeApi();
           
           // Handle refresh button click
