@@ -63,6 +63,12 @@ export class WebviewHelper {
       ),
       styleMainUri: webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'media', 'main.css')
+      ),
+      styleMarkdownUri: webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, 'media', 'markdown.css')
+      ),
+      styleWebviewCommonUri: webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, 'media', 'webview-common.css')
       )
     };
   }
@@ -92,6 +98,8 @@ export class WebviewHelper {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${styles.styleResetUri}" rel="stylesheet">
         <link href="${styles.styleVSCodeUri}" rel="stylesheet">
+        <link href="${styles.styleWebviewCommonUri}" rel="stylesheet">
+        <link href="${styles.styleMarkdownUri}" rel="stylesheet">
         <link href="${styles.styleMainUri}" rel="stylesheet">
         <title>${this.escapeHtml(title)}</title>
         <style nonce="${styleNonce}">

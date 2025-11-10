@@ -20,7 +20,10 @@ export class IssueWebview {
     baseUrl?: string
   ): string {
     const nonce = WebviewHelper.getNonce();
-    const issueUrl = baseUrl && issue.issueKey ? `${baseUrl}/view/${issue.issueKey}` : '#';
+    
+    // Ensure baseUrl has https:// protocol
+    const fullBaseUrl = baseUrl ? (baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`) : null;
+    const issueUrl = fullBaseUrl && issue.issueKey ? `${fullBaseUrl}/view/${issue.issueKey}` : '#';
 
     // Render description as markdown if present
     const descriptionHtml = issue.description
@@ -36,175 +39,61 @@ export class IssueWebview {
       : [];
 
     const additionalStyles = `
-        ${this.markdownRenderer.getMarkdownStyles()}
-        
-        .issue-header {
-          border-bottom: 2px solid var(--vscode-panel-border);
-          padding-bottom: 16px;
-          margin-bottom: 24px;
+        /* Issue-specific styles */
+        .issue-description-content.markdown-content {
+          background: transparent;
+          border: none;
+          padding: 0;
         }
         
-        .issue-header h1 {
-          margin: 0 0 12px 0;
+        /* Fix potential conflicts with markdown content */
+        .content-body .markdown-content h1,
+        .content-body .markdown-content h2,
+        .content-body .markdown-content h3,
+        .content-body .markdown-content h4,
+        .content-body .markdown-content h5,
+        .content-body .markdown-content h6 {
           color: var(--vscode-foreground);
-          font-size: 1.8em;
+          font-weight: 600;
         }
         
-        .issue-meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          align-items: center;
+        .content-body .markdown-content p {
+          color: var(--vscode-foreground);
+          line-height: 1.7;
         }
         
-        .issue-key {
-          background: var(--vscode-badge-background);
-          color: var(--vscode-badge-foreground);
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-family: var(--vscode-editor-font-family);
-          font-weight: 500;
+        .content-body .markdown-content ul,
+        .content-body .markdown-content ol {
+          color: var(--vscode-foreground);
         }
         
-        .status-badge, .priority-badge {
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.85em;
-          font-weight: 500;
+        .content-body .markdown-content li {
+          color: var(--vscode-foreground);
         }
         
-        .status-badge.open { background: #28a745; color: white; }
-        .status-badge.in-progress { background: #ffc107; color: black; }
-        .status-badge.resolved { background: #6f42c1; color: white; }
-        .status-badge.closed { background: #6c757d; color: white; }
-        
-        .priority-badge.high { background: #dc3545; color: white; }
-        .priority-badge.medium { background: #fd7e14; color: white; }
-        .priority-badge.low { background: #20c997; color: white; }
-        
-        .issue-details {
-          background: var(--vscode-editor-inactiveSelectionBackground);
+        .content-body .markdown-content blockquote {
+          color: var(--vscode-descriptionForeground);
           border-left: 4px solid var(--vscode-textBlockQuote-border);
-          padding: 16px;
-          margin: 20px 0;
-          border-radius: 0 6px 6px 0;
+          background: var(--vscode-textBlockQuote-background);
         }
         
-        .issue-field {
-          margin-bottom: 8px;
+        .content-body .markdown-content code {
+          background: var(--vscode-textCodeBlock-background);
+          color: var(--vscode-textPreformat-foreground);
+          border: 1px solid var(--vscode-panel-border);
         }
         
-        .issue-field label {
-          font-weight: 500;
-          color: var(--vscode-foreground);
-          margin-right: 8px;
-        }
-        
-        .issue-description {
-          margin: 24px 0;
-        }
-        
-        .issue-description h3 {
-          color: var(--vscode-foreground);
-          margin-bottom: 16px;
-          font-size: 1.2em;
-        }
-        
-        .issue-description-content {
+        .content-body .markdown-content pre {
           background: var(--vscode-textCodeBlock-background);
           border: 1px solid var(--vscode-panel-border);
-          border-radius: 6px;
-          padding: 16px;
         }
         
-        .issue-comments {
-          margin-top: 32px;
-        }
-        
-        .issue-comments h3 {
-          color: var(--vscode-foreground);
-          margin-bottom: 20px;
-          font-size: 1.2em;
-        }
-        
-        .comment {
-          background: var(--vscode-editor-inactiveSelectionBackground);
-          border: 1px solid var(--vscode-panel-border);
-          border-radius: 6px;
-          margin-bottom: 16px;
-          overflow: hidden;
-        }
-        
-        .comment-header {
-          background: var(--vscode-button-secondaryBackground);
-          color: var(--vscode-button-secondaryForeground);
-          padding: 12px 16px;
-          border-bottom: 1px solid var(--vscode-panel-border);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        
-        .comment-author {
-          font-weight: 500;
-        }
-        
-        .comment-date {
-          font-size: 0.9em;
-          opacity: 0.8;
-        }
-        
-        .comment-content {
-          padding: 16px;
-        }
-        
-        .issue-link {
+        .content-body .markdown-content a {
           color: var(--vscode-textLink-foreground);
-          text-decoration: none;
-          padding: 6px 12px;
-          border: 1px solid var(--vscode-button-border);
-          border-radius: 4px;
-          background: var(--vscode-button-secondaryBackground);
-          transition: background-color 0.2s;
-          font-size: 0.9em;
         }
         
-        .issue-link:hover {
-          background: var(--vscode-button-secondaryHoverBackground);
-          text-decoration: none;
-        }
-        
-        /* Refresh button styles */
-        .refresh-button {
-          background: var(--vscode-button-background, #0078d4);
-          color: var(--vscode-button-foreground, #ffffff);
-          border: 1px solid var(--vscode-button-border, transparent);
-          border-radius: 4px;
-          padding: 6px 8px;
-          margin-left: 12px;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-          min-width: 32px;
-          min-height: 32px;
-        }
-        
-        .refresh-button:hover {
-          background: var(--vscode-button-hoverBackground, #005a9e);
-          transform: scale(1.05);
-        }
-        
-        .refresh-button:active {
-          background: var(--vscode-button-activeBackground, #004578);
-          transform: scale(0.95);
-        }
-        
-        .refresh-button .codicon {
-          font-size: 16px;
-          color: var(--vscode-button-foreground, #ffffff);
-          font-weight: bold;
+        .content-body .markdown-content a:hover {
+          color: var(--vscode-textLink-activeForeground);
         }
     `;
 
@@ -212,38 +101,38 @@ export class IssueWebview {
       <html lang="en">
       ${WebviewHelper.getHtmlHead(webview, extensionUri, `Issue ${issue.issueKey}`, additionalStyles, nonce)}
       <body>
-        <div class="issue-header">
+        <div class="webview-header">
           <h1>
             ${WebviewHelper.escapeHtml(issue.summary)}
             <button class="refresh-button" id="refreshButton" title="Refresh issue content">
               <span class="codicon codicon-refresh"></span>
             </button>
           </h1>
-          <div class="issue-meta">
-            <span class="issue-key">${WebviewHelper.escapeHtml(issue.issueKey)}</span>
+          <div class="webview-meta">
+            <span class="key-badge">${WebviewHelper.escapeHtml(issue.issueKey)}</span>
             <span class="status-badge ${this.getStatusClass(issue.status)}">${WebviewHelper.escapeHtml(issue.status.name)}</span>
             <span class="priority-badge ${this.getPriorityClass(issue.priority)}">${WebviewHelper.escapeHtml(issue.priority.name)}</span>
-            ${baseUrl && issue.id ? `<a href="${issueUrl}" class="issue-link" target="_blank">Open in Backlog</a>` : ''}
+            ${fullBaseUrl && issue.id ? `<a href="#" class="external-link" data-url="${issueUrl}">🔗 Open in Backlog</a>` : ''}
           </div>
         </div>
 
-        <div class="issue-details">
-          <div class="issue-field">
+        <div class="details-section">
+          <div class="details-field">
             <label>Status:</label>
             <span>${WebviewHelper.escapeHtml(issue.status.name)}</span>
           </div>
-          <div class="issue-field">
+          <div class="details-field">
             <label>Priority:</label>
             <span>${WebviewHelper.escapeHtml(issue.priority.name)}</span>
           </div>
           ${issue.assignee ? `
-            <div class="issue-field">
+            <div class="details-field">
               <label>Assignee:</label>
               <span>${WebviewHelper.escapeHtml(issue.assignee.name)}</span>
             </div>
           ` : ''}
           ${issue.dueDate ? `
-            <div class="issue-field">
+            <div class="details-field">
               <label>Due Date:</label>
               <span>${new Date(issue.dueDate).toLocaleDateString()}</span>
             </div>
@@ -251,16 +140,16 @@ export class IssueWebview {
         </div>
 
         ${descriptionHtml ? `
-          <div class="issue-description">
+          <div class="content-section">
             <h3>Description</h3>
-            <div class="issue-description-content markdown-content">
+            <div class="content-body markdown-content">
               ${descriptionHtml}
             </div>
           </div>
         ` : ''}
 
         ${commentsHtml.length > 0 ? `
-          <div class="issue-comments">
+          <div class="content-section">
             <h3>Comments (${commentsHtml.length})</h3>
             ${commentsHtml.map(comment => `
               <div class="comment">
@@ -279,28 +168,36 @@ export class IssueWebview {
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
           
-          // Handle refresh button click
-          document.addEventListener('DOMContentLoaded', function() {
-            const refreshButton = document.getElementById('refreshButton');
-            if (refreshButton) {
-              refreshButton.addEventListener('click', function() {
-                vscode.postMessage({
-                  command: 'refreshIssue',
-                  issueId: '${issue.id || ''}'
-                });
-              });
-            }
-          });
-          
-          // Handle external link clicks
+          // Handle all clicks
           document.addEventListener('click', function(event) {
             const target = event.target;
-            if (target && target.tagName === 'A' && target.href && target.target === '_blank') {
+            
+            // Handle refresh button click
+            if (target.closest('#refreshButton')) {
               event.preventDefault();
+              event.stopPropagation();
+              console.log('Refresh button clicked');
               vscode.postMessage({
-                command: 'openExternal',
-                url: target.href
+                command: 'refreshIssue',
+                issueId: '${issue.id || ''}'
               });
+              return false;
+            }
+            
+            // Handle external link clicks
+            const linkTarget = target.closest('a[data-url]');
+            if (linkTarget) {
+              event.preventDefault();
+              event.stopPropagation();
+              const url = linkTarget.getAttribute('data-url');
+              if (url) {
+                console.log('Opening external URL via VS Code:', url);
+                vscode.postMessage({
+                  command: 'openExternal',
+                  url: url
+                });
+              }
+              return false;
             }
           });
         </script>

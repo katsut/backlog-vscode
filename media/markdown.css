@@ -1,0 +1,252 @@
+/* GitHub-style Markdown CSS */
+
+.markdown-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--vscode-foreground);
+}
+
+/* GitHub-style Headings */
+.markdown-content h1, .markdown-content h2, .markdown-content h3, 
+.markdown-content h4, .markdown-content h5, .markdown-content h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 24px 0 16px 0;
+}
+
+.markdown-content h1 { 
+  font-size: 2em; 
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  margin-top: 0;
+}
+
+.markdown-content h2 { 
+  font-size: 1.5em; 
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.markdown-content h3 { font-size: 1.25em; }
+.markdown-content h4 { font-size: 1em; }
+.markdown-content h5 { font-size: 0.875em; }
+.markdown-content h6 { font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+
+/* Basic elements */
+.markdown-content p { margin: 0 0 16px 0; }
+.markdown-content strong { font-weight: 600; }
+.markdown-content em { font-style: italic; }
+
+/* Lists */
+.markdown-content ul, .markdown-content ol { 
+  padding-left: 2em; 
+  margin: 0 0 16px 0; 
+}
+
+.markdown-content li { 
+  margin: 0.25em 0; 
+  word-wrap: break-word;
+}
+
+.markdown-content ul li:not(.task-list-item) { list-style: disc; }
+.markdown-content ol li:not(.task-list-item) { list-style: decimal; }
+
+/* GitHub-style Task Lists - Direct HTML structure targeting */
+.markdown-content li:has(> input[type="checkbox"]),
+.markdown-content .task-list-item {
+  list-style: none !important;
+  list-style-type: none !important;
+  margin-left: -2em !important;
+  margin-top: 0.25em !important;
+  margin-bottom: 0.25em !important;
+  padding-left: 0 !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  flex-wrap: nowrap !important;
+  gap: 0.4em !important;
+  position: relative !important;
+}
+
+.markdown-content li:has(> input[type="checkbox"]) input[type="checkbox"],
+.markdown-content .task-list-item input[type="checkbox"] {
+  flex: 0 0 16px !important;
+  flex-shrink: 0 !important;
+  margin: 0.2em 0 0 0 !important;
+  padding: 0 !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
+  accent-color: var(--vscode-checkbox-foreground) !important;
+  cursor: pointer !important;
+  position: static !important;
+  transform: none !important;
+}
+
+.markdown-content li:has(> input[type="checkbox"]) > *:not(input[type="checkbox"]),
+.markdown-content .task-list-item > *:not(input[type="checkbox"]) {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.6 !important;
+}
+
+/* Fallback for browsers that don't support :has() */
+.markdown-content li input[type="checkbox"] {
+  flex: 0 0 16px !important;
+  flex-shrink: 0 !important;
+  margin: 0.2em 0.4em 0 0 !important;
+  padding: 0 !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
+  accent-color: var(--vscode-checkbox-foreground) !important;
+  cursor: pointer !important;
+  position: static !important;
+  transform: none !important;
+}
+
+.markdown-content li:has(input[type="checkbox"]) {
+  display: flex !important;
+  align-items: flex-start !important;
+  flex-wrap: nowrap !important;
+  gap: 0.4em !important;
+  list-style: none !important;
+  list-style-type: none !important;
+  margin-left: -2em !important;
+  margin-top: 0.25em !important;
+  margin-bottom: 0.25em !important;
+  padding-left: 0 !important;
+}
+
+/* Ensure no other elements interfere */
+.markdown-content li:has(> input[type="checkbox"])::before,
+.markdown-content li:has(> input[type="checkbox"])::after,
+.markdown-content li:has(> input[type="checkbox"])::marker,
+.markdown-content .task-list-item::before,
+.markdown-content .task-list-item::after,
+.markdown-content .task-list-item::marker {
+  display: none !important;
+  content: none !important;
+}
+
+/* Override any inherited styles */
+.markdown-content ul li:has(> input[type="checkbox"]),
+.markdown-content ol li:has(> input[type="checkbox"]),
+.markdown-content ul .task-list-item,
+.markdown-content ol .task-list-item {
+  list-style: none !important;
+  list-style-type: none !important;
+}
+
+/* GitHub-style Code */
+.markdown-content code {
+  background: var(--vscode-textCodeBlock-background);
+  color: var(--vscode-textPreformat-foreground);
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 85%;
+}
+
+.markdown-content pre {
+  background: var(--vscode-textCodeBlock-background);
+  padding: 16px;
+  border-radius: 6px;
+  overflow: auto;
+  margin: 0 0 16px 0;
+  line-height: 1.45;
+}
+
+.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 100%;
+}
+
+/* GitHub-style Blockquotes */
+.markdown-content blockquote {
+  padding: 0 1em;
+  color: var(--vscode-descriptionForeground);
+  border-left: 0.25em solid var(--vscode-panel-border);
+  margin: 0 0 16px 0;
+}
+
+.markdown-content blockquote > :first-child { margin-top: 0; }
+.markdown-content blockquote > :last-child { margin-bottom: 0; }
+
+/* GitHub-style Links */
+.markdown-content a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.markdown-content a:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
+}
+
+/* GitHub-style Images */
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  border-style: none;
+  border-radius: 6px;
+}
+
+/* GitHub-style Tables */
+.markdown-content table {
+  border-spacing: 0;
+  border-collapse: collapse;
+  margin: 0 0 16px 0;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.markdown-content th, .markdown-content td {
+  padding: 6px 13px;
+  border: 1px solid var(--vscode-panel-border);
+}
+
+.markdown-content th {
+  font-weight: 600;
+  background: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+.markdown-content tr:nth-child(2n) {
+  background: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+/* GitHub-style Horizontal Rule */
+.markdown-content hr {
+  height: 0.25em;
+  padding: 0;
+  margin: 24px 0;
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+/* GitHub-style Mentions */
+.markdown-content .issue-mention,
+.markdown-content .user-mention {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.markdown-content .issue-mention {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+.markdown-content .user-mention {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}

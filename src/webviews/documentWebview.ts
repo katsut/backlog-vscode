@@ -26,7 +26,19 @@ export class DocumentWebview {
   ): Promise<string> {
     const nonce = WebviewHelper.getNonce();
     const baseUrl = configService.getBaseUrl();
-    const docUrl = baseUrl && document.id && projectKey ? `${baseUrl}/document/${projectKey}/${document.id}` : '#';
+
+    // Ensure baseUrl has https:// protocol
+    const fullBaseUrl = baseUrl ? (baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`) : null;
+    const docUrl = fullBaseUrl && document.id && projectKey ? `${fullBaseUrl}/document/${projectKey}/${document.id}` : '#';
+
+    // Debug logging for URL generation
+    console.log('DocumentWebview URL Debug:', {
+      originalBaseUrl: baseUrl,
+      fullBaseUrl,
+      documentId: document.id,
+      projectKey,
+      generatedUrl: docUrl
+    });
 
     // Get the display title, handling both tree nodes and document entities
     const displayTitle = document.title || 'Unnamed Document';
@@ -35,438 +47,28 @@ export class DocumentWebview {
     const contentHtml = await this.convertDocumentContent(document, configService, backlogApi);
 
     const additionalStyles = `
-        ${this.markdownRenderer.getMarkdownStyles()}
-        
-        /* Root container styling */
-        body {
-          font-family: var(--vscode-font-family);
-          font-size: var(--vscode-font-size);
-          line-height: 1.6;
-          color: var(--vscode-foreground);
-          background: var(--vscode-editor-background);
-          margin: 0;
-          padding: 20px;
-          max-width: none;
-        }
-        
-        /* Document header with improved typography */
-        .document-header {
-          border-bottom: 1px solid var(--vscode-panel-border);
-          padding-bottom: 20px;
-          margin-bottom: 32px;
-          background: var(--vscode-editor-background);
-        }
-        
-        .document-header h1 {
-          margin: 0 0 16px 0;
-          color: var(--vscode-foreground);
-          font-size: 1.75rem;
-          font-weight: 600;
-          line-height: 1.3;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        
-        .document-meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          color: var(--vscode-descriptionForeground);
-          font-size: 0.875rem;
-          align-items: center;
-          margin-top: 8px;
-        }
-        
-        .meta-item {
-          background: var(--vscode-badge-background);
-          color: var(--vscode-badge-foreground);
-          padding: 4px 10px;
-          border-radius: 6px;
-          font-size: 0.8rem;
-          font-weight: 500;
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-        }
-        
-        .document-link {
-          color: var(--vscode-textLink-foreground);
-          text-decoration: none;
-          padding: 8px 16px;
-          border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
-          border-radius: 6px;
-          background: var(--vscode-button-secondaryBackground);
-          transition: all 0.2s ease;
-          font-size: 0.875rem;
-          font-weight: 500;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-        }
-        
-        .document-link:hover {
-          background: var(--vscode-button-secondaryHoverBackground);
-          text-decoration: none;
-          transform: translateY(-1px);
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .document-link::before {
-          content: "🔗";
-          font-size: 14px;
-        }
-        
-        /* Document content section */
-        .document-content {
-          margin-top: 32px;
-        }
-        
-        .document-content h3 {
-          color: var(--vscode-foreground);
-          font-size: 1.25rem;
-          font-weight: 600;
-          margin: 0 0 16px 0;
-          padding-bottom: 8px;
-          border-bottom: 1px solid var(--vscode-panel-border);
+        /* Document-specific styles */
+        .plain-text-content {
+          background: var(--vscode-textCodeBlock-background);
+          border: 1px solid var(--vscode-panel-border);
+          border-radius: var(--webview-radius-lg);
+          padding: var(--webview-space-xl);
+          white-space: pre-wrap;
+          font-family: var(--webview-mono-font-family);
+          line-height: 1.7;
+          overflow-x: auto;
+          font-size: var(--webview-font-size-sm);
         }
         
         .content-type-indicator {
           display: inline-block;
           background: var(--vscode-button-secondaryBackground);
           color: var(--vscode-button-secondaryForeground);
-          padding: 3px 8px;
-          border-radius: 12px;
-          font-size: 0.75rem;
+          padding: 3px var(--webview-space-sm);
+          border-radius: var(--webview-radius-xl);
+          font-size: var(--webview-font-size-xs);
           font-weight: 500;
-          margin-left: 8px;
-        }
-        
-        .plain-text-content {
-          background: var(--vscode-textCodeBlock-background);
-          border: 1px solid var(--vscode-panel-border);
-          border-radius: 8px;
-          padding: 20px;
-          white-space: pre-wrap;
-          font-family: var(--vscode-editor-font-family);
-          line-height: 1.7;
-          overflow-x: auto;
-          font-size: 0.9rem;
-        }
-        
-        .no-content {
-          color: var(--vscode-descriptionForeground);
-          font-style: italic;
-          text-align: center;
-          padding: 40px 24px;
-          background: var(--vscode-editor-inactiveSelectionBackground);
-          border-radius: 8px;
-          border: 2px dashed var(--vscode-panel-border);
-          font-size: 0.95rem;
-        }
-        
-        /* Document info card with better styling */
-        .document-info {
-          background: var(--vscode-editor-inactiveSelectionBackground);
-          border-left: 4px solid var(--vscode-textBlockQuote-border);
-          padding: 20px;
-          margin: 24px 0;
-          border-radius: 0 8px 8px 0;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .document-info h3 {
-          margin: 0 0 16px 0;
-          color: var(--vscode-foreground);
-          font-size: 1.1rem;
-          font-weight: 600;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        
-        .document-info h3::before {
-          content: "ℹ️";
-          font-size: 16px;
-          color: var(--vscode-textBlockQuote-border);
-        }
-        
-        .document-info p {
-          margin: 10px 0;
-          color: var(--vscode-foreground);
-          line-height: 1.5;
-          font-size: 0.9rem;
-        }
-        
-        .document-info strong {
-          color: var(--vscode-foreground);
-          font-weight: 600;
-        }
-        
-        /* Enhanced ProseMirror content styles matching markdown styling */
-        .prosemirror-content {
-          line-height: 1.7;
-          color: var(--vscode-foreground);
-          font-size: 0.95rem;
-        }
-        
-        /* Typography hierarchy consistent with markdown */
-        .prosemirror-content h1,
-        .prosemirror-content h2,
-        .prosemirror-content h3,
-        .prosemirror-content h4,
-        .prosemirror-content h5,
-        .prosemirror-content h6 {
-          color: var(--vscode-foreground);
-          margin-top: 32px;
-          margin-bottom: 20px;
-          font-weight: 600;
-          line-height: 1.3;
-        }
-        
-        .prosemirror-content h1 {
-          font-size: 1.75rem;
-          border-bottom: 2px solid var(--vscode-panel-border);
-          padding-bottom: 12px;
-          margin-top: 0;
-        }
-        
-        .prosemirror-content h2 {
-          font-size: 1.5rem;
-          border-bottom: 1px solid var(--vscode-panel-border);
-          padding-bottom: 10px;
-        }
-        
-        .prosemirror-content h3 {
-          font-size: 1.25rem;
-        }
-        
-        .prosemirror-content h4 {
-          font-size: 1.1rem;
-        }
-        
-        .prosemirror-content h5 {
-          font-size: 1rem;
-        }
-        
-        .prosemirror-content h6 {
-          font-size: 0.95rem;
-          color: var(--vscode-descriptionForeground);
-        }
-        
-        /* Better paragraph and list spacing */
-        .prosemirror-content p {
-          margin-bottom: 20px;
-          line-height: 1.7;
-        }
-        
-        .prosemirror-content ul,
-        .prosemirror-content ol {
-          margin-bottom: 20px;
-          padding-left: 28px;
-        }
-        
-        .prosemirror-content li {
-          margin-bottom: 6px;
-          line-height: 1.6;
-        }
-        
-        .prosemirror-content ul li {
-          list-style-type: disc;
-        }
-        
-        .prosemirror-content ul ul li {
-          list-style-type: circle;
-        }
-        
-        .prosemirror-content ul ul ul li {
-          list-style-type: square;
-        }
-        
-        /* Enhanced text formatting */
-        .prosemirror-content strong {
-          font-weight: 600;
-          color: var(--vscode-foreground);
-        }
-        
-        .prosemirror-content em {
-          font-style: italic;
-        }
-        
-        .prosemirror-content u {
-          text-decoration: underline;
-        }
-        
-        .prosemirror-content del {
-          text-decoration: line-through;
-        }
-        
-        /* Enhanced code styling */
-        .prosemirror-content code {
-          background: var(--vscode-textCodeBlock-background);
-          color: var(--vscode-textPreformat-foreground);
-          padding: 3px 6px;
-          border-radius: 4px;
-          font-family: var(--vscode-editor-font-family);
-          font-size: 0.9em;
-          border: 1px solid var(--vscode-panel-border);
-        }
-        
-        .prosemirror-content pre {
-          background: var(--vscode-textCodeBlock-background);
-          border: 1px solid var(--vscode-panel-border);
-          border-radius: 8px;
-          padding: 20px;
-          overflow-x: auto;
-          margin: 24px 0;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .prosemirror-content pre code {
-          background: none;
-          padding: 0;
-          border: none;
-          font-size: 0.9rem;
-          line-height: 1.5;
-        }
-        
-        /* Enhanced blockquote styling */
-        .prosemirror-content blockquote {
-          margin: 24px 0;
-          padding: 16px 20px;
-          color: var(--vscode-descriptionForeground);
-          border-left: 4px solid var(--vscode-textBlockQuote-border);
-          background: var(--vscode-textBlockQuote-background);
-          border-radius: 0 6px 6px 0;
-          font-style: italic;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        /* Enhanced table styling unified */
-        .prosemirror-content table,
-        .document-table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 24px 0;
-          border: 2px solid var(--vscode-panel-border);
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .prosemirror-content table th,
-        .prosemirror-content table td,
-        .document-table th,
-        .document-table td {
-          border: 1px solid var(--vscode-panel-border);
-          padding: 12px 16px;
-          text-align: left;
-          vertical-align: top;
-        }
-        
-        .prosemirror-content table th,
-        .document-table th {
-          background: var(--vscode-editor-inactiveSelectionBackground);
-          font-weight: 600;
-          color: var(--vscode-foreground);
-          border-bottom: 2px solid var(--vscode-panel-border);
-        }
-        
-        .prosemirror-content table td,
-        .document-table td {
-          color: var(--vscode-foreground);
-        }
-        
-        .prosemirror-content table tr:nth-child(even),
-        .document-table tr:nth-child(even) {
-          background: var(--vscode-editor-inactiveSelectionBackground);
-        }
-        
-        .prosemirror-content table tr:hover,
-        .document-table tr:hover {
-          background: var(--vscode-list-hoverBackground);
-        }
-        
-        /* Enhanced link styling */
-        .prosemirror-content a {
-          color: var(--vscode-textLink-foreground);
-          text-decoration: none;
-          border-bottom: 1px solid transparent;
-          transition: all 0.2s ease;
-        }
-        
-        .prosemirror-content a:hover {
-          color: var(--vscode-textLink-activeForeground);
-          border-bottom-color: var(--vscode-textLink-activeForeground);
-        }
-        
-        /* Horizontal rule styling */
-        .prosemirror-content hr {
-          border: none;
-          height: 2px;
-          background: linear-gradient(to right, transparent, var(--vscode-panel-border), transparent);
-          margin: 32px 0;
-        }
-        
-        /* Improved refresh button with VS Code styling */
-        .refresh-button {
-          background: var(--vscode-button-secondaryBackground);
-          color: var(--vscode-button-secondaryForeground);
-          border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
-          border-radius: 6px;
-          padding: 8px 12px;
-          margin-left: 16px;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-          min-width: 36px;
-          min-height: 36px;
-          font-size: 0.875rem;
-          font-weight: 500;
-          gap: 6px;
-        }
-        
-        .refresh-button:hover {
-          background: var(--vscode-button-secondaryHoverBackground);
-          border-color: var(--vscode-button-border);
-          transform: translateY(-1px);
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .refresh-button:active {
-          background: var(--vscode-button-secondaryHoverBackground);
-          transform: translateY(0);
-          box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-        }
-        
-        .refresh-button .codicon {
-          font-size: 14px;
-          color: var(--vscode-button-secondaryForeground);
-        }
-        
-        .refresh-button::before {
-          content: "🔄";
-          font-size: 14px;
-        }
-        
-        /* Embedded image styles */
-        .embedded-image {
-          max-width: 100%;
-          height: auto;
-          border-radius: 4px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        
-        /* Error message styles */
-        .attachment-error {
-          padding: 16px;
-          border: 1px dashed var(--vscode-panel-border);
-          border-radius: 4px;
-          color: var(--vscode-descriptionForeground);
-          text-align: center;
-          font-style: italic;
+          margin-left: var(--webview-space-sm);
         }
     `;
 
@@ -474,23 +76,23 @@ export class DocumentWebview {
       <html lang="en">
       ${WebviewHelper.getHtmlHead(webview, extensionUri, `Document: ${displayTitle}`, additionalStyles, nonce)}
       <body>
-        <div class="document-header">
+        <div class="webview-header">
           <h1>
             ${WebviewHelper.escapeHtml(displayTitle)}
             <button class="refresh-button" id="refreshButton" title="Refresh document content">
+              <span class="codicon codicon-refresh"></span>
             </button>
           </h1>
-          <div class="document-meta">
+          <div class="webview-meta">
             ${document.created ? `<span class="meta-item">Created: ${new Date(document.created).toLocaleDateString()}</span>` : ''}
             ${document.createdUser ? `<span class="meta-item">Creator: ${WebviewHelper.escapeHtml(document.createdUser.name)}</span>` : ''}
             ${document.updated ? `<span class="meta-item">Updated: ${new Date(document.updated).toLocaleDateString()}</span>` : ''}
             ${document.updatedUser ? `<span class="meta-item">Updated by: ${WebviewHelper.escapeHtml(document.updatedUser.name)}</span>` : ''}
-            ${baseUrl && document.id ? `<a href="${docUrl}" class="document-link" target="_blank">Open in Backlog</a>` : ''}
+            ${fullBaseUrl && document.id ? `<a href="#" class="external-link" data-url="${docUrl}">🔗 Open in Backlog</a>` : ''}
           </div>
         </div>
 
-
-        <div class="document-info">
+        <div class="info-card">
           <h3>Document Information</h3>
           <p><strong>Name:</strong> ${WebviewHelper.escapeHtml(displayTitle)}</p>
           ${document.created ? `<p><strong>Created:</strong> ${new Date(document.created).toLocaleDateString()} ${new Date(document.created).toLocaleTimeString()}</p>` : ''}
@@ -499,7 +101,7 @@ export class DocumentWebview {
           ${document.updatedUser ? `<p><strong>Last Updated by:</strong> ${WebviewHelper.escapeHtml(document.updatedUser.name)}</p>` : ''}
         </div>
 
-        <div class="document-content">
+        <div class="content-section">
           <h3>Content</h3>
           <div class="prosemirror-content">
             ${contentHtml}
@@ -509,28 +111,36 @@ export class DocumentWebview {
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
           
-          // Handle refresh button click
-          document.addEventListener('DOMContentLoaded', function() {
-            const refreshButton = document.getElementById('refreshButton');
-            if (refreshButton) {
-              refreshButton.addEventListener('click', function() {
-                vscode.postMessage({
-                  command: 'refreshDocument',
-                  documentId: '${document.id || ''}'
-                });
-              });
-            }
-          });
-          
-          // Handle external link clicks
+          // Handle all clicks
           document.addEventListener('click', function(event) {
             const target = event.target;
-            if (target && target.tagName === 'A' && target.href && target.target === '_blank') {
+            
+            // Handle refresh button click
+            if (target.closest('#refreshButton')) {
               event.preventDefault();
+              event.stopPropagation();
+              console.log('Refresh button clicked');
               vscode.postMessage({
-                command: 'openExternal',
-                url: target.href
+                command: 'refreshDocument',
+                documentId: '${document.id || ''}'
               });
+              return false;
+            }
+            
+            // Handle external link clicks
+            const linkTarget = target.closest('a[data-url]');
+            if (linkTarget) {
+              event.preventDefault();
+              event.stopPropagation();
+              const url = linkTarget.getAttribute('data-url');
+              if (url) {
+                console.log('Opening external URL via VS Code:', url);
+                vscode.postMessage({
+                  command: 'openExternal',
+                  url: url
+                });
+              }
+              return false;
             }
           });
         </script>
@@ -549,7 +159,7 @@ export class DocumentWebview {
   ): Promise<string> {
     // Download all attachments and convert to data URLs
     const processedAttachments: Array<{ id: number; name: string; dataUrl: string }> = [];
-    
+
     if (document.attachments && document.attachments.length > 0) {
       for (const attachment of document.attachments) {
         try {
@@ -557,7 +167,7 @@ export class DocumentWebview {
           const mimeType = this.getMimeTypeFromFileName(attachment.name);
           const base64Data = buffer.toString('base64');
           const dataUrl = `data:${mimeType};base64,${base64Data}`;
-          
+
           processedAttachments.push({
             id: attachment.id,
             name: attachment.name,
@@ -582,7 +192,7 @@ export class DocumentWebview {
    * Convert ProseMirror JSON to HTML
    */
   private static async convertProseMirrorToHtml(
-    node: Record<string, any>,
+    node: Record<string, unknown>,
     configService: ConfigService,
     backlogApi: BacklogApiService,
     document: Entity.Document.Document
@@ -592,13 +202,14 @@ export class DocumentWebview {
     }
 
     // Handle text nodes
-    if (node.text) {
+    if (typeof node.text === 'string') {
       let text = WebviewHelper.escapeHtml(node.text);
 
       // Apply text marks (bold, italic, links, etc.)
       if (node.marks && Array.isArray(node.marks)) {
         for (const mark of node.marks) {
-          switch (mark.type) {
+          const markObj = mark as { type: string; attrs?: { href?: string } };
+          switch (markObj.type) {
             case 'strong':
               text = `<strong>${text}</strong>`;
               break;
@@ -614,10 +225,11 @@ export class DocumentWebview {
             case 'strike':
               text = `<del>${text}</del>`;
               break;
-            case 'link':
-              const href = mark.attrs?.href || '#';
+            case 'link': {
+              const href = markObj.attrs?.href || '#';
               text = `<a href="${WebviewHelper.escapeHtml(href)}" target="_blank">${text}</a>`;
               break;
+            }
           }
         }
       }
@@ -649,7 +261,8 @@ export class DocumentWebview {
         break;
 
       case 'heading': {
-        const level = node.attrs?.level || 1;
+        const attrs = node.attrs as { level?: number } | undefined;
+        const level = attrs?.level || 1;
         const headingTag = `h${Math.min(Math.max(level, 1), 6)}`;
         html += `<${headingTag}>`;
         if (node.content && Array.isArray(node.content)) {
@@ -672,7 +285,8 @@ export class DocumentWebview {
         break;
 
       case 'orderedList': {
-        const start = node.attrs?.start || 1;
+        const attrs = node.attrs as { start?: number } | undefined;
+        const start = attrs?.start || 1;
         html += `<ol${start !== 1 ? ` start="${start}"` : ''}>`;
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
@@ -704,7 +318,8 @@ export class DocumentWebview {
         break;
 
       case 'codeBlock': {
-        const language = node.attrs?.language || '';
+        const attrs = node.attrs as { language?: string } | undefined;
+        const language = attrs?.language || '';
         html += '<pre>';
         if (language) {
           html += `<code class="language-${WebviewHelper.escapeHtml(language)}">`;
@@ -743,8 +358,9 @@ export class DocumentWebview {
       case 'tableCell':
       case 'tableHeader': {
         const tag = node.type === 'tableHeader' ? 'th' : 'td';
-        const colspan = node.attrs?.colspan || 1;
-        const rowspan = node.attrs?.rowspan || 1;
+        const attrs = node.attrs as { colspan?: number; rowspan?: number } | undefined;
+        const colspan = attrs?.colspan || 1;
+        const rowspan = attrs?.rowspan || 1;
         const colspanAttr = colspan > 1 ? ` colspan="${colspan}"` : '';
         const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
 
@@ -768,49 +384,44 @@ export class DocumentWebview {
 
       case 'image': {
         // Handle embedded images
-        const src = node.attrs?.src || '';
-        const alt = node.attrs?.alt || '';
-        const title = node.attrs?.title || '';
+        const attrs = node.attrs as { src?: string; alt?: string; title?: string } | undefined;
+        const src = attrs?.src || '';
+        const alt = attrs?.alt || '';
+        const title = attrs?.title || '';
 
         if (src) {
-          // Check if it's a Backlog attachment reference
-          if (src.startsWith('/api/v2/attachments/')) {
-            try {
-              // Extract attachment ID from URL
-              const attachmentIdStr = src.split('/').pop();
-              const attachmentId = attachmentIdStr ? parseInt(attachmentIdStr, 10) : null;
+          try {
+            // Extract attachment ID from URL
+            const attachmentIdStr = src.split('/').pop();
+            const attachmentId = attachmentIdStr ? parseInt(attachmentIdStr, 10) : null;
 
-              if (attachmentId && !isNaN(attachmentId) && document.id) {
-                // Find the attachment info in document.attachments
-                const attachment = document.attachments?.find(att => att.id === attachmentId);
+            if (attachmentId && !isNaN(attachmentId) && document.id) {
+              // Find the attachment info in document.attachments
+              const attachment = document.attachments?.find(att => att.id === attachmentId);
 
-                if (attachment) {
-                  // Download and embed the attachment as base64 data URL
-                  const base64Image = await this.downloadAndEncodeAttachment(
-                    document.id,
-                    attachmentId,
-                    attachment.name,
-                    backlogApi
-                  );
+              if (attachment) {
+                // Download and embed the attachment as base64 data URL
+                const base64Image = await this.downloadAndEncodeAttachment(
+                  document.id,
+                  attachmentId,
+                  attachment.name,
+                  backlogApi
+                );
 
-                  if (base64Image) {
-                    html += `<img src="${base64Image}" alt="${WebviewHelper.escapeHtml(alt)}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
-                  } else {
-                    html += `<div class="attachment-error">Failed to load image attachment: ${WebviewHelper.escapeHtml(attachment.name)}</div>`;
-                  }
+                if (base64Image) {
+                  html += `<img src="${base64Image}" alt="${WebviewHelper.escapeHtml(alt)}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
                 } else {
-                  html += `<div class="attachment-error">Image attachment not found in document attachments</div>`;
+                  html += `<div class="attachment-error">Failed to load image attachment: ${WebviewHelper.escapeHtml(attachment.name)}</div>`;
                 }
               } else {
-                html += `<div class="attachment-error">Invalid attachment ID in image source</div>`;
+                html += `<div class="attachment-error">Image attachment not found in document attachments</div>`;
               }
-            } catch (error) {
-              console.log('Failed to load attachment:', error);
-              html += `<div class="attachment-error">Failed to load image attachment</div>`;
+            } else {
+              html += `<div class="attachment-error">Invalid attachment ID in image source</div>`;
             }
-          } else {
-            // Regular image URL
-            html += `<img src="${WebviewHelper.escapeHtml(src)}" alt="${WebviewHelper.escapeHtml(alt)}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
+          } catch (error) {
+            console.log('Failed to load attachment:', error);
+            html += `<div class="attachment-error">Failed to load image attachment</div>`;
           }
         }
         break;
@@ -907,32 +518,4 @@ export class DocumentWebview {
     return mimeTypes[extension] || 'application/octet-stream';
   }
 
-  /**
-   * Extract text content from ProseMirror JSON structure
-   */
-  private static extractTextFromProseMirror(node: Record<string, unknown>): string {
-    if (!node) {
-      return '';
-    }
-
-    let text = '';
-
-    // If this node has text content
-    if (node.text) {
-      text += node.text;
-    }
-
-    // Process child nodes
-    if (node.content && Array.isArray(node.content)) {
-      for (const child of node.content) {
-        text += this.extractTextFromProseMirror(child);
-        // Add line breaks for paragraph nodes
-        if (child.type === 'paragraph') {
-          text += '\n\n';
-        }
-      }
-    }
-
-    return text;
-  }
 }
