@@ -12,6 +12,8 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
   private filteredWikis: Entity.Wiki.WikiListItem[] = [];
   private wikiTree: WikiTreeItem[] = [];
   private currentProjectId: number | null = null;
+  private wikiNotAvailable: boolean = false;
+  private errorMessage: string | null = null;
 
   // Wiki検索
   private searchQuery: string = '';
@@ -55,7 +57,47 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
     }
 
     if (!element) {
-      // Root level - show filtered wikis
+      // Root level
+      
+      // Wiki機能が利用できない場合はメッセージを表示
+      if (this.wikiNotAvailable) {
+        const messageItem = new WikiTreeItem(
+          {
+            id: 0,
+            name: 'Wiki機能が利用できません',
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            createdUser: { 
+              id: 0, 
+              userId: 'system',
+              name: 'System',
+              roleType: 1,
+              lang: 'ja',
+              mailAddress: '',
+              lastLoginTime: new Date().toISOString()
+            },
+            updatedUser: { 
+              id: 0, 
+              userId: 'system',
+              name: 'System',
+              roleType: 1,
+              lang: 'ja',
+              mailAddress: '',
+              lastLoginTime: new Date().toISOString()
+            },
+            tags: [],
+            projectId: this.currentProjectId || 0
+          } as unknown as Entity.Wiki.WikiListItem,
+          vscode.TreeItemCollapsibleState.None
+        );
+        messageItem.iconPath = new vscode.ThemeIcon('info', new vscode.ThemeColor('foreground'));
+        messageItem.contextValue = 'wikiNotAvailable';
+        messageItem.command = undefined;
+        messageItem.tooltip = 'このプロジェクトではWiki機能が有効になっていません';
+        return [messageItem];
+      }
+      
+      // show filtered wikis
       return this.filteredWikis.map((wiki) => new WikiTreeItem(wiki));
     }
 
@@ -112,14 +154,33 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
       return;
     }
 
+    // Reset flags
+    this.wikiNotAvailable = false;
+    this.errorMessage = null;
+
     try {
       const wikis = await this.backlogApi.getWikiPages(this.currentProjectId);
       this.wikis = wikis;
       this.applyFilters();
     } catch (error) {
-      console.error('Error loading wikis:', error);
-      vscode.window.showErrorMessage(`Failed to load wikis: ${error}`);
       this.wikis = [];
+      
+      // Improve error message for common cases
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes('Not Found') || errorMessage.includes('404')) {
+        // Wiki機能が有効でない場合
+        this.wikiNotAvailable = true;
+        this.errorMessage = errorMessage;
+        console.log('Wiki feature may not be enabled for this project:', this.currentProjectId);
+        // エラーメッセージは表示しない（Wiki機能が無効なプロジェクトは正常）
+      } else {
+        // その他のエラーの場合のみ表示
+        this.errorMessage = errorMessage;
+        console.error('Error loading wikis:', error);
+        vscode.window.showErrorMessage(`Failed to load wikis: ${errorMessage}`);
+      }
+      
       this.applyFilters();
     }
   }

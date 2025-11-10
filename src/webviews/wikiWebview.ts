@@ -113,7 +113,6 @@ export class WikiWebview {
             if (target.closest('#refreshButton')) {
               event.preventDefault();
               event.stopPropagation();
-              console.log('Refresh button clicked');
               vscode.postMessage({
                 command: 'refreshWiki',
                 wikiId: '${wiki.id || ''}'

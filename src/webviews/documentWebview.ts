@@ -31,15 +31,6 @@ export class DocumentWebview {
     const fullBaseUrl = baseUrl ? (baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`) : null;
     const docUrl = fullBaseUrl && document.id && projectKey ? `${fullBaseUrl}/document/${projectKey}/${document.id}` : '#';
 
-    // Debug logging for URL generation
-    console.log('DocumentWebview URL Debug:', {
-      originalBaseUrl: baseUrl,
-      fullBaseUrl,
-      documentId: document.id,
-      projectKey,
-      generatedUrl: docUrl
-    });
-
     // Get the display title, handling both tree nodes and document entities
     const displayTitle = document.title || 'Unnamed Document';
 
@@ -103,7 +94,7 @@ export class DocumentWebview {
 
         <div class="content-section">
           <h3>Content</h3>
-          <div class="prosemirror-content">
+          <div class="content-body markdown-content">
             ${contentHtml}
           </div>
         </div>
@@ -119,7 +110,6 @@ export class DocumentWebview {
             if (target.closest('#refreshButton')) {
               event.preventDefault();
               event.stopPropagation();
-              console.log('Refresh button clicked');
               vscode.postMessage({
                 command: 'refreshDocument',
                 documentId: '${document.id || ''}'

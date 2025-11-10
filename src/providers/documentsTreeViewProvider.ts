@@ -14,6 +14,8 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   private documentTree: DocumentTree | null = null;
   private currentProjectId: number | null = null;
   private currentProjectKey: string | null = null;
+  private documentNotAvailable: boolean = false;
+  private errorMessage: string | null = null;
 
   constructor(private backlogApi: BacklogApiService) { }
 
@@ -62,7 +64,29 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
     }
 
     if (!element) {
-      // Root level - show activeTree's children directly
+      // Root level
+
+      // Document機能が利用できない場合はメッセージを表示
+      if (this.documentNotAvailable) {
+        const messageItem = new DocumentTreeItem(
+          {
+            id: '0',
+            name: 'Document機能が利用できません',
+            statusId: 0,
+            updated: new Date().toISOString(),
+            emoji: undefined,
+            children: []
+          } as Entity.Document.DocumentTreeNode,
+          vscode.TreeItemCollapsibleState.None
+        );
+        messageItem.iconPath = new vscode.ThemeIcon('info', new vscode.ThemeColor('foreground'));
+        messageItem.contextValue = 'documentNotAvailable';
+        messageItem.command = undefined;
+        messageItem.tooltip = 'このプロジェクトではDocument機能が有効になっていません';
+        return [messageItem];
+      }
+
+      // show activeTree's children directly
       if (!this.documentTree || !this.documentTree.activeTree || !this.documentTree.activeTree.children) {
         return [];
       }
@@ -95,14 +119,31 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
       return;
     }
 
+    // Reset flags
+    this.documentNotAvailable = false;
+    this.errorMessage = null;
+
     try {
       const documentTree = await this.backlogApi.getDocuments(this.currentProjectId);
       this.documentTree = documentTree;
     } catch (error) {
       this.documentTree = null;
-      vscode.window.showErrorMessage(
-        `Failed to load documents: ${error instanceof Error ? error.message : error}`
-      );
+
+      // Improve error message for common cases
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      if (errorMessage.includes('Not Found') || errorMessage.includes('404')) {
+        // Document機能が有効でない場合
+        this.documentNotAvailable = true;
+        this.errorMessage = errorMessage;
+        // エラーメッセージは表示しない（Document機能が無効なプロジェクトは正常）
+      } else {
+        // その他のエラーの場合のみ表示
+        this.errorMessage = errorMessage;
+        vscode.window.showErrorMessage(
+          `Failed to load documents: ${errorMessage}`
+        );
+      }
     }
   }
 

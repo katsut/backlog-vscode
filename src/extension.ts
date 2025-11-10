@@ -520,15 +520,9 @@ export function activate(context: vscode.ExtensionContext) {
 
         // ドキュメント詳細を取得してWebviewの内容を設定
         try {
-          let projectKey = '';
 
-          // プロジェクト情報を取得してプロジェクトキーを特定
-          try {
-            // 現在フォーカス中のプロジェクトのキーを取得
-            projectKey = backlogDocumentsProvider.getCurrentProjectKey() || '';
-          } catch (error) {
-            console.log('Could not get project key:', error);
-          }
+          // 現在フォーカス中のプロジェクトのキーを取得
+          const projectKey = backlogDocumentsProvider.getCurrentProjectKey() || '';
 
           // ドキュメントIDを使って詳細情報を必ず取得
           if (!document.id) {
@@ -558,12 +552,8 @@ export function activate(context: vscode.ExtensionContext) {
                     // Fetch updated document details
                     const refreshedDocument = await backlogApi.getDocument(message.documentId);
                     // Get project key
-                    let refreshProjectKey = '';
-                    try {
-                      refreshProjectKey = backlogDocumentsProvider.getCurrentProjectKey() || '';
-                    } catch (error) {
-                      console.log('Could not get project key for refresh:', error);
-                    }
+                    const refreshProjectKey = backlogDocumentsProvider.getCurrentProjectKey() || '';
+
                     // Update webview content
                     panel.webview.html = await DocumentWebview.getWebviewContent(
                       panel.webview,
@@ -716,47 +706,131 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (issueKey) {
         try {
-          // 課題キーからプロジェクトキーを抽出
-          const [projectKey] = issueKey.trim().split('-');
+          const trimmedKey = issueKey.trim();
 
-          // プロジェクト一覧を取得してプロジェクトIDを見つける
-          const projects = await backlogApi.getProjects();
-          const project = projects.find(
-            (p: Entity.Project.Project) => p.projectKey.toLowerCase() === projectKey.toLowerCase()
-          );
-
-          if (!project) {
-            vscode.window.showErrorMessage(`Project not found: ${projectKey}`);
+          // 既に開いているWebviewがあるかチェック
+          const existingPanel = openIssueWebviews.get(trimmedKey);
+          if (existingPanel) {
+            existingPanel.reveal(vscode.ViewColumn.One);
             return;
           }
 
-          // MCPサーバーを使用して課題を検索
+          // 新しいWebviewを作成
+          const panel = vscode.window.createWebviewPanel(
+            'backlogIssue',
+            `Issue ${trimmedKey}`,
+            vscode.ViewColumn.One,
+            {
+              enableScripts: true,
+              retainContextWhenHidden: true,
+              localResourceRoots: [context.extensionUri],
+            }
+          );
+
+          // Webviewを追跡に追加
+          openIssueWebviews.set(trimmedKey, panel);
+
+          // パネルが閉じられた時に追跡から削除
+          panel.onDidDispose(() => {
+            openIssueWebviews.delete(trimmedKey);
+          });
+
+          // 読み込み中表示
+          panel.webview.html = WebviewHelper.getLoadingWebviewContent('Loading issue...');
+
           try {
-            const issueSearchResult = await vscode.commands.executeCommand(
-              'backlog.searchIssueByKey',
-              issueKey.trim()
-            );
-            if (issueSearchResult) {
-              await vscode.commands.executeCommand('backlog.openIssue', issueSearchResult);
-              return;
-            }
-          } catch (mcpError) {
-            console.log('MCP search failed, trying direct API approach:', mcpError);
-          }
+            let issueSearchResult: Entity.Issue.Issue | null = null;
+            const projectKey = trimmedKey.split('-')[0];
 
-          // フォールバック: プロジェクトの課題一覧から検索
-          await backlogIssuesProvider.setProject(project.id);
-
-          // 少し待ってから課題一覧を取得
-          setTimeout(async () => {
             try {
-              // Issues viewを通じて課題を検索
-              await backlogIssuesProvider.searchIssues(issueKey.trim());
-            } catch (error) {
-              console.error('Error searching issues:', error);
-              vscode.window.showErrorMessage(`Failed to search for issue: ${issueKey}`);
+              // Get projects and find the matching project
+              const projects = await backlogApi.getProjects();
+              const project = projects.find(
+                (p: Entity.Project.Project) => p.projectKey.toLowerCase() === projectKey.toLowerCase()
+              );
+
+              if (project) {
+                // Focus the project first
+                await vscode.commands.executeCommand('backlog.focusProject', project.id);
+
+                // Search for the specific issue by key
+                const issues = await backlogApi.getProjectIssues(project.id, {
+                  keyword: trimmedKey
+                });
+
+                // Find exact match
+                issueSearchResult = issues.find((issue: Entity.Issue.Issue) =>
+                  issue.issueKey === trimmedKey
+                ) || null;
+              }
+            } catch (apiError) {
+              console.error('API search failed:', apiError);
             }
-          }, 1000);
+
+            if (issueSearchResult) {
+              // プロジェクトがフォーカスされていない場合はフォーカス
+              const projectKey = trimmedKey.split('-')[0];
+              const projects = await backlogApi.getProjects();
+              const project = projects.find(
+                (p: Entity.Project.Project) => p.projectKey.toLowerCase() === projectKey.toLowerCase()
+              );
+
+              if (project) {
+                // プロジェクトをフォーカス（既にフォーカス済みでも問題なし）
+                await vscode.commands.executeCommand('backlog.focusProject', project.id);
+              }
+
+              // 課題詳細とコメントを取得
+              const [issueDetail, issueComments] = await Promise.all([
+                backlogApi.getIssue(issueSearchResult.id),
+                backlogApi.getIssueComments(issueSearchResult.id)
+              ]);
+
+              panel.webview.html = IssueWebview.getWebviewContent(
+                panel.webview,
+                context.extensionUri,
+                issueDetail,
+                issueComments,
+                configService.getBaseUrl()
+              );
+
+              // Handle messages from the webview
+              panel.webview.onDidReceiveMessage(
+                async message => {
+                  switch (message.command) {
+                    case 'openExternal':
+                      vscode.env.openExternal(vscode.Uri.parse(message.url));
+                      break;
+                    case 'refreshIssue':
+                      try {
+                        const [refreshedIssue, refreshedComments] = await Promise.all([
+                          backlogApi.getIssue(message.issueId),
+                          backlogApi.getIssueComments(message.issueId)
+                        ]);
+                        panel.webview.html = IssueWebview.getWebviewContent(
+                          panel.webview,
+                          context.extensionUri,
+                          refreshedIssue,
+                          refreshedComments,
+                          configService.getBaseUrl()
+                        );
+                      } catch (error) {
+                        console.error('Error refreshing issue:', error);
+                        vscode.window.showErrorMessage(`Failed to refresh issue: ${error}`);
+                      }
+                      break;
+                  }
+                },
+                undefined,
+                context.subscriptions
+              );
+            } else {
+              panel.webview.html = WebviewHelper.getErrorWebviewContent(`Issue not found: ${trimmedKey}. Please check the issue key and project permissions.`);
+            }
+          } catch (error) {
+            console.error('Failed to find issue:', error);
+            panel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to find issue: ${trimmedKey}. Error: ${error}`);
+          }
         } catch (error) {
           console.error('Error in openIssueByKey:', error);
           vscode.window.showErrorMessage(`Failed to open issue: ${error}`);
