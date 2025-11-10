@@ -539,9 +539,9 @@ export class IssueWebview {
   private static formatChangeHistory(comment: Entity.Issue.Comment): string {
     // Check all possible properties for change information
     const commentWithExtended = comment as Entity.Issue.Comment & {
-      changeLog?: ChangeLogEntry[] | ChangeLogEntry;
-      changes?: ChangeLogEntry[];
-      notifications?: NotificationEntry[];
+      changeLog?: Entity.ChangeLog.IssueChangeLog[] | Entity.ChangeLog.IssueChangeLog;
+      changes?: Entity.ChangeLog.IssueChangeLog[];
+      notifications?: Entity.Notification.Notification[];
       statusId?: number;
       assigneeId?: number;
       priorityId?: number;
@@ -550,7 +550,7 @@ export class IssueWebview {
     };
 
     // Try different property names for change information
-    let changeData: ChangeLogEntry[] | null = null;
+    let changeData: Entity.ChangeLog.IssueChangeLog[] | null = null;
     if (commentWithExtended.changeLog && Array.isArray(commentWithExtended.changeLog)) {
       changeData = commentWithExtended.changeLog;
     } else if (commentWithExtended.changes && Array.isArray(commentWithExtended.changes)) {
@@ -560,7 +560,7 @@ export class IssueWebview {
     }
 
     if (changeData && changeData.length > 0) {
-      const changes = changeData.map((change: ChangeLogEntry) => {
+      const changes = changeData.map((change: Entity.ChangeLog.IssueChangeLog) => {
         return this.formatIndividualChange(change);
       }).join('');
 
@@ -569,7 +569,7 @@ export class IssueWebview {
 
     // Check if there are notifications or other change indicators
     if (commentWithExtended.notifications && Array.isArray(commentWithExtended.notifications)) {
-      const notifications = commentWithExtended.notifications.map((notif: NotificationEntry) => {
+      const notifications = commentWithExtended.notifications.map((notif: Entity.Notification.Notification) => {
         return `<div class="change-item">
           <span class="change-icon">🔔</span>
           <span class="change-text">${WebviewHelper.escapeHtml(String(notif))}</span>
