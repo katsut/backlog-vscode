@@ -132,11 +132,11 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
       // Improve error message for common cases
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      if (errorMessage.includes('Not Found') || errorMessage.includes('404')) {
-        // Document機能が有効でない場合
+      if (errorMessage.includes('Not Found') || errorMessage.includes('404') || errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+        // Document機能が有効でない場合、またはアクセス権限がない場合
         this.documentNotAvailable = true;
         this.errorMessage = errorMessage;
-        // エラーメッセージは表示しない（Document機能が無効なプロジェクトは正常）
+        // エラーメッセージは表示しない（Document機能が無効なプロジェクトやアクセス権限がない場合は正常）
       } else {
         // その他のエラーの場合のみ表示
         this.errorMessage = errorMessage;

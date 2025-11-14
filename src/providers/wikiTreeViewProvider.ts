@@ -168,12 +168,12 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
       // Improve error message for common cases
       const errorMessage = error instanceof Error ? error.message : String(error);
       
-      if (errorMessage.includes('Not Found') || errorMessage.includes('404')) {
-        // Wiki機能が有効でない場合
+      if (errorMessage.includes('Not Found') || errorMessage.includes('404') || errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+        // Wiki機能が有効でない場合、またはアクセス権限がない場合
         this.wikiNotAvailable = true;
         this.errorMessage = errorMessage;
-        console.log('Wiki feature may not be enabled for this project:', this.currentProjectId);
-        // エラーメッセージは表示しない（Wiki機能が無効なプロジェクトは正常）
+        console.log('Wiki feature may not be enabled or accessible for this project:', this.currentProjectId);
+        // エラーメッセージは表示しない（Wiki機能が無効なプロジェクトやアクセス権限がない場合は正常）
       } else {
         // その他のエラーの場合のみ表示
         this.errorMessage = errorMessage;
