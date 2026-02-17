@@ -29,20 +29,7 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
     const { meta, body } = this.syncService.parseFrontmatter(text);
     const title = meta.title || path.basename(document.uri.fsPath, '.bdoc');
 
-    webviewPanel.webview.html = DocumentEditorWebview.getWebviewContent(
-      webviewPanel.webview,
-      this.context.extensionUri,
-      {
-        title,
-        backlogId: meta.backlog_id || '',
-        project: meta.project || '',
-        syncedAt: meta.synced_at || '',
-        updatedAt: meta.updated_at || '',
-        filePath: document.uri.fsPath,
-      },
-      body
-    );
-
+    // Register message handler BEFORE setting HTML to avoid race condition
     webviewPanel.webview.onDidReceiveMessage(
       async (message) => {
         switch (message.command) {
@@ -80,8 +67,26 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
             break;
           }
           case 'requestPreview': {
-            const html = this.markdownRenderer.renderMarkdown(message.content);
+            // 相対パスの画像/リンクを Backlog の絶対URLに変換
+            let processedContent = message.content;
+            const domain = this.configService.getDomain();
+            if (domain) {
+              const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
+              // ](/path...) → ](https://host/path...)
+              processedContent = processedContent.replace(
+                /(\]\()\/([^)]+)/g,
+                `$1https://${hostOnly}/$2`
+              );
+            }
+            const html = this.markdownRenderer.renderMarkdown(processedContent);
             webviewPanel.webview.postMessage({ type: 'previewReady', html });
+            break;
+          }
+          case 'diff': {
+            await vscode.commands.executeCommand(
+              'backlog.documentSync.diff',
+              document.uri.fsPath
+            );
             break;
           }
           case 'copyAndOpen': {
@@ -90,7 +95,8 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
             const currentMeta = this.syncService.parseFrontmatter(document.getText()).meta;
             if (domain && currentMeta.backlog_id) {
               const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
-              const url = `https://${hostOnly}/alias/document/${currentMeta.backlog_id}`;
+              const projectKey = currentMeta.project || '';
+              const url = `https://${hostOnly}/document/${projectKey}/${currentMeta.backlog_id}`;
               await vscode.env.openExternal(vscode.Uri.parse(url));
             }
             vscode.window.showInformationMessage(
@@ -102,6 +108,33 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
       },
       undefined,
       this.context.subscriptions
+    );
+
+    // Pre-render preview HTML so it's available immediately
+    let processedBody = body;
+    const domainForPreview = this.configService.getDomain();
+    if (domainForPreview) {
+      const hostOnly = domainForPreview.replace(/https?:\/\//, '').split('/')[0];
+      processedBody = processedBody.replace(
+        /(\]\()\/([^)]+)/g,
+        `$1https://${hostOnly}/$2`
+      );
+    }
+    const initialPreviewHtml = this.markdownRenderer.renderMarkdown(processedBody);
+
+    webviewPanel.webview.html = DocumentEditorWebview.getWebviewContent(
+      webviewPanel.webview,
+      this.context.extensionUri,
+      {
+        title,
+        backlogId: meta.backlog_id || '',
+        project: meta.project || '',
+        syncedAt: meta.synced_at || '',
+        updatedAt: meta.updated_at || '',
+        filePath: document.uri.fsPath,
+      },
+      body,
+      initialPreviewHtml
     );
   }
 }

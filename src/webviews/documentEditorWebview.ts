@@ -15,7 +15,8 @@ export class DocumentEditorWebview {
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
     meta: DocumentEditorMeta,
-    content: string
+    content: string,
+    initialPreviewHtml?: string
   ): string {
     const nonce = WebviewHelper.getNonce();
 
@@ -88,7 +89,34 @@ export class DocumentEditorWebview {
       }
       .dirty-dot.visible { display: inline-block; }
 
-      .toolbar-btn {
+      /* Tab switcher for Edit/Preview */
+      .tab-group {
+        display: inline-flex;
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: var(--webview-radius-sm);
+        overflow: hidden;
+      }
+      .tab-btn {
+        padding: 3px 12px;
+        font-size: var(--webview-font-size-sm);
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        border: none;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.1s, color 0.1s;
+      }
+      .tab-btn:hover { background: var(--vscode-list-hoverBackground); }
+      .tab-btn.active {
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+      }
+      .tab-btn + .tab-btn {
+        border-left: 1px solid var(--vscode-panel-border);
+      }
+
+      /* Action buttons */
+      .action-btn {
         padding: 3px 10px;
         font-size: var(--webview-font-size-sm);
         background: var(--vscode-button-secondaryBackground);
@@ -98,16 +126,12 @@ export class DocumentEditorWebview {
         cursor: pointer;
         white-space: nowrap;
       }
-      .toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
-      .toolbar-btn.active {
+      .action-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
+      .action-btn.primary {
         background: var(--vscode-button-background);
         color: var(--vscode-button-foreground);
       }
-      .toolbar-btn.primary {
-        background: var(--vscode-button-background);
-        color: var(--vscode-button-foreground);
-      }
-      .toolbar-btn.primary:hover { background: var(--vscode-button-hoverBackground); }
+      .action-btn.primary:hover { background: var(--vscode-button-hoverBackground); }
       .toolbar-separator {
         width: 1px;
         height: 18px;
@@ -120,6 +144,10 @@ export class DocumentEditorWebview {
         overflow: hidden;
         position: relative;
       }
+
+      #editor, #preview { display: none; }
+      .mode-edit #editor { display: block; }
+      .mode-preview #preview { display: block; }
 
       #editor {
         width: 100%;
@@ -143,7 +171,13 @@ export class DocumentEditorWebview {
         box-sizing: border-box;
         padding: var(--webview-space-md) var(--webview-space-lg);
         overflow-y: auto;
-        display: none;
+        background: linear-gradient(135deg, rgba(46, 160, 67, 0.03) 0%, rgba(46, 160, 67, 0.06) 100%);
+        border-left: 3px solid rgba(46, 160, 67, 0.25);
+      }
+      #preview .markdown-image {
+        max-width: 100%;
+        height: auto;
+        border-radius: var(--webview-radius-sm);
       }
 
       .status-bar {
@@ -171,17 +205,19 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
         ${syncedDate ? `<span class="sync-info">Synced: ${syncedDate}</span>` : ''}
       </div>
       <div class="toolbar-right">
-        <button class="toolbar-btn active" id="btnEdit">Edit</button>
-        <button class="toolbar-btn" id="btnPreview">Preview</button>
-        <span class="toolbar-separator"></span>
-        <button class="toolbar-btn primary" id="btnSave" title="Ctrl+S">Save</button>
-        ${hasBacklogId ? '<button class="toolbar-btn" id="btnCopyOpen">Copy &amp; Open</button>' : ''}
+        <div class="tab-group">
+          <button class="tab-btn" id="btnEdit">Edit</button>
+          <button class="tab-btn active" id="btnPreview">Preview</button>
+        </div>
+        ${hasBacklogId ? `<span class="toolbar-separator"></span>
+        <button class="action-btn" id="btnDiff">Diff</button>
+        <button class="action-btn primary" id="btnCopyOpen">Copy &amp; Open</button>` : ''}
       </div>
     </div>
 
-    <div class="content-area">
+    <div class="content-area mode-preview" id="contentArea">
       <textarea id="editor" spellcheck="false">${escapedContent}</textarea>
-      <div id="preview" class="markdown-content"></div>
+      <div id="preview" class="markdown-content">${initialPreviewHtml || ''}</div>
     </div>
 
     <div class="status-bar">
@@ -193,6 +229,7 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+    const contentArea = document.getElementById('contentArea');
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const dirtyDot = document.getElementById('dirtyDot');
@@ -200,12 +237,12 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
     const charCount = document.getElementById('charCount');
     const btnEdit = document.getElementById('btnEdit');
     const btnPreview = document.getElementById('btnPreview');
-    const btnSave = document.getElementById('btnSave');
+    const btnDiff = document.getElementById('btnDiff');
     const btnCopyOpen = document.getElementById('btnCopyOpen');
 
     let isDirty = false;
     let savedContent = editor.value;
-    let mode = 'edit'; // 'edit' or 'preview'
+    let mode = 'preview';
 
     function updateCharCount() {
       const len = editor.value.length;
@@ -220,17 +257,14 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
 
     function switchMode(newMode) {
       mode = newMode;
+      contentArea.className = 'content-area mode-' + mode;
       if (mode === 'edit') {
-        editor.style.display = 'block';
-        preview.style.display = 'none';
         btnEdit.classList.add('active');
         btnPreview.classList.remove('active');
+        editor.focus();
       } else {
-        editor.style.display = 'none';
-        preview.style.display = 'block';
         btnEdit.classList.remove('active');
         btnPreview.classList.add('active');
-        // Request preview rendering from extension
         vscode.postMessage({ command: 'requestPreview', content: editor.value });
         preview.innerHTML = '<p style="color:var(--vscode-descriptionForeground);">Rendering...</p>';
       }
@@ -262,9 +296,11 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
     btnEdit.addEventListener('click', function() { switchMode('edit'); });
     btnPreview.addEventListener('click', function() { switchMode('preview'); });
 
-    btnSave.addEventListener('click', function() {
-      vscode.postMessage({ command: 'save', content: editor.value });
-    });
+    if (btnDiff) {
+      btnDiff.addEventListener('click', function() {
+        vscode.postMessage({ command: 'diff' });
+      });
+    }
 
     if (btnCopyOpen) {
       btnCopyOpen.addEventListener('click', function() {
@@ -298,8 +334,12 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
       }
     });
 
-    // Initial state
+    // Initial state — default to Preview mode
     updateCharCount();
+    // Request preview only if not already pre-rendered
+    if (!preview.innerHTML.trim()) {
+      vscode.postMessage({ command: 'requestPreview', content: editor.value });
+    }
   </script>
 </body>
 </html>`;
