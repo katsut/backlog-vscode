@@ -207,6 +207,12 @@
         "command": "backlog.toggleFavorite",
         "title": "Toggle Favorite",
         "icon": "$(star)"
+      },
+      {
+        "command": "backlog.editDocumentSyncMapping",
+        "title": "Edit Document Sync Mappings",
+        "icon": "$(settings-gear)",
+        "category": "Backlog"
       }
     ],
     "menus": {

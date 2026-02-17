@@ -15,6 +15,7 @@ import { WikiWebview } from './webviews/wikiWebview';
 import { DocumentSyncCommands } from './commands/documentSyncCommands';
 import { BacklogRemoteContentProvider } from './providers/backlogRemoteContentProvider';
 import { SyncService } from './services/syncService';
+import { SyncMappingEditorWebview } from './webviews/syncMappingEditorWebview';
 
 let backlogTreeViewProvider: BacklogTreeViewProvider;
 let backlogWebviewProvider: BacklogWebviewProvider;
@@ -952,6 +953,122 @@ export function activate(context: vscode.ExtensionContext) {
     (filePath?: string) => syncCommands.push(filePath)
   );
 
+  // Edit Document Sync Mapping editor
+  let mappingEditorPanel: vscode.WebviewPanel | undefined;
+  const editDocumentSyncMappingCommand = vscode.commands.registerCommand(
+    'backlog.editDocumentSyncMapping',
+    async () => {
+      if (mappingEditorPanel) {
+        mappingEditorPanel.reveal(vscode.ViewColumn.One);
+        return;
+      }
+
+      mappingEditorPanel = vscode.window.createWebviewPanel(
+        'backlogSyncMappingEditor',
+        'Document Sync Mapping',
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [context.extensionUri],
+        }
+      );
+
+      mappingEditorPanel.onDidDispose(() => {
+        mappingEditorPanel = undefined;
+      });
+
+      try {
+        const projects = await backlogApi.getProjects();
+        const currentProjectKey = backlogDocumentsProvider.getCurrentProjectKey();
+        let documentTree = null;
+
+        if (currentProjectKey) {
+          const project = projects.find(p => p.projectKey === currentProjectKey);
+          if (project) {
+            try {
+              documentTree = await backlogApi.getDocuments(project.id);
+            } catch {
+              // Documents may be disabled for this project
+            }
+          }
+        }
+
+        const mappings = configService.getDocumentSyncMappings();
+        mappingEditorPanel.webview.html = SyncMappingEditorWebview.getWebviewContent(
+          mappingEditorPanel.webview,
+          context.extensionUri,
+          projects,
+          documentTree,
+          mappings,
+          currentProjectKey || undefined
+        );
+
+        mappingEditorPanel.webview.onDidReceiveMessage(
+          async (message) => {
+            if (!mappingEditorPanel) { return; }
+
+            switch (message.command) {
+              case 'selectProject': {
+                let tree = null;
+                try {
+                  tree = await backlogApi.getDocuments(message.projectId);
+                } catch {
+                  // Documents may be disabled for this project
+                }
+                const currentMappings = configService.getDocumentSyncMappings();
+                mappingEditorPanel.webview.html = SyncMappingEditorWebview.getWebviewContent(
+                  mappingEditorPanel.webview,
+                  context.extensionUri,
+                  projects,
+                  tree,
+                  currentMappings,
+                  message.projectKey
+                );
+                break;
+              }
+              case 'addMapping': {
+                await configService.addDocumentSyncMapping({
+                  localPath: message.localPath,
+                  projectKey: message.projectKey,
+                  documentNodeId: message.documentNodeId,
+                  documentNodeName: message.documentNodeName,
+                });
+                // Re-fetch tree to update mapped badges
+                let addTree = null;
+                try {
+                  const proj = projects.find(p => p.projectKey === message.projectKey);
+                  if (proj) { addTree = await backlogApi.getDocuments(proj.id); }
+                } catch { /* ignore */ }
+                mappingEditorPanel.webview.html = SyncMappingEditorWebview.getWebviewContent(
+                  mappingEditorPanel.webview, context.extensionUri,
+                  projects, addTree, configService.getDocumentSyncMappings(), message.projectKey
+                );
+                break;
+              }
+              case 'removeMapping': {
+                await configService.removeDocumentSyncMapping(
+                  message.projectKey,
+                  message.documentNodeId
+                );
+                const updatedMappings = configService.getDocumentSyncMappings();
+                mappingEditorPanel.webview.postMessage({
+                  type: 'updateMappings',
+                  mappingsHtml: SyncMappingEditorWebview.renderMappings(updatedMappings),
+                });
+                break;
+              }
+            }
+          },
+          undefined,
+          context.subscriptions
+        );
+      } catch (error) {
+        mappingEditorPanel.webview.html = WebviewHelper.getErrorWebviewContent(`Failed to load: ${error}`);
+      }
+    }
+  );
+
   // Register webview provider
   const webviewProvider = vscode.window.registerWebviewViewProvider(
     'backlogIssueDetail',
@@ -992,6 +1109,7 @@ export function activate(context: vscode.ExtensionContext) {
     syncDiffCommand,
     syncCopyAndOpenCommand,
     syncPushCommand,
+    editDocumentSyncMappingCommand,
     webviewProvider
   );
 
