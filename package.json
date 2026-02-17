@@ -112,8 +112,9 @@
       },
       {
         "command": "backlog.openSettings",
-        "title": "Settings",
-        "icon": "$(gear)"
+        "title": "Open Settings",
+        "icon": "$(gear)",
+        "category": "Backlog"
       },
       {
         "command": "backlog.setApiKey",
@@ -166,6 +167,46 @@
         "command": "backlog.openIssueByKey",
         "title": "Open Issue by Key",
         "category": "Backlog"
+      },
+      {
+        "command": "backlog.setDocumentSyncMapping",
+        "title": "Set Document Sync Mapping",
+        "icon": "$(link)"
+      },
+      {
+        "command": "backlog.documentSync.pull",
+        "title": "Pull Documents from Backlog",
+        "icon": "$(cloud-download)",
+        "category": "Backlog"
+      },
+      {
+        "command": "backlog.documentSync.status",
+        "title": "Show Document Sync Status",
+        "icon": "$(sync)",
+        "category": "Backlog"
+      },
+      {
+        "command": "backlog.documentSync.diff",
+        "title": "Diff with Remote Backlog Document",
+        "icon": "$(diff)",
+        "category": "Backlog"
+      },
+      {
+        "command": "backlog.documentSync.copyAndOpen",
+        "title": "Copy to Clipboard & Open in Backlog",
+        "icon": "$(link-external)",
+        "category": "Backlog"
+      },
+      {
+        "command": "backlog.documentSync.push",
+        "title": "Push New Document to Backlog",
+        "icon": "$(cloud-upload)",
+        "category": "Backlog"
+      },
+      {
+        "command": "backlog.toggleFavorite",
+        "title": "Toggle Favorite",
+        "icon": "$(star)"
       }
     ],
     "menus": {
@@ -240,6 +281,33 @@
           "when": "view == backlogDocuments",
           "group": "navigation@2"
         }
+      ],
+      "view/item/context": [
+        {
+          "command": "backlog.toggleFavorite",
+          "when": "view == backlogProjects && viewItem =~ /^(project|favoriteProject)$/",
+          "group": "favorites@1"
+        },
+        {
+          "command": "backlog.setDocumentSyncMapping",
+          "when": "view == backlogDocuments && viewItem =~ /^(documentFolder|documentWithChildren)$/",
+          "group": "sync@1"
+        },
+        {
+          "command": "backlog.documentSync.pull",
+          "when": "view == backlogDocuments && viewItem =~ /^(documentFolder|documentWithChildren)$/",
+          "group": "sync@2"
+        },
+        {
+          "command": "backlog.documentSync.diff",
+          "when": "view == backlogDocuments && viewItem == document",
+          "group": "sync@3"
+        },
+        {
+          "command": "backlog.documentSync.copyAndOpen",
+          "when": "view == backlogDocuments && viewItem == document",
+          "group": "sync@4"
+        }
       ]
     },
     "keybindings": [
@@ -271,6 +339,42 @@
           "type": "number",
           "default": 300,
           "description": "Auto refresh interval (seconds)"
+        },
+        "backlog.favoriteProjects": {
+          "type": "array",
+          "default": [],
+          "description": "お気に入りプロジェクトの projectKey リスト",
+          "items": {
+            "type": "string"
+          }
+        },
+        "backlog.documentSync.mappings": {
+          "type": "array",
+          "default": [],
+          "description": "Backlog ドキュメントとローカルディレクトリのマッピング設定",
+          "items": {
+            "type": "object",
+            "required": ["localPath", "projectKey", "documentNodeId"],
+            "properties": {
+              "localPath": {
+                "type": "string",
+                "description": "ワークスペースからの相対パス (例: docs/design)"
+              },
+              "projectKey": {
+                "type": "string",
+                "description": "Backlog プロジェクトキー (例: BNN)"
+              },
+              "documentNodeId": {
+                "type": "string",
+                "description": "マッピング先の Backlog ドキュメントノード ID"
+              },
+              "documentNodeName": {
+                "type": "string",
+                "description": "ドキュメントノード名 (表示用、自動設定)"
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     }
@@ -283,7 +387,9 @@
     "lint": "eslint src --ext ts",
     "lint:fix": "eslint src --ext ts --fix",
     "test": "node ./out/test/runTest.js",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "package": "vsce package",
+    "install:local": "npm run compile && vsce package && code --install-extension backlog-vscode-0.0.1.vsix && echo 'Installed! Reload VSCode to apply.'"
   },
   "devDependencies": {
     "@types/node": "16.x",

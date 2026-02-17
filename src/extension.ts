@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Entity } from 'backlog-js';
-import { BacklogTreeViewProvider } from './providers/treeViewProvider';
+import { BacklogTreeViewProvider, ProjectTreeItem } from './providers/treeViewProvider';
 import { BacklogWebviewProvider } from './providers/webviewProvider';
 import { BacklogProjectsWebviewProvider } from './providers/projectsWebviewProvider';
 import { BacklogIssuesTreeViewProvider } from './providers/issuesTreeViewProvider';
@@ -12,6 +12,9 @@ import { WebviewHelper } from './webviews/common';
 import { DocumentWebview } from './webviews/documentWebview';
 import { IssueWebview } from './webviews/issueWebview';
 import { WikiWebview } from './webviews/wikiWebview';
+import { DocumentSyncCommands } from './commands/documentSyncCommands';
+import { BacklogRemoteContentProvider } from './providers/backlogRemoteContentProvider';
+import { SyncService } from './services/syncService';
 
 let backlogTreeViewProvider: BacklogTreeViewProvider;
 let backlogWebviewProvider: BacklogWebviewProvider;
@@ -27,13 +30,14 @@ const openIssueWebviews: Map<string, vscode.WebviewPanel> = new Map();
 const openDocumentWebviews: Map<string, vscode.WebviewPanel> = new Map();
 
 export function activate(context: vscode.ExtensionContext) {
+  console.log('Backlog extension activating...');
   let configService: ConfigService;
   let backlogApi: BacklogApiService;
 
   try {
     configService = new ConfigService(context.secrets);
     backlogApi = new BacklogApiService(configService);
-    backlogTreeViewProvider = new BacklogTreeViewProvider(backlogApi);
+    backlogTreeViewProvider = new BacklogTreeViewProvider(backlogApi, configService);
     backlogWebviewProvider = new BacklogWebviewProvider(context.extensionUri, backlogApi);
   } catch (error) {
     console.error('ERROR during extension activation:', error);
@@ -41,16 +45,11 @@ export function activate(context: vscode.ExtensionContext) {
     return;
   }
 
-  try {
-    backlogProjectsWebviewProvider = new BacklogProjectsWebviewProvider(context.extensionUri, backlogApi);
-    backlogIssuesProvider = new BacklogIssuesTreeViewProvider(backlogApi);
-    backlogWikiProvider = new BacklogWikiTreeViewProvider(backlogApi);
-    backlogDocumentsProvider = new BacklogDocumentsTreeViewProvider(backlogApi);
-  } catch (error) {
-    console.error('ERROR during additional providers initialization:', error);
-    vscode.window.showErrorMessage(`Backlog Extension failed to initialize providers: ${error}`);
-    return;
-  }
+  backlogProjectsWebviewProvider = new BacklogProjectsWebviewProvider(context.extensionUri, backlogApi);
+  backlogIssuesProvider = new BacklogIssuesTreeViewProvider(backlogApi);
+  backlogWikiProvider = new BacklogWikiTreeViewProvider(backlogApi);
+  const syncService = new SyncService();
+  backlogDocumentsProvider = new BacklogDocumentsTreeViewProvider(backlogApi, configService, syncService);
 
   const projectsTreeView = vscode.window.createTreeView('backlogProjects', {
     treeDataProvider: backlogTreeViewProvider,
@@ -839,6 +838,122 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // Toggle Favorite command
+  const toggleFavoriteCommand = vscode.commands.registerCommand(
+    'backlog.toggleFavorite',
+    (item: ProjectTreeItem) => {
+      if (item?.project?.projectKey) {
+        backlogTreeViewProvider.toggleFavorite(item.project.projectKey);
+      }
+    }
+  );
+
+  // Set Document Sync Mapping command
+  const setDocumentSyncMappingCommand = vscode.commands.registerCommand(
+    'backlog.setDocumentSyncMapping',
+    async (item?: { document?: { id?: string; name?: string } }) => {
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        vscode.window.showWarningMessage('ワークスペースを開いてください。');
+        return;
+      }
+
+      const projectKey = backlogDocumentsProvider.getCurrentProjectKey();
+      if (!projectKey) {
+        vscode.window.showWarningMessage('プロジェクトをフォーカスしてください。');
+        return;
+      }
+
+      // ドキュメントノード情報を取得 (右クリックから or 手動入力)
+      let documentNodeId: string | undefined;
+      let documentNodeName: string | undefined;
+
+      if (item?.document?.id) {
+        documentNodeId = item.document.id;
+        documentNodeName = item.document.name;
+      } else {
+        documentNodeId = await vscode.window.showInputBox({
+          prompt: 'Backlog ドキュメントノード ID を入力',
+          placeHolder: '例: 01934345404771adb2113d7792bb4351',
+        });
+        if (!documentNodeId) {
+          return;
+        }
+      }
+
+      // ローカルディレクトリの選択
+      const selected = await vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        defaultUri: workspaceFolders[0].uri,
+        openLabel: 'Select sync directory',
+      });
+
+      if (!selected || selected.length === 0) {
+        return;
+      }
+
+      const workspaceRoot = workspaceFolders[0].uri.fsPath;
+      const selectedPath = selected[0].fsPath;
+
+      // ワークスペースからの相対パスに変換
+      let localPath: string;
+      if (selectedPath.startsWith(workspaceRoot)) {
+        localPath = selectedPath.substring(workspaceRoot.length + 1) || '.';
+      } else {
+        vscode.window.showWarningMessage('ワークスペース内のディレクトリを選択してください。');
+        return;
+      }
+
+      await configService.addDocumentSyncMapping({
+        localPath,
+        projectKey,
+        documentNodeId,
+        documentNodeName,
+      });
+
+      vscode.window.showInformationMessage(
+        `マッピングを設定しました: ${localPath} ↔ ${documentNodeName || documentNodeId}`
+      );
+    }
+  );
+
+  // Register remote content provider for diff view
+  const remoteContentProvider = new BacklogRemoteContentProvider(backlogApi);
+  const remoteProviderDisposable = vscode.workspace.registerTextDocumentContentProvider(
+    'backlog-remote',
+    remoteContentProvider
+  );
+
+  // Document sync commands
+  const syncCommands = new DocumentSyncCommands(backlogApi, configService, remoteContentProvider);
+
+  const syncPullCommand = vscode.commands.registerCommand(
+    'backlog.documentSync.pull',
+    () => syncCommands.pull()
+  );
+
+  const syncStatusCommand = vscode.commands.registerCommand(
+    'backlog.documentSync.status',
+    () => syncCommands.status()
+  );
+
+  const syncDiffCommand = vscode.commands.registerCommand(
+    'backlog.documentSync.diff',
+    (filePath?: string) => syncCommands.diff(filePath)
+  );
+
+  const syncCopyAndOpenCommand = vscode.commands.registerCommand(
+    'backlog.documentSync.copyAndOpen',
+    (filePath?: string) => syncCommands.copyAndOpen(filePath)
+  );
+
+  const syncPushCommand = vscode.commands.registerCommand(
+    'backlog.documentSync.push',
+    (filePath?: string) => syncCommands.push(filePath)
+  );
+
   // Register webview provider
   const webviewProvider = vscode.window.registerWebviewViewProvider(
     'backlogIssueDetail',
@@ -871,6 +986,14 @@ export function activate(context: vscode.ExtensionContext) {
     openIssueAfterMCPOperation,
     openProjectByKeyCommand,
     openIssueByKeyCommand,
+    toggleFavoriteCommand,
+    setDocumentSyncMappingCommand,
+    remoteProviderDisposable,
+    syncPullCommand,
+    syncStatusCommand,
+    syncDiffCommand,
+    syncCopyAndOpenCommand,
+    syncPushCommand,
     webviewProvider
   );
 

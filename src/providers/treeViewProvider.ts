@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
+import { ConfigService } from '../services/configService';
 import { Entity } from 'backlog-js';
 
 export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem> {
@@ -26,7 +27,7 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   private sortBy: 'updated' | 'created' | 'priority' | 'status' | 'summary' = 'updated';
   private sortOrder: 'asc' | 'desc' = 'desc';
 
-  constructor(private backlogApi: BacklogApiService) {
+  constructor(private backlogApi: BacklogApiService, private configService: ConfigService) {
     this.loadInitialData().catch(error => {
       console.error('Error in loadInitialData from constructor:', error);
     });
@@ -67,9 +68,15 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
           ];
         }
       }
-      // 通常時はプロジェクト一覧を表示（検索フィルタ適用）
+      // 通常時はプロジェクト一覧を表示（検索フィルタ適用、お気に入り優先）
       const displayProjects = this.searchQuery ? this.filteredProjects : this.projects;
-      return displayProjects.map((project) => new ProjectTreeItem(project));
+      const favorites = this.configService.getFavoriteProjects();
+      const sorted = [...displayProjects].sort((a, b) => {
+        const aFav = favorites.includes(a.projectKey) ? 0 : 1;
+        const bFav = favorites.includes(b.projectKey) ? 0 : 1;
+        return aFav - bFav;
+      });
+      return sorted.map((project) => new ProjectTreeItem(project, favorites.includes(project.projectKey)));
     }
 
     if (element instanceof CategoryTreeItem) {
@@ -158,6 +165,11 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
       vscode.window.showErrorMessage(`Failed to load Backlog projects: ${error instanceof Error ? error.message : error}`);
     }
 
+    this._onDidChangeTreeData.fire();
+  }
+
+  async toggleFavorite(projectKey: string): Promise<void> {
+    await this.configService.toggleFavoriteProject(projectKey);
     this._onDidChangeTreeData.fire();
   }
 
@@ -345,14 +357,17 @@ export class TreeItem extends vscode.TreeItem {
 }
 
 export class ProjectTreeItem extends TreeItem {
-  constructor(public readonly project: Entity.Project.Project) {
+  constructor(public readonly project: Entity.Project.Project, public readonly isFavorite: boolean = false) {
+    const icon = isFavorite
+      ? new vscode.ThemeIcon('star-full', new vscode.ThemeColor('charts.yellow'))
+      : new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.blue'));
     super(
       `${project.projectKey}: ${project.name}`,
       vscode.TreeItemCollapsibleState.None,
       `${project.name} (${project.projectKey})\nClick to focus on this project`,
-      new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.blue'))
+      icon
     );
-    this.contextValue = 'project';
+    this.contextValue = isFavorite ? 'favoriteProject' : 'project';
 
     // クリックでプロジェクトにフォーカス
     this.command = {

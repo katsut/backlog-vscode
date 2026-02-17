@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { DocumentSyncMapping } from '../types/backlog';
 
 export class ConfigService {
   private readonly configSection = 'backlog';
@@ -68,5 +69,68 @@ export class ConfigService {
     }
     // Remove trailing slash and /api/v2 if present
     return apiUrl.replace(/\/(api\/v2\/?)?$/, '');
+  }
+
+  getFavoriteProjects(): string[] {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<string[]>('favoriteProjects', []);
+  }
+
+  isFavoriteProject(projectKey: string): boolean {
+    return this.getFavoriteProjects().includes(projectKey);
+  }
+
+  async toggleFavoriteProject(projectKey: string): Promise<boolean> {
+    const favorites = this.getFavoriteProjects();
+    const index = favorites.indexOf(projectKey);
+    if (index >= 0) {
+      favorites.splice(index, 1);
+      await vscode.workspace
+        .getConfiguration(this.configSection)
+        .update('favoriteProjects', favorites, vscode.ConfigurationTarget.Global);
+      return false;
+    } else {
+      favorites.push(projectKey);
+      await vscode.workspace
+        .getConfiguration(this.configSection)
+        .update('favoriteProjects', favorites, vscode.ConfigurationTarget.Global);
+      return true;
+    }
+  }
+
+  getDocumentSyncMappings(): DocumentSyncMapping[] {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<DocumentSyncMapping[]>('documentSync.mappings', []);
+  }
+
+  getMappingForProject(projectKey: string): DocumentSyncMapping | undefined {
+    return this.getDocumentSyncMappings().find((m) => m.projectKey === projectKey);
+  }
+
+  async addDocumentSyncMapping(mapping: DocumentSyncMapping): Promise<void> {
+    const mappings = this.getDocumentSyncMappings();
+    // 同じプロジェクト+ノードの既存マッピングを置換
+    const idx = mappings.findIndex(
+      (m) => m.projectKey === mapping.projectKey && m.documentNodeId === mapping.documentNodeId
+    );
+    if (idx >= 0) {
+      mappings[idx] = mapping;
+    } else {
+      mappings.push(mapping);
+    }
+    await vscode.workspace
+      .getConfiguration(this.configSection)
+      .update('documentSync.mappings', mappings, vscode.ConfigurationTarget.Workspace);
+  }
+
+  async removeDocumentSyncMapping(projectKey: string, documentNodeId: string): Promise<void> {
+    const mappings = this.getDocumentSyncMappings().filter(
+      (m) => !(m.projectKey === projectKey && m.documentNodeId === documentNodeId)
+    );
+    await vscode.workspace
+      .getConfiguration(this.configSection)
+      .update('documentSync.mappings', mappings, vscode.ConfigurationTarget.Workspace);
   }
 }
