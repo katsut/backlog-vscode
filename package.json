@@ -389,7 +389,19 @@
           }
         }
       }
-    }
+    },
+    "customEditors": [
+      {
+        "viewType": "backlog.bdocEditor",
+        "displayName": "Backlog Document Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.bdoc"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

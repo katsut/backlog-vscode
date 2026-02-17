@@ -18,6 +18,7 @@ import { SyncService } from './services/syncService';
 import { SyncMappingEditorWebview } from './webviews/syncMappingEditorWebview';
 import { DocumentEditorWebview } from './webviews/documentEditorWebview';
 import { MarkdownRenderer } from './utils/markdownRenderer';
+import { BacklogDocumentEditorProvider } from './providers/backlogDocumentEditorProvider';
 import * as fs from 'fs';
 
 let backlogTreeViewProvider: BacklogTreeViewProvider;
@@ -1096,9 +1097,19 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  // Document Editor command
-  const openDocumentEditors: Map<string, vscode.WebviewPanel> = new Map();
+  // Custom editor provider for .bdoc files
   const markdownRenderer = MarkdownRenderer.getInstance();
+  const bdocEditorProvider = new BacklogDocumentEditorProvider(
+    context, syncService, configService, markdownRenderer
+  );
+  const bdocEditorRegistration = vscode.window.registerCustomEditorProvider(
+    BacklogDocumentEditorProvider.viewType,
+    bdocEditorProvider,
+    { webviewOptions: { retainContextWhenHidden: true } }
+  );
+
+  // Document Editor command (fallback for .bdoc files opened via command)
+  const openDocumentEditors: Map<string, vscode.WebviewPanel> = new Map();
 
   const documentSyncEditCommand = vscode.commands.registerCommand(
     'backlog.documentSync.edit',
@@ -1110,8 +1121,8 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       const filePath = activeEditor.document.uri.fsPath;
-      if (!filePath.endsWith('.md')) {
-        vscode.window.showWarningMessage('Markdown ファイル (.md) を開いてください。');
+      if (!filePath.endsWith('.bdoc') && !filePath.endsWith('.md')) {
+        vscode.window.showWarningMessage('.bdoc または .md ファイルを開いてください。');
         return;
       }
 
@@ -1125,7 +1136,7 @@ export function activate(context: vscode.ExtensionContext) {
       const text = fs.readFileSync(filePath, 'utf-8');
       const { meta, body } = syncService.parseFrontmatter(text);
 
-      const title = meta.title || require('path').basename(filePath, '.md');
+      const title = meta.title || require('path').basename(filePath, filePath.endsWith('.bdoc') ? '.bdoc' : '.md');
 
       const panel = vscode.window.createWebviewPanel(
         'backlogDocumentEditor',
@@ -1247,6 +1258,7 @@ export function activate(context: vscode.ExtensionContext) {
     syncPushCommand,
     editDocumentSyncMappingCommand,
     documentSyncEditCommand,
+    bdocEditorRegistration,
     webviewProvider
   );
 
