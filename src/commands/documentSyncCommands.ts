@@ -5,6 +5,7 @@ import { BacklogApiService } from '../services/backlogApi';
 import { ConfigService } from '../services/configService';
 import { SyncService } from '../services/syncService';
 import { BacklogRemoteContentProvider } from '../providers/backlogRemoteContentProvider';
+import { SyncFileDecorationProvider } from '../providers/syncFileDecorationProvider';
 import { DocumentSyncMapping, SyncManifest } from '../types/backlog';
 import { Entity } from 'backlog-js';
 
@@ -15,7 +16,8 @@ export class DocumentSyncCommands {
   constructor(
     private backlogApi: BacklogApiService,
     private configService: ConfigService,
-    private remoteContentProvider: BacklogRemoteContentProvider
+    private remoteContentProvider: BacklogRemoteContentProvider,
+    private decorationProvider?: SyncFileDecorationProvider
   ) {
     this.syncService = new SyncService();
   }
@@ -60,17 +62,41 @@ export class DocumentSyncCommands {
           const manifest = this.syncService.loadManifest(localDir);
           const total = flatNodes.length;
           let pulled = 0;
+          let unchanged = 0;
           let skipped = 0;
+          let deleted = 0;
+
+          // Build lookup: manifest backlog_id → remote_updated_at
+          // Also build reverse lookup: backlog_id → relativePath
+          const manifestByBacklogId = new Map<string, { updatedAt: string; relativePath: string }>();
+          for (const [relPath, entry] of Object.entries(manifest)) {
+            manifestByBacklogId.set(String(entry.backlog_id), {
+              updatedAt: entry.remote_updated_at,
+              relativePath: relPath,
+            });
+          }
+
+          // Track which backlog_ids exist in the remote tree
+          const remoteIds = new Set<string>();
 
           for (const node of flatNodes) {
             if (token.isCancellationRequested) {
               break;
             }
 
+            remoteIds.add(String(node.id));
+
             progress.report({
               increment: (1 / total) * 100,
-              message: `${node.name || node.id} (${pulled + skipped + 1}/${total})`,
+              message: `${node.name || node.id} (${pulled + unchanged + skipped + 1}/${total})`,
             });
+
+            // Skip documents whose remote updated_at hasn't changed
+            const existing = manifestByBacklogId.get(String(node.id));
+            if (existing && node.updated && existing.updatedAt === node.updated) {
+              unchanged++;
+              continue;
+            }
 
             try {
               await this.pullSingleDocument(
@@ -89,12 +115,37 @@ export class DocumentSyncCommands {
             await this.delay(100);
           }
 
+          // Remove local files for documents deleted on remote
+          for (const [relPath, entry] of Object.entries(manifest)) {
+            if (remoteIds.has(String(entry.backlog_id))) {
+              continue;
+            }
+            const absPath = path.join(localDir, relPath);
+            if (!fs.existsSync(absPath)) {
+              delete manifest[relPath];
+              deleted++;
+              continue;
+            }
+            // Only delete if no local modifications
+            const localHash = this.syncService.computeLocalFileHash(absPath);
+            if (localHash === entry.content_hash) {
+              fs.unlinkSync(absPath);
+              delete manifest[relPath];
+              deleted++;
+            } else {
+              console.log(`Keeping ${relPath}: locally modified but deleted on remote`);
+            }
+          }
+
           this.syncService.saveManifest(localDir, manifest);
           this.remoteContentProvider.invalidateCache();
+          this.decorationProvider?.refresh();
 
-          vscode.window.showInformationMessage(
-            `Pull 完了: ${pulled} 件取得, ${skipped} 件スキップ`
-          );
+          const parts = [`${pulled} 件更新`];
+          if (unchanged > 0) { parts.push(`${unchanged} 件変更なし`); }
+          if (deleted > 0) { parts.push(`${deleted} 件削除`); }
+          if (skipped > 0) { parts.push(`${skipped} 件スキップ`); }
+          vscode.window.showInformationMessage(`Pull 完了: ${parts.join(', ')}`);
         }
       );
     } finally {
@@ -248,7 +299,7 @@ export class DocumentSyncCommands {
     }
 
     const text = fs.readFileSync(targetPath, 'utf-8');
-    const { meta } = this.syncService.parseFrontmatter(text);
+    const { meta, body } = this.syncService.parseFrontmatter(text);
 
     if (!meta.backlog_id) {
       vscode.window.showWarningMessage(
@@ -260,6 +311,7 @@ export class DocumentSyncCommands {
     const projectKey = meta.project || 'UNKNOWN';
     const title = meta.title || path.basename(targetPath, '.bdoc');
 
+    // Clear caches to ensure fresh content
     this.remoteContentProvider.invalidateCache(meta.backlog_id);
 
     const remoteUri = BacklogRemoteContentProvider.buildUri(
@@ -267,14 +319,32 @@ export class DocumentSyncCommands {
       meta.backlog_id,
       title
     );
-    const localUri = vscode.Uri.file(targetPath);
 
-    await vscode.commands.executeCommand(
-      'vscode.diff',
-      remoteUri,
-      localUri,
-      `Backlog (Remote) ↔ Local: ${title}`
+    // Use backlog-local scheme with frontmatter-stripped body for clean diff
+    this.remoteContentProvider.setLocalBody(meta.backlog_id, body);
+    const localUri = BacklogRemoteContentProvider.buildUri(
+      projectKey,
+      meta.backlog_id,
+      title,
+      'backlog-local'
     );
+
+    // Notify VSCode that virtual document content has changed (bust cache)
+    this.remoteContentProvider.fireDidChange(remoteUri);
+    this.remoteContentProvider.fireDidChange(localUri);
+
+    try {
+      await vscode.commands.executeCommand(
+        'vscode.diff',
+        remoteUri,
+        localUri,
+        `Backlog (Remote) ↔ Local: ${title}`
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `Diff を開けませんでした: ${error instanceof Error ? error.message : error}`
+      );
+    }
   }
 
   async copyAndOpen(filePath?: string): Promise<void> {
@@ -305,7 +375,8 @@ export class DocumentSyncCommands {
     }
 
     const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
-    const url = `https://${hostOnly}/alias/document/${meta.backlog_id}`;
+    const projectKey = meta.project || 'UNKNOWN';
+    const url = `https://${hostOnly}/document/${projectKey}/${meta.backlog_id}`;
     await vscode.env.openExternal(vscode.Uri.parse(url));
 
     vscode.window.showInformationMessage(
@@ -392,6 +463,7 @@ export class DocumentSyncCommands {
         content_hash: this.syncService.computeHash(body),
       };
       this.syncService.saveManifest(localDir, manifest);
+      this.decorationProvider?.refresh();
 
       vscode.window.showInformationMessage(`"${title}" を Backlog に作成しました。`);
     } catch (error) {
