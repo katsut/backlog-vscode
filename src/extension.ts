@@ -19,6 +19,7 @@ import { SyncMappingEditorWebview } from './webviews/syncMappingEditorWebview';
 import { DocumentEditorWebview } from './webviews/documentEditorWebview';
 import { MarkdownRenderer } from './utils/markdownRenderer';
 import { BacklogDocumentEditorProvider } from './providers/backlogDocumentEditorProvider';
+import { SyncFileDecorationProvider } from './providers/syncFileDecorationProvider';
 import * as fs from 'fs';
 
 let backlogTreeViewProvider: BacklogTreeViewProvider;
@@ -922,15 +923,23 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  // Register remote content provider for diff view
+  // Register content providers for diff view
   const remoteContentProvider = new BacklogRemoteContentProvider(backlogApi);
   const remoteProviderDisposable = vscode.workspace.registerTextDocumentContentProvider(
     'backlog-remote',
     remoteContentProvider
   );
+  const localProviderDisposable = vscode.workspace.registerTextDocumentContentProvider(
+    'backlog-local',
+    remoteContentProvider
+  );
+
+  // File decoration provider for .bdoc sync status
+  const syncDecorationProvider = new SyncFileDecorationProvider(syncService, configService);
+  const decorationProviderDisposable = vscode.window.registerFileDecorationProvider(syncDecorationProvider);
 
   // Document sync commands
-  const syncCommands = new DocumentSyncCommands(backlogApi, configService, remoteContentProvider);
+  const syncCommands = new DocumentSyncCommands(backlogApi, configService, remoteContentProvider, syncDecorationProvider);
 
   const syncPullCommand = vscode.commands.registerCommand(
     'backlog.documentSync.pull',
@@ -1154,6 +1163,18 @@ export function activate(context: vscode.ExtensionContext) {
         openDocumentEditors.delete(filePath);
       });
 
+      // Pre-render preview HTML
+      let processedBody = body;
+      const domainForPreview = configService.getDomain();
+      if (domainForPreview) {
+        const hostOnly = domainForPreview.replace(/https?:\/\//, '').split('/')[0];
+        processedBody = processedBody.replace(
+          /(\]\()\/([^)]+)/g,
+          `$1https://${hostOnly}/$2`
+        );
+      }
+      const initialPreviewHtml = markdownRenderer.renderMarkdown(processedBody);
+
       panel.webview.html = DocumentEditorWebview.getWebviewContent(
         panel.webview,
         context.extensionUri,
@@ -1165,7 +1186,8 @@ export function activate(context: vscode.ExtensionContext) {
           updatedAt: meta.updated_at || '',
           filePath,
         },
-        body
+        body,
+        initialPreviewHtml
       );
 
       panel.webview.onDidReceiveMessage(
@@ -1195,12 +1217,20 @@ export function activate(context: vscode.ExtensionContext) {
               panel.webview.postMessage({ type: 'previewReady', html });
               break;
             }
+            case 'diff': {
+              await vscode.commands.executeCommand(
+                'backlog.documentSync.diff',
+                filePath
+              );
+              break;
+            }
             case 'copyAndOpen': {
               await vscode.env.clipboard.writeText(message.content);
               const domain = configService.getDomain();
               if (domain && meta.backlog_id) {
                 const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
-                const url = `https://${hostOnly}/alias/document/${meta.backlog_id}`;
+                const projectKey = meta.project || '';
+                const url = `https://${hostOnly}/document/${projectKey}/${meta.backlog_id}`;
                 await vscode.env.openExternal(vscode.Uri.parse(url));
               }
               vscode.window.showInformationMessage(
@@ -1251,6 +1281,8 @@ export function activate(context: vscode.ExtensionContext) {
     toggleFavoriteCommand,
     setDocumentSyncMappingCommand,
     remoteProviderDisposable,
+    localProviderDisposable,
+    decorationProviderDisposable,
     syncPullCommand,
     syncStatusCommand,
     syncDiffCommand,

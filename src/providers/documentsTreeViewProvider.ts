@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { BacklogApiService } from '../services/backlogApi';
+import { ConfigService } from '../services/configService';
+import { SyncService } from '../services/syncService';
+import { SyncManifest } from '../types/backlog';
 import { Entity } from 'backlog-js';
 
 // Document Tree type
@@ -16,8 +20,13 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   private currentProjectKey: string | null = null;
   private documentNotAvailable: boolean = false;
   private errorMessage: string | null = null;
+  private syncManifest: SyncManifest = {};
 
-  constructor(private backlogApi: BacklogApiService) { }
+  constructor(
+    private backlogApi: BacklogApiService,
+    private configService: ConfigService,
+    private syncService: SyncService
+  ) {}
 
   // プロジェクトを設定してDocumentを読み込み
   async setProject(projectId: number): Promise<void> {
@@ -33,6 +42,7 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
     }
 
     await this.loadDocuments();
+    this.loadSyncManifest();
     this._onDidChangeTreeData.fire();
   }
 
@@ -46,6 +56,7 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   refresh(): void {
     if (this.currentProjectId) {
       this.loadDocuments();
+      this.loadSyncManifest();
       this._onDidChangeTreeData.fire();
     }
   }
@@ -110,8 +121,69 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None;
 
-      return new DocumentTreeItem(node, collapsibleState, node.children);
+      // Sync ステータスを manifest から判定
+      const syncEntry = this.findManifestEntryByDocId(node.id);
+      return new DocumentTreeItem(node, collapsibleState, node.children, syncEntry?.status);
     });
+  }
+
+  private findManifestEntryByDocId(
+    docId: string
+  ): { relativePath: string; status: 'synced' | 'local_modified' } | undefined {
+    const projectKey = this.currentProjectKey;
+    if (!projectKey) {
+      return undefined;
+    }
+
+    const mapping = this.configService.getMappingForProject(projectKey);
+    if (!mapping) {
+      return undefined;
+    }
+
+    for (const [relativePath, entry] of Object.entries(this.syncManifest)) {
+      if (entry.backlog_id === docId) {
+        // ローカルファイルのハッシュを確認
+        const folders = vscode.workspace.workspaceFolders;
+        if (!folders) {
+          return { relativePath, status: 'synced' };
+        }
+        const localDir = path.join(folders[0].uri.fsPath, mapping.localPath);
+        const absolutePath = path.join(localDir, relativePath);
+        try {
+          const localHash = this.syncService.computeLocalFileHash(absolutePath);
+          if (localHash !== entry.content_hash) {
+            return { relativePath, status: 'local_modified' };
+          }
+        } catch {
+          // ファイルが存在しない等
+        }
+        return { relativePath, status: 'synced' };
+      }
+    }
+    return undefined;
+  }
+
+  private loadSyncManifest(): void {
+    const projectKey = this.currentProjectKey;
+    if (!projectKey) {
+      this.syncManifest = {};
+      return;
+    }
+
+    const mapping = this.configService.getMappingForProject(projectKey);
+    if (!mapping) {
+      this.syncManifest = {};
+      return;
+    }
+
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) {
+      this.syncManifest = {};
+      return;
+    }
+
+    const localDir = path.join(folders[0].uri.fsPath, mapping.localPath);
+    this.syncManifest = this.syncService.loadManifest(localDir);
   }
 
   private async loadDocuments(): Promise<void> {
@@ -164,7 +236,8 @@ export class DocumentTreeItem extends vscode.TreeItem {
       | Entity.Document.DocumentTreeNode
       | (Entity.Document.DocumentTreeNode & { title?: string; type?: string }),
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None,
-    children?: Entity.Document.DocumentTreeNode[]
+    children?: Entity.Document.DocumentTreeNode[],
+    syncStatus?: 'synced' | 'local_modified'
   ) {
     // document.nameまたはdocument.titleのどちらかが存在する場合に対応
     const displayName =
@@ -203,6 +276,17 @@ export class DocumentTreeItem extends vscode.TreeItem {
         title: 'Open Document',
         arguments: [this.document],
       };
+    }
+
+    // Sync ステータスデコレーション
+    if (syncStatus === 'local_modified') {
+      this.description = 'M';
+      this.iconPath = new vscode.ThemeIcon(
+        hasChildren ? 'file-submodule' : 'file-text',
+        new vscode.ThemeColor('charts.orange')
+      );
+    } else if (syncStatus === 'synced') {
+      this.description = '✓';
     }
   }
 

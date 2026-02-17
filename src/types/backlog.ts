@@ -3,6 +3,46 @@
 
 import { Backlog } from 'backlog-js';
 
+// Document sync mapping
+export interface DocumentSyncMapping {
+  /** ワークスペースからの相対パス */
+  localPath: string;
+  /** Backlog プロジェクトキー */
+  projectKey: string;
+  /** マッピング先の Backlog ドキュメントノード ID */
+  documentNodeId: string;
+  /** ドキュメントノード名 (表示用) */
+  documentNodeName?: string;
+}
+
+// Document sync manifest
+export interface SyncManifestEntry {
+  backlog_id: string;
+  backlog_path: string;
+  project: string;
+  synced_at: string;
+  remote_updated_at: string;
+  content_hash: string;
+}
+
+export type SyncManifest = Record<string, SyncManifestEntry>;
+
+export type SyncStatus =
+  | 'unchanged'
+  | 'local_modified'
+  | 'remote_modified'
+  | 'conflict'
+  | 'new_local'
+  | 'not_synced';
+
+export interface SyncStatusEntry {
+  relativePath: string;
+  status: SyncStatus;
+  manifestEntry?: SyncManifestEntry;
+  localHash?: string;
+  remoteUpdatedAt?: string;
+}
+
 // Service state types for better type safety
 export interface UninitializedBacklogService {
   readonly state: 'uninitialized';

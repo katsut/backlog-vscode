@@ -158,6 +158,16 @@ storybook-static/
 # TernJS port file
 .tern-port
 
+# Document sync manifest
+.sync-manifest.json
+
+# Backlog RAG data (contains indexed vectors/graphs)
+.backlog/
+
+# MCP config (contains API keys)
+.mcp.json
+
 # cline
 .clinerules
 .clineignore
+.claude/settings.local.json
