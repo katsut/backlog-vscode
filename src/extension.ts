@@ -1055,11 +1055,31 @@ export function activate(context: vscode.ExtensionContext) {
                   message.projectKey,
                   message.documentNodeId
                 );
-                const updatedMappings = configService.getDocumentSyncMappings();
-                mappingEditorPanel.webview.postMessage({
-                  type: 'updateMappings',
-                  mappingsHtml: SyncMappingEditorWebview.renderMappings(updatedMappings),
-                });
+                // Re-render full page to update both tree buttons and mappings list
+                let removeTree = null;
+                try {
+                  const proj = projects.find(p => p.projectKey === message.projectKey);
+                  if (proj) { removeTree = await backlogApi.getDocuments(proj.id); }
+                } catch { /* ignore */ }
+                mappingEditorPanel.webview.html = SyncMappingEditorWebview.getWebviewContent(
+                  mappingEditorPanel.webview, context.extensionUri,
+                  projects, removeTree, configService.getDocumentSyncMappings(), message.projectKey,
+                  configService.getFavoriteProjects()
+                );
+                break;
+              }
+              case 'updateMappingPath': {
+                // Find existing mapping and update its path
+                const allMappings = configService.getDocumentSyncMappings();
+                const existing = allMappings.find(
+                  m => m.projectKey === message.projectKey && m.documentNodeId === message.documentNodeId
+                );
+                if (existing) {
+                  await configService.addDocumentSyncMapping({
+                    ...existing,
+                    localPath: message.localPath,
+                  });
+                }
                 break;
               }
             }

@@ -41,7 +41,7 @@ export class SyncMappingEditorWebview {
     const mappingsHtml = this.renderMappings(mappings);
 
     const additionalStyles = `
-      .editor-container { max-width: 800px; margin: 0 auto; padding: var(--webview-space-lg); }
+      .editor-container { max-width: 1100px; margin: 0 auto; padding: var(--webview-space-lg); }
       .editor-title { font-size: var(--webview-font-size-xl); font-weight: 600; margin-bottom: var(--webview-space-lg); }
 
       .project-select-section { margin-bottom: var(--webview-space-xl); }
@@ -58,12 +58,19 @@ export class SyncMappingEditorWebview {
 
       .section-title { font-size: var(--webview-font-size-lg); font-weight: 600; margin-bottom: var(--webview-space-md); }
 
-      .tree-section { margin-bottom: var(--webview-space-xl); }
+      .two-column {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--webview-space-lg);
+        align-items: start;
+      }
+
+      .tree-section { min-width: 0; }
       .tree-container {
         border: 1px solid var(--vscode-panel-border);
         border-radius: var(--webview-radius-md);
         padding: var(--webview-space-md);
-        max-height: 400px;
+        max-height: 500px;
         overflow-y: auto;
       }
 
@@ -78,14 +85,6 @@ export class SyncMappingEditorWebview {
       .tree-node-row:hover { background: var(--vscode-list-hoverBackground); }
       .tree-node-icon { flex-shrink: 0; width: 18px; text-align: center; }
       .tree-node-name { flex: 1; font-size: var(--webview-font-size-base); }
-      .tree-node-mapped {
-        font-size: var(--webview-font-size-xs);
-        color: var(--vscode-descriptionForeground);
-        background: var(--vscode-badge-background);
-        color: var(--vscode-badge-foreground);
-        padding: 1px 6px;
-        border-radius: 10px;
-      }
       .tree-children { padding-left: 20px; }
 
       .btn-select {
@@ -99,56 +98,32 @@ export class SyncMappingEditorWebview {
         flex-shrink: 0;
       }
       .btn-select:hover { background: var(--vscode-button-hoverBackground); }
-
-      .inline-form {
-        display: flex;
-        align-items: center;
-        gap: var(--webview-space-sm);
-        padding: 6px;
-        margin-top: 4px;
-        margin-left: 26px;
-        background: var(--vscode-editor-inactiveSelectionBackground);
-        border-radius: var(--webview-radius-sm);
-      }
-      .inline-form input {
-        flex: 1;
-        padding: 4px 8px;
-        background: var(--vscode-input-background);
-        color: var(--vscode-input-foreground);
-        border: 1px solid var(--vscode-input-border);
-        border-radius: var(--webview-radius-sm);
-        font-size: var(--webview-font-size-sm);
-        font-family: var(--webview-mono-font-family);
-      }
-      .inline-form .btn-add {
-        padding: 4px 12px;
-        font-size: var(--webview-font-size-sm);
-        background: var(--vscode-button-background);
-        color: var(--vscode-button-foreground);
-        border: none;
-        border-radius: var(--webview-radius-sm);
-        cursor: pointer;
-      }
-      .inline-form .btn-add:hover { background: var(--vscode-button-hoverBackground); }
-      .inline-form .btn-cancel {
-        padding: 4px 8px;
-        font-size: var(--webview-font-size-sm);
-        background: transparent;
-        color: var(--vscode-descriptionForeground);
-        border: 1px solid var(--vscode-input-border);
-        border-radius: var(--webview-radius-sm);
-        cursor: pointer;
+      .btn-select.mapped {
+        background: var(--vscode-badge-background);
+        color: var(--vscode-badge-foreground);
+        cursor: default;
+        opacity: 0.7;
       }
 
-      .mappings-section { margin-bottom: var(--webview-space-xl); }
+      .mappings-section { min-width: 0; }
+      .mappings-container {
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: var(--webview-radius-md);
+        padding: var(--webview-space-md);
+        max-height: 500px;
+        overflow-y: auto;
+      }
       .mappings-list { display: flex; flex-direction: column; gap: var(--webview-space-sm); }
       .mapping-item {
-        display: flex;
-        align-items: center;
-        gap: var(--webview-space-md);
         padding: var(--webview-space-sm) var(--webview-space-md);
         background: var(--vscode-editor-inactiveSelectionBackground);
         border-radius: var(--webview-radius-sm);
+      }
+      .mapping-header {
+        display: flex;
+        align-items: center;
+        gap: var(--webview-space-sm);
+        margin-bottom: 4px;
       }
       .mapping-project {
         font-size: var(--webview-font-size-xs);
@@ -158,11 +133,8 @@ export class SyncMappingEditorWebview {
         border-radius: 10px;
         flex-shrink: 0;
       }
-      .mapping-doc { font-weight: 500; }
-      .mapping-arrow { color: var(--vscode-descriptionForeground); flex-shrink: 0; }
-      .mapping-path { font-family: var(--webview-mono-font-family); font-size: var(--webview-font-size-sm); color: var(--vscode-descriptionForeground); }
+      .mapping-doc { font-weight: 500; flex: 1; }
       .btn-remove {
-        margin-left: auto;
         padding: 2px 8px;
         font-size: var(--webview-font-size-sm);
         background: transparent;
@@ -173,6 +145,21 @@ export class SyncMappingEditorWebview {
         flex-shrink: 0;
       }
       .btn-remove:hover { background: var(--vscode-inputValidation-errorBackground); }
+      .mapping-path-row {
+        display: flex;
+        align-items: center;
+        gap: var(--webview-space-sm);
+      }
+      .mapping-path-input {
+        flex: 1;
+        padding: 3px 6px;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        border: 1px solid var(--vscode-input-border);
+        border-radius: var(--webview-radius-sm);
+        font-size: var(--webview-font-size-sm);
+        font-family: var(--webview-mono-font-family);
+      }
 
       .no-content { color: var(--vscode-descriptionForeground); font-style: italic; padding: var(--webview-space-md); }
     `;
@@ -192,17 +179,19 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, 'Document Sync Mapping Editor
       </select>
     </div>
 
-    <div class="tree-section">
-      <div class="section-title">ドキュメントツリー</div>
-      <div class="tree-container" id="treeContainer">
-        ${treeHtml}
+    <div class="two-column">
+      <div class="tree-section">
+        <div class="section-title">ドキュメントツリー</div>
+        <div class="tree-container" id="treeContainer">
+          ${treeHtml}
+        </div>
       </div>
-    </div>
 
-    <div class="mappings-section">
-      <div class="section-title">現在のマッピング</div>
-      <div id="mappingsContainer">
-        ${mappingsHtml}
+      <div class="mappings-section">
+        <div class="section-title">マッピング</div>
+        <div class="mappings-container" id="mappingsContainer">
+          ${mappingsHtml}
+        </div>
       </div>
     </div>
   </div>
@@ -226,58 +215,23 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, 'Document Sync Mapping Editor
     document.addEventListener('click', function(e) {
       const target = e.target;
 
-      // Select button
-      if (target.classList.contains('btn-select')) {
+      // Select button - immediately add mapping
+      if (target.classList.contains('btn-select') && !target.classList.contains('mapped')) {
         const nodeId = target.dataset.nodeId;
         const nodeName = target.dataset.nodeName;
-        const existingForm = document.querySelector('.inline-form');
-        if (existingForm) existingForm.remove();
-
-        const row = target.closest('.tree-node');
-        const form = document.createElement('div');
-        form.className = 'inline-form';
 
         const projectSelect = document.getElementById('projectSelect');
         const projectKey = projectSelect.options[projectSelect.selectedIndex].dataset.key || '';
-        const safeName = nodeName.replace(/[<>:"\\/|?*]/g, '-');
+        const safeName = nodeName.replace(/[<>:"\\\\/|?*]/g, '-');
         const defaultPath = 'docs/' + projectKey + '/' + safeName;
-
-        form.innerHTML =
-          '<input type="text" id="pathInput" value="' + defaultPath + '" placeholder="docs/PROJECT/folder" />' +
-          '<button class="btn-add" data-node-id="' + nodeId + '" data-node-name="' + nodeName.replace(/"/g, '&quot;') + '">追加</button>' +
-          '<button class="btn-cancel">取消</button>';
-        row.appendChild(form);
-
-        const input = form.querySelector('#pathInput');
-        input.focus();
-        input.select();
-      }
-
-      // Add button
-      if (target.classList.contains('btn-add')) {
-        const input = target.closest('.inline-form').querySelector('input');
-        const path = input.value.trim();
-        if (!path) return;
-
-        const projectSelect = document.getElementById('projectSelect');
-        const projectKey = projectSelect.options[projectSelect.selectedIndex].dataset.key || '';
 
         vscode.postMessage({
           command: 'addMapping',
           projectKey: projectKey,
-          documentNodeId: target.dataset.nodeId,
-          documentNodeName: target.dataset.nodeName,
-          localPath: path
+          documentNodeId: nodeId,
+          documentNodeName: nodeName,
+          localPath: defaultPath
         });
-
-        const form = target.closest('.inline-form');
-        if (form) form.remove();
-      }
-
-      // Cancel button
-      if (target.classList.contains('btn-cancel')) {
-        const form = target.closest('.inline-form');
-        if (form) form.remove();
       }
 
       // Remove button
@@ -290,15 +244,25 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, 'Document Sync Mapping Editor
       }
     });
 
-    // Handle Enter key in path input
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && e.target.id === 'pathInput') {
-        const addBtn = e.target.closest('.inline-form').querySelector('.btn-add');
-        if (addBtn) addBtn.click();
+    // Handle path input changes (blur or Enter)
+    document.addEventListener('change', function(e) {
+      if (e.target.classList.contains('mapping-path-input')) {
+        const input = e.target;
+        const newPath = input.value.trim();
+        if (newPath) {
+          vscode.postMessage({
+            command: 'updateMappingPath',
+            projectKey: input.dataset.projectKey,
+            documentNodeId: input.dataset.nodeId,
+            localPath: newPath
+          });
+        }
       }
-      if (e.key === 'Escape' && e.target.id === 'pathInput') {
-        const form = e.target.closest('.inline-form');
-        if (form) form.remove();
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && e.target.classList.contains('mapping-path-input')) {
+        e.target.blur();
       }
     });
 
@@ -333,17 +297,18 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, 'Document Sync Mapping Editor
         const name = WebviewHelper.escapeHtml(node.name || '');
         const nodeId = WebviewHelper.escapeHtml(node.id?.toString() || '');
 
-        const mapping = mappings.find(
+        const isMapped = mappings.some(
           (m) => m.projectKey === projectKey && m.documentNodeId === nodeId
         );
 
-        const mappedBadge = mapping
-          ? `<span class="tree-node-mapped">${WebviewHelper.escapeHtml(mapping.localPath)}</span>`
-          : '';
-
-        const selectBtn = hasChildren
-          ? `<button class="btn-select" data-node-id="${nodeId}" data-node-name="${name}">選択</button>`
-          : '';
+        let selectBtn = '';
+        if (hasChildren) {
+          if (isMapped) {
+            selectBtn = `<button class="btn-select mapped" data-node-id="${nodeId}" data-node-name="${name}">追加済</button>`;
+          } else {
+            selectBtn = `<button class="btn-select" data-node-id="${nodeId}" data-node-name="${name}">選択</button>`;
+          }
+        }
 
         const childrenHtml =
           hasChildren
@@ -355,7 +320,6 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, 'Document Sync Mapping Editor
             <div class="tree-node-row">
               <span class="tree-node-icon">${icon}</span>
               <span class="tree-node-name">${name}</span>
-              ${mappedBadge}
               ${selectBtn}
             </div>
             ${childrenHtml}
@@ -378,11 +342,14 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, 'Document Sync Mapping Editor
 
         return `
           <div class="mapping-item">
-            <span class="mapping-project">${projectKey}</span>
-            <span class="mapping-doc">${docName}</span>
-            <span class="mapping-arrow">→</span>
-            <span class="mapping-path">${localPath}</span>
-            <button class="btn-remove" data-project-key="${projectKey}" data-node-id="${nodeId}">✕</button>
+            <div class="mapping-header">
+              <span class="mapping-project">${projectKey}</span>
+              <span class="mapping-doc">${docName}</span>
+              <button class="btn-remove" data-project-key="${projectKey}" data-node-id="${nodeId}">✕</button>
+            </div>
+            <div class="mapping-path-row">
+              <input class="mapping-path-input" type="text" value="${localPath}" data-project-key="${projectKey}" data-node-id="${nodeId}" />
+            </div>
           </div>`;
       })
       .join('');
