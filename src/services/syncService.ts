@@ -121,6 +121,10 @@ export class SyncService {
     const sanitizedSegments = treePath.map((s) => this.sanitizeFileName(s));
     const sanitizedTitle = this.sanitizeFileName(title);
 
+    if (treePath.length === 0) {
+      // Root node of mapping: localPath already represents this node
+      return path.join(baseDir, 'index.bdoc');
+    }
     if (hasChildren) {
       return path.join(baseDir, ...sanitizedSegments, sanitizedTitle, 'index.bdoc');
     }

@@ -220,6 +220,96 @@ export class BacklogApiService {
     }
   }
 
+  async postDocument(params: {
+    projectId: number;
+    title: string;
+    content: string;
+    emoji?: string;
+    parentId?: string;
+    addLast?: boolean;
+  }): Promise<Entity.Document.Document> {
+    const initializedService = await this.ensureInitialized();
+    const response = await initializedService.backlog.post<Entity.Document.Document>(
+      '/api/v2/documents',
+      params as unknown as Record<string, string | number | string[] | number[]>
+    );
+    return response;
+  }
+
+  async deleteDocument(documentId: string): Promise<Entity.Document.Document> {
+    const initializedService = await this.ensureInitialized();
+    const response = await initializedService.backlog.delete<Entity.Document.Document>(
+      `/api/v2/documents/${documentId}`
+    );
+    return response;
+  }
+
+  async getDocumentSubtree(
+    projectId: number,
+    rootNodeId: string
+  ): Promise<Array<Entity.Document.DocumentTreeNode & { _treePath: string[] }>> {
+    const initializedService = await this.ensureInitialized();
+    const tree = await initializedService.backlog.getDocumentTree(projectId);
+    const children = tree.activeTree?.children || [];
+    const rootNode = this.findNodeById(children, rootNodeId);
+    if (!rootNode) {
+      throw new Error(`Document node ${rootNodeId} not found in project tree`);
+    }
+
+    // Root node is already represented by localPath in the mapping,
+    // so don't include root's name in child paths.
+    const results: Array<Entity.Document.DocumentTreeNode & { _treePath: string[] }> = [];
+    results.push(Object.assign({}, rootNode, { _treePath: [] }));
+    if (rootNode.children) {
+      for (const child of rootNode.children) {
+        results.push(...this.flattenTree(child, []));
+      }
+    }
+    return results;
+  }
+
+  private findNodeById(
+    nodes: Entity.Document.DocumentTreeNode[],
+    targetId: string
+  ): Entity.Document.DocumentTreeNode | null {
+    for (const node of nodes) {
+      if (node.id === targetId) {
+        return node;
+      }
+      if (node.children && node.children.length > 0) {
+        const found = this.findNodeById(node.children, targetId);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return null;
+  }
+
+  private flattenTree(
+    node: Entity.Document.DocumentTreeNode,
+    parentPath: string[]
+  ): Array<Entity.Document.DocumentTreeNode & { _treePath: string[] }> {
+    const results: Array<Entity.Document.DocumentTreeNode & { _treePath: string[] }> = [];
+    const hasChildren = node.children && node.children.length > 0;
+
+    // ノード自体を追加（Active/Trash ルートを除く）
+    if (node.id !== 'Active' && node.id !== 'Trash') {
+      results.push(Object.assign({}, node, { _treePath: parentPath }));
+    }
+
+    if (node.children) {
+      const childPath = node.id !== 'Active' && node.id !== 'Trash' && hasChildren
+        ? [...parentPath, node.name || node.id]
+        : parentPath;
+      for (const child of node.children) {
+        results.push(...this.flattenTree(child, childPath));
+      }
+    }
+
+    return results;
+  }
+
   async reinitialize(): Promise<void> {
     // 状態をリセットして再初期化
     this.serviceState = { state: 'uninitialized' };
