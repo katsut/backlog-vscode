@@ -16,6 +16,9 @@ import { DocumentSyncCommands } from './commands/documentSyncCommands';
 import { BacklogRemoteContentProvider } from './providers/backlogRemoteContentProvider';
 import { SyncService } from './services/syncService';
 import { SyncMappingEditorWebview } from './webviews/syncMappingEditorWebview';
+import { DocumentEditorWebview } from './webviews/documentEditorWebview';
+import { MarkdownRenderer } from './utils/markdownRenderer';
+import * as fs from 'fs';
 
 let backlogTreeViewProvider: BacklogTreeViewProvider;
 let backlogWebviewProvider: BacklogWebviewProvider;
@@ -1093,6 +1096,115 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // Document Editor command
+  const openDocumentEditors: Map<string, vscode.WebviewPanel> = new Map();
+  const markdownRenderer = MarkdownRenderer.getInstance();
+
+  const documentSyncEditCommand = vscode.commands.registerCommand(
+    'backlog.documentSync.edit',
+    async () => {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (!activeEditor) {
+        vscode.window.showWarningMessage('エディタでファイルを開いてください。');
+        return;
+      }
+
+      const filePath = activeEditor.document.uri.fsPath;
+      if (!filePath.endsWith('.md')) {
+        vscode.window.showWarningMessage('Markdown ファイル (.md) を開いてください。');
+        return;
+      }
+
+      // Check if already open
+      const existingPanel = openDocumentEditors.get(filePath);
+      if (existingPanel) {
+        existingPanel.reveal(vscode.ViewColumn.One);
+        return;
+      }
+
+      const text = fs.readFileSync(filePath, 'utf-8');
+      const { meta, body } = syncService.parseFrontmatter(text);
+
+      const title = meta.title || require('path').basename(filePath, '.md');
+
+      const panel = vscode.window.createWebviewPanel(
+        'backlogDocumentEditor',
+        `Edit: ${title}`,
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [context.extensionUri],
+        }
+      );
+
+      openDocumentEditors.set(filePath, panel);
+      panel.onDidDispose(() => {
+        openDocumentEditors.delete(filePath);
+      });
+
+      panel.webview.html = DocumentEditorWebview.getWebviewContent(
+        panel.webview,
+        context.extensionUri,
+        {
+          title,
+          backlogId: meta.backlog_id || '',
+          project: meta.project || '',
+          syncedAt: meta.synced_at || '',
+          updatedAt: meta.updated_at || '',
+          filePath,
+        },
+        body
+      );
+
+      panel.webview.onDidReceiveMessage(
+        async (message) => {
+          switch (message.command) {
+            case 'save': {
+              try {
+                const frontmatter = syncService.buildFrontmatter({
+                  title: meta.title || title,
+                  backlog_id: meta.backlog_id || '',
+                  project: meta.project || '',
+                  synced_at: meta.synced_at || '',
+                  updated_at: meta.updated_at || '',
+                });
+                fs.writeFileSync(filePath, frontmatter + message.content, 'utf-8');
+                panel.webview.postMessage({ type: 'saved' });
+              } catch (error) {
+                panel.webview.postMessage({
+                  type: 'saveError',
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
+              break;
+            }
+            case 'requestPreview': {
+              const html = markdownRenderer.renderMarkdown(message.content);
+              panel.webview.postMessage({ type: 'previewReady', html });
+              break;
+            }
+            case 'copyAndOpen': {
+              await vscode.env.clipboard.writeText(message.content);
+              const domain = configService.getDomain();
+              if (domain && meta.backlog_id) {
+                const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
+                const url = `https://${hostOnly}/alias/document/${meta.backlog_id}`;
+                await vscode.env.openExternal(vscode.Uri.parse(url));
+              }
+              vscode.window.showInformationMessage(
+                'コンテンツをクリップボードにコピーしました。'
+              );
+              break;
+            }
+          }
+        },
+        undefined,
+        context.subscriptions
+      );
+    }
+  );
+
   // Register webview provider
   const webviewProvider = vscode.window.registerWebviewViewProvider(
     'backlogIssueDetail',
@@ -1134,6 +1246,7 @@ export function activate(context: vscode.ExtensionContext) {
     syncCopyAndOpenCommand,
     syncPushCommand,
     editDocumentSyncMappingCommand,
+    documentSyncEditCommand,
     webviewProvider
   );
 

@@ -213,6 +213,12 @@
         "title": "Edit Document Sync Mappings",
         "icon": "$(settings-gear)",
         "category": "Backlog"
+      },
+      {
+        "command": "backlog.documentSync.edit",
+        "title": "Open in Document Editor",
+        "icon": "$(edit)",
+        "category": "Backlog"
       }
     ],
     "menus": {
