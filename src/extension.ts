@@ -995,13 +995,15 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         const mappings = configService.getDocumentSyncMappings();
+        const favorites = configService.getFavoriteProjects();
         mappingEditorPanel.webview.html = SyncMappingEditorWebview.getWebviewContent(
           mappingEditorPanel.webview,
           context.extensionUri,
           projects,
           documentTree,
           mappings,
-          currentProjectKey || undefined
+          currentProjectKey || undefined,
+          favorites
         );
 
         mappingEditorPanel.webview.onDidReceiveMessage(
@@ -1023,7 +1025,8 @@ export function activate(context: vscode.ExtensionContext) {
                   projects,
                   tree,
                   currentMappings,
-                  message.projectKey
+                  message.projectKey,
+                  configService.getFavoriteProjects()
                 );
                 break;
               }
@@ -1042,7 +1045,8 @@ export function activate(context: vscode.ExtensionContext) {
                 } catch { /* ignore */ }
                 mappingEditorPanel.webview.html = SyncMappingEditorWebview.getWebviewContent(
                   mappingEditorPanel.webview, context.extensionUri,
-                  projects, addTree, configService.getDocumentSyncMappings(), message.projectKey
+                  projects, addTree, configService.getDocumentSyncMappings(), message.projectKey,
+                  configService.getFavoriteProjects()
                 );
                 break;
               }

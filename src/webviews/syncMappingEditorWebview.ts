@@ -13,14 +13,24 @@ export class SyncMappingEditorWebview {
     projects: Entity.Project.Project[],
     documentTree: DocumentTree | null,
     mappings: DocumentSyncMapping[],
-    currentProjectKey?: string
+    currentProjectKey?: string,
+    favoriteProjects?: string[]
   ): string {
     const nonce = WebviewHelper.getNonce();
+    const favorites = favoriteProjects || [];
 
-    const projectOptions = projects
+    const sortedProjects = [...projects].sort((a, b) => {
+      const aFav = favorites.includes(a.projectKey) ? 0 : 1;
+      const bFav = favorites.includes(b.projectKey) ? 0 : 1;
+      return aFav - bFav;
+    });
+
+    const projectOptions = sortedProjects
       .map(
-        (p) =>
-          `<option value="${p.id}" data-key="${WebviewHelper.escapeHtml(p.projectKey)}" ${p.projectKey === currentProjectKey ? 'selected' : ''}>${WebviewHelper.escapeHtml(p.projectKey)}: ${WebviewHelper.escapeHtml(p.name)}</option>`
+        (p) => {
+          const star = favorites.includes(p.projectKey) ? '\u2605 ' : '';
+          return `<option value="${p.id}" data-key="${WebviewHelper.escapeHtml(p.projectKey)}" ${p.projectKey === currentProjectKey ? 'selected' : ''}>${star}${WebviewHelper.escapeHtml(p.projectKey)}: ${WebviewHelper.escapeHtml(p.name)}</option>`;
+        }
       )
       .join('\n');
 
