@@ -1,0 +1,16 @@
+# Exclude mcp-server entirely (separate CLI tool)
+mcp-server/**
+
+# Exclude non-essential files
+.backlog/**
+docs/**
+*.vsix
+.gitignore
+.eslintrc*
+tsconfig.json
+src/**
+**/*.map
+**/.DS_Store
+.claude/**
+CLAUDE.md
+backlog-document-sync-spec.md
