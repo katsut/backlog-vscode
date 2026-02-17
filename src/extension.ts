@@ -881,28 +881,26 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
 
-      // ローカルディレクトリの選択
-      const selected = await vscode.window.showOpenDialog({
-        canSelectFiles: false,
-        canSelectFolders: true,
-        canSelectMany: false,
-        defaultUri: workspaceFolders[0].uri,
-        openLabel: 'Select sync directory',
+      // ローカルディレクトリの入力（デフォルトパスを提案）
+      const suggestedName = (documentNodeName || 'documents').replace(/[<>:"/\\|?*]/g, '-');
+      const defaultPath = `docs/${projectKey}/${suggestedName}`;
+
+      const localPath = await vscode.window.showInputBox({
+        prompt: 'ワークスペースからの相対パスを入力',
+        value: defaultPath,
+        placeHolder: '例: docs/PROJECT/folder-name',
+        validateInput: (value) => {
+          if (!value || value.trim().length === 0) {
+            return 'パスを入力してください';
+          }
+          if (value.startsWith('/') || value.includes('..')) {
+            return 'ワークスペース内の相対パスを入力してください';
+          }
+          return null;
+        },
       });
 
-      if (!selected || selected.length === 0) {
-        return;
-      }
-
-      const workspaceRoot = workspaceFolders[0].uri.fsPath;
-      const selectedPath = selected[0].fsPath;
-
-      // ワークスペースからの相対パスに変換
-      let localPath: string;
-      if (selectedPath.startsWith(workspaceRoot)) {
-        localPath = selectedPath.substring(workspaceRoot.length + 1) || '.';
-      } else {
-        vscode.window.showWarningMessage('ワークスペース内のディレクトリを選択してください。');
+      if (!localPath) {
         return;
       }
 
