@@ -257,9 +257,8 @@ export class BacklogApiService {
     }
 
     // Root node is already represented by localPath in the mapping,
-    // so don't include root's name in child paths.
+    // so skip it and only include its descendants.
     const results: Array<Entity.Document.DocumentTreeNode & { _treePath: string[] }> = [];
-    results.push(Object.assign({}, rootNode, { _treePath: [] }));
     if (rootNode.children) {
       for (const child of rootNode.children) {
         results.push(...this.flattenTree(child, []));

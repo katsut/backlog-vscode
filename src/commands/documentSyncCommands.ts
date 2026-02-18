@@ -107,7 +107,7 @@ export class DocumentSyncCommands {
               );
               pulled++;
             } catch (error) {
-              console.error(`Failed to pull ${node.name || node.id}:`, error);
+              console.error(`[DocumentSync] FAILED: id=${node.id}, name=${node.name}:`, error);
               skipped++;
             }
 
