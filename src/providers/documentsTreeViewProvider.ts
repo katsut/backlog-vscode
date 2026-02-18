@@ -255,11 +255,11 @@ export class DocumentTreeItem extends vscode.TreeItem {
 
     if (isOnlyFolder) {
       // 純粋なフォルダ（子要素なし）
-      this.iconPath = new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.yellow'));
+      this.iconPath = new vscode.ThemeIcon('folder', new vscode.ThemeColor('backlog.brandColor'));
       this.contextValue = 'documentFolder';
     } else if (hasChildren) {
       // 子要素を持つドキュメント（親ドキュメント）
-      this.iconPath = new vscode.ThemeIcon('file-submodule', new vscode.ThemeColor('charts.blue'));
+      this.iconPath = new vscode.ThemeIcon('file-submodule', new vscode.ThemeColor('backlog.brandColor'));
       this.contextValue = 'documentWithChildren';
       // 親ドキュメントもクリックでコンテンツを開けるようにコマンドを設定
       this.command = {
@@ -269,7 +269,7 @@ export class DocumentTreeItem extends vscode.TreeItem {
       };
     } else {
       // 通常のドキュメント（子要素なし）
-      this.iconPath = new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue'));
+      this.iconPath = new vscode.ThemeIcon('file-text', new vscode.ThemeColor('backlog.brandColor'));
       this.contextValue = 'document';
       this.command = {
         command: 'backlog.openDocument',

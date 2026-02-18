@@ -304,7 +304,7 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
           node.name || node.id,
           vscode.TreeItemCollapsibleState.Collapsed,
           `Folder: ${node.name || node.id}`,
-          new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.blue')),
+          new vscode.ThemeIcon('folder', new vscode.ThemeColor('backlog.brandColor')),
           node,
           projectId
         );
@@ -315,7 +315,7 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
           vscode.TreeItemCollapsibleState.None,
           `Document: ${node.name || node.id}${node.updated ? `\nUpdated: ${new Date(node.updated).toLocaleDateString()}` : ''
           }`,
-          new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue')),
+          new vscode.ThemeIcon('file-text', new vscode.ThemeColor('backlog.brandColor')),
           node,
           projectId
         );
@@ -359,8 +359,8 @@ export class TreeItem extends vscode.TreeItem {
 export class ProjectTreeItem extends TreeItem {
   constructor(public readonly project: Entity.Project.Project, public readonly isFavorite: boolean = false) {
     const icon = isFavorite
-      ? new vscode.ThemeIcon('star-full', new vscode.ThemeColor('charts.yellow'))
-      : new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.blue'));
+      ? new vscode.ThemeIcon('star-full', new vscode.ThemeColor('backlog.brandColor'))
+      : new vscode.ThemeIcon('folder', new vscode.ThemeColor('backlog.brandColor'));
     super(
       `${project.projectKey}: ${project.name}`,
       vscode.TreeItemCollapsibleState.None,
@@ -396,7 +396,7 @@ export class CategoryTreeItem extends TreeItem {
       case 'wiki':
         return new vscode.ThemeIcon('book', new vscode.ThemeColor('charts.green'));
       case 'documents':
-        return new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue'));
+        return new vscode.ThemeIcon('file-text', new vscode.ThemeColor('backlog.brandColor'));
     }
   }
 }
@@ -498,7 +498,7 @@ export class DocumentTreeItem extends TreeItem {
       document.title,
       vscode.TreeItemCollapsibleState.None,
       `${document.title}\nCreated: ${new Date(document.created).toLocaleDateString()}`,
-      new vscode.ThemeIcon('file-text', new vscode.ThemeColor('charts.blue'))
+      new vscode.ThemeIcon('file-text', new vscode.ThemeColor('backlog.brandColor'))
     );
 
     this.contextValue = 'document';
