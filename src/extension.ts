@@ -20,6 +20,10 @@ import { DocumentEditorWebview } from './webviews/documentEditorWebview';
 import { MarkdownRenderer } from './utils/markdownRenderer';
 import { BacklogDocumentEditorProvider } from './providers/backlogDocumentEditorProvider';
 import { SyncFileDecorationProvider } from './providers/syncFileDecorationProvider';
+import { CacooApiService } from './services/cacooApi';
+import { CacooSyncService } from './services/cacooSyncService';
+import { CacooCommands } from './commands/cacooCommands';
+import { CacooTreeViewProvider } from './providers/cacooTreeViewProvider';
 import * as fs from 'fs';
 
 let backlogTreeViewProvider: BacklogTreeViewProvider;
@@ -34,6 +38,9 @@ const openIssueWebviews: Map<string, vscode.WebviewPanel> = new Map();
 
 // 開いているDocument Webviewを追跡
 const openDocumentWebviews: Map<string, vscode.WebviewPanel> = new Map();
+
+// 開いているCacoo Sheet Webviewを追跡
+const openCacooSheetPanels: Map<string, vscode.WebviewPanel> = new Map();
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Backlog extension activating...');
@@ -1246,6 +1253,60 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // ---- Cacoo Integration ----
+  const cacooApi = new CacooApiService(configService);
+  const cacooSyncService = new CacooSyncService();
+  const cacooCommands = new CacooCommands(cacooApi, configService, cacooSyncService);
+  const cacooTreeProvider = new CacooTreeViewProvider(cacooApi, configService);
+
+  const cacooTreeView = vscode.window.createTreeView('cacooDiagrams', {
+    treeDataProvider: cacooTreeProvider,
+    showCollapseAll: true,
+  });
+
+  const cacooRefreshCommand = vscode.commands.registerCommand('cacoo.refreshDiagrams', () => {
+    cacooTreeProvider.refresh();
+  });
+
+  const cacooSetApiKeyCommand = vscode.commands.registerCommand('cacoo.setApiKey', () => {
+    cacooCommands.setApiKey();
+  });
+
+  const cacooPreviewSheetCommand = vscode.commands.registerCommand(
+    'cacoo.previewSheet',
+    (diagramId: string, sheetUid: string, title: string) => {
+      cacooCommands.previewSheet(context, openCacooSheetPanels, diagramId, sheetUid, title);
+    }
+  );
+
+  const cacooOpenInBrowserCommand = vscode.commands.registerCommand(
+    'cacoo.openInBrowser',
+    (item) => {
+      cacooCommands.openInBrowser(item);
+    }
+  );
+
+  const cacooTogglePinCommand = vscode.commands.registerCommand(
+    'cacoo.togglePin',
+    (item) => {
+      cacooCommands.togglePin(item);
+    }
+  );
+
+  const cacooPullCommand = vscode.commands.registerCommand(
+    'cacoo.pull',
+    () => {
+      cacooCommands.pull();
+    }
+  );
+
+  const cacooSetSyncMappingCommand = vscode.commands.registerCommand(
+    'cacoo.setSyncMapping',
+    (item) => {
+      cacooCommands.setSyncMapping(item);
+    }
+  );
+
   // Register webview provider
   const webviewProvider = vscode.window.registerWebviewViewProvider(
     'backlogIssueDetail',
@@ -1291,7 +1352,15 @@ export function activate(context: vscode.ExtensionContext) {
     editDocumentSyncMappingCommand,
     documentSyncEditCommand,
     bdocEditorRegistration,
-    webviewProvider
+    webviewProvider,
+    cacooTreeView,
+    cacooRefreshCommand,
+    cacooSetApiKeyCommand,
+    cacooPreviewSheetCommand,
+    cacooOpenInBrowserCommand,
+    cacooTogglePinCommand,
+    cacooPullCommand,
+    cacooSetSyncMappingCommand
   );
 
   // Auto-refresh if enabled

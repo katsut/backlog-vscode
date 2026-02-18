@@ -161,6 +161,9 @@ storybook-static/
 # Document sync manifest
 .sync-manifest.json
 
+# Cacoo sync manifest
+.cacoo-sync-manifest.json
+
 # Backlog RAG data (contains indexed vectors/graphs)
 .backlog/
 

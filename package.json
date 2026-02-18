@@ -13,6 +13,7 @@
   ],
   "keywords": [
     "backlog",
+    "cacoo",
     "project management",
     "issue tracking",
     "viewer"
@@ -22,6 +23,28 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "colors": [
+      {
+        "id": "backlog.brandColor",
+        "description": "Backlog brand color for tree view icons",
+        "defaults": {
+          "dark": "#42CE9F",
+          "light": "#36B48C",
+          "highContrast": "#42CE9F",
+          "highContrastLight": "#36B48C"
+        }
+      },
+      {
+        "id": "cacoo.brandColor",
+        "description": "Cacoo brand color for tree view icons",
+        "defaults": {
+          "dark": "#00C4CC",
+          "light": "#00A8B0",
+          "highContrast": "#00C4CC",
+          "highContrastLight": "#00A8B0"
+        }
+      }
+    ],
     "views": {
       "backlogContainer": [
         {
@@ -45,6 +68,12 @@
           "when": "backlogExplorer.enabled && backlogProjectFocused"
         }
       ],
+      "cacooContainer": [
+        {
+          "id": "cacooDiagrams",
+          "name": "Diagrams"
+        }
+      ],
       "backlogIssueDetail": [
         {
           "id": "backlogIssueDetailView",
@@ -59,6 +88,11 @@
           "id": "backlogContainer",
           "title": "Backlog",
           "icon": "$(project)"
+        },
+        {
+          "id": "cacooContainer",
+          "title": "Cacoo",
+          "icon": "$(symbol-misc)"
         }
       ],
       "panel": [
@@ -73,6 +107,10 @@
       {
         "view": "backlogProjects",
         "contents": "Configure Backlog settings to get started.\n[Open Settings](command:backlog.openSettings)"
+      },
+      {
+        "view": "cacooDiagrams",
+        "contents": "Configure Cacoo API Key to get started.\n[Set Cacoo API Key](command:cacoo.setApiKey)"
       }
     ],
     "commands": [
@@ -219,6 +257,48 @@
         "title": "Open in Document Editor",
         "icon": "$(edit)",
         "category": "Backlog"
+      },
+      {
+        "command": "cacoo.refreshDiagrams",
+        "title": "Refresh Diagrams",
+        "icon": "$(refresh)",
+        "category": "Cacoo"
+      },
+      {
+        "command": "cacoo.setApiKey",
+        "title": "Set Cacoo API Key",
+        "icon": "$(key)",
+        "category": "Cacoo"
+      },
+      {
+        "command": "cacoo.previewSheet",
+        "title": "Preview Sheet",
+        "icon": "$(open-preview)",
+        "category": "Cacoo"
+      },
+      {
+        "command": "cacoo.openInBrowser",
+        "title": "Open in Cacoo",
+        "icon": "$(link-external)",
+        "category": "Cacoo"
+      },
+      {
+        "command": "cacoo.togglePin",
+        "title": "Toggle Pin",
+        "icon": "$(pin)",
+        "category": "Cacoo"
+      },
+      {
+        "command": "cacoo.pull",
+        "title": "Pull Sheet Images",
+        "icon": "$(cloud-download)",
+        "category": "Cacoo"
+      },
+      {
+        "command": "cacoo.setSyncMapping",
+        "title": "Set Cacoo Sync Mapping",
+        "icon": "$(link)",
+        "category": "Cacoo"
       }
     ],
     "menus": {
@@ -292,6 +372,21 @@
           "command": "backlog.unfocusProject",
           "when": "view == backlogDocuments",
           "group": "navigation@2"
+        },
+        {
+          "command": "cacoo.refreshDiagrams",
+          "when": "view == cacooDiagrams",
+          "group": "navigation@1"
+        },
+        {
+          "command": "cacoo.pull",
+          "when": "view == cacooDiagrams",
+          "group": "navigation@2"
+        },
+        {
+          "command": "cacoo.setApiKey",
+          "when": "view == cacooDiagrams",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -319,6 +414,21 @@
           "command": "backlog.documentSync.copyAndOpen",
           "when": "view == backlogDocuments && viewItem == document",
           "group": "sync@4"
+        },
+        {
+          "command": "cacoo.togglePin",
+          "when": "view == cacooDiagrams && viewItem == cacooSheet",
+          "group": "pin@1"
+        },
+        {
+          "command": "cacoo.openInBrowser",
+          "when": "view == cacooDiagrams && viewItem =~ /^(cacooDiagram|cacooSheet)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "cacoo.setSyncMapping",
+          "when": "view == cacooDiagrams && viewItem == cacooFolder",
+          "group": "sync@1"
         }
       ]
     },
@@ -386,6 +496,52 @@
               }
             },
             "additionalProperties": false
+          }
+        },
+        "backlog.cacoo.organizationKey": {
+          "type": "string",
+          "default": "",
+          "description": "Cacoo Organization Key"
+        },
+        "backlog.cacoo.syncMappings": {
+          "type": "array",
+          "default": [],
+          "description": "Cacoo フォルダとローカルディレクトリのマッピング設定",
+          "items": {
+            "type": "object",
+            "required": ["localPath", "organizationKey", "folderId"],
+            "properties": {
+              "localPath": {
+                "type": "string",
+                "description": "ワークスペースからの相対パス (例: cacoo-sheets)"
+              },
+              "organizationKey": {
+                "type": "string",
+                "description": "Cacoo Organization Key"
+              },
+              "folderId": {
+                "type": "number",
+                "description": "Cacoo Folder ID"
+              },
+              "folderName": {
+                "type": "string",
+                "description": "フォルダ名 (表示用)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "backlog.cacoo.pinnedSheets": {
+          "type": "array",
+          "default": [],
+          "description": "ピン留めした Cacoo シート",
+          "items": {
+            "type": "object",
+            "properties": {
+              "diagramId": { "type": "string" },
+              "sheetUid": { "type": "string" },
+              "label": { "type": "string" }
+            }
           }
         }
       }

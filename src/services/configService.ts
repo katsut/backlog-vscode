@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { DocumentSyncMapping } from '../types/backlog';
+import { CacooSyncMapping, CacooPinnedSheet } from '../types/cacoo';
 
 export class ConfigService {
   private readonly configSection = 'backlog';
@@ -132,5 +133,85 @@ export class ConfigService {
     await vscode.workspace
       .getConfiguration(this.configSection)
       .update('documentSync.mappings', mappings, vscode.ConfigurationTarget.Workspace);
+  }
+
+  // ---- Cacoo ----
+
+  async getCacooApiKey(): Promise<string | undefined> {
+    return await this.secretStorage.get('cacoo.apiKey');
+  }
+
+  async setCacooApiKey(apiKey: string): Promise<void> {
+    await this.secretStorage.store('cacoo.apiKey', apiKey);
+  }
+
+  getCacooOrganizationKey(): string | undefined {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<string>('cacoo.organizationKey');
+  }
+
+  async setCacooOrganizationKey(key: string): Promise<void> {
+    await vscode.workspace
+      .getConfiguration(this.configSection)
+      .update('cacoo.organizationKey', key, vscode.ConfigurationTarget.Global);
+  }
+
+  getCacooSyncMappings(): CacooSyncMapping[] {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<CacooSyncMapping[]>('cacoo.syncMappings', []);
+  }
+
+  async addCacooSyncMapping(mapping: CacooSyncMapping): Promise<void> {
+    const mappings = this.getCacooSyncMappings();
+    const idx = mappings.findIndex((m) => m.folderId === mapping.folderId);
+    if (idx >= 0) {
+      mappings[idx] = mapping;
+    } else {
+      mappings.push(mapping);
+    }
+    await vscode.workspace
+      .getConfiguration(this.configSection)
+      .update('cacoo.syncMappings', mappings, vscode.ConfigurationTarget.Workspace);
+  }
+
+  async removeCacooSyncMapping(folderId: number): Promise<void> {
+    const mappings = this.getCacooSyncMappings().filter((m) => m.folderId !== folderId);
+    await vscode.workspace
+      .getConfiguration(this.configSection)
+      .update('cacoo.syncMappings', mappings, vscode.ConfigurationTarget.Workspace);
+  }
+
+  getCacooPinnedSheets(): CacooPinnedSheet[] {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<CacooPinnedSheet[]>('cacoo.pinnedSheets', []);
+  }
+
+  isCacooPinnedSheet(diagramId: string, sheetUid: string): boolean {
+    return this.getCacooPinnedSheets().some(
+      (s) => s.diagramId === diagramId && s.sheetUid === sheetUid
+    );
+  }
+
+  async toggleCacooPinnedSheet(sheet: CacooPinnedSheet): Promise<boolean> {
+    const pins = this.getCacooPinnedSheets();
+    const idx = pins.findIndex(
+      (s) => s.diagramId === sheet.diagramId && s.sheetUid === sheet.sheetUid
+    );
+    if (idx >= 0) {
+      pins.splice(idx, 1);
+      await vscode.workspace
+        .getConfiguration(this.configSection)
+        .update('cacoo.pinnedSheets', pins, vscode.ConfigurationTarget.Global);
+      return false;
+    } else {
+      pins.push(sheet);
+      await vscode.workspace
+        .getConfiguration(this.configSection)
+        .update('cacoo.pinnedSheets', pins, vscode.ConfigurationTarget.Global);
+      return true;
+    }
   }
 }
