@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { SlackApiService } from '../services/slackApi';
-import { ConfigService } from '../services/configService';
+import { SlackConfig } from '../config/slackConfig';
 import { SlackMessage } from '../types/workspace';
 import { formatSlackTime } from './slackTreeViewProvider';
 
@@ -17,7 +17,7 @@ export class SlackSearchTreeViewProvider implements vscode.TreeDataProvider<Sear
   private configured: boolean | null = null;
   private loaded = false;
 
-  constructor(private slackApi: SlackApiService, private configService: ConfigService) {}
+  constructor(private slackApi: SlackApiService, private configService: SlackConfig) {}
 
   /** Clear cache and re-render (triggers loading spinner until fetchAndRefresh completes) */
   refresh(): void {
@@ -36,7 +36,7 @@ export class SlackSearchTreeViewProvider implements vscode.TreeDataProvider<Sear
       return;
     }
 
-    const keywords = this.configService.getSlackSearchKeywords();
+    const keywords = this.configService.getSearchKeywords();
     this.keywordResults.clear();
     this.keywordErrors.clear();
 
@@ -71,7 +71,7 @@ export class SlackSearchTreeViewProvider implements vscode.TreeDataProvider<Sear
       return [];
     }
 
-    const keywords = this.configService.getSlackSearchKeywords();
+    const keywords = this.configService.getSearchKeywords();
     if (keywords.length === 0) {
       return [];
     }

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
 import * as http from 'http';
-import { ConfigService } from './configService';
+import { GoogleConfig } from '../config/googleConfig';
 import {
   GoogleServiceState,
   InitializedGoogleService,
@@ -21,13 +21,13 @@ const SCOPES = [
 export class GoogleApiService {
   private serviceState: GoogleServiceState = { state: 'uninitialized' };
 
-  constructor(private configService: ConfigService) {}
+  constructor(private configService: GoogleConfig) {}
 
   // ---- OAuth2 ----
 
   async authenticate(): Promise<void> {
-    const clientId = this.configService.getGoogleClientId();
-    const clientSecret = await this.configService.getGoogleClientSecret();
+    const clientId = this.configService.getClientId();
+    const clientSecret = await this.configService.getClientSecret();
 
     if (!clientId || !clientSecret) {
       throw new Error('Google OAuth の Client ID / Client Secret が設定されていません。');
@@ -37,7 +37,7 @@ export class GoogleApiService {
     const tokens = await this.exchangeCodeForTokens(code, clientId, clientSecret);
 
     if (tokens.refresh_token) {
-      await this.configService.setGoogleRefreshToken(tokens.refresh_token);
+      await this.configService.setRefreshToken(tokens.refresh_token);
     }
 
     this.serviceState = {
@@ -116,9 +116,9 @@ export class GoogleApiService {
   }
 
   private async refreshAccessToken(): Promise<{ access_token: string; expires_in: number }> {
-    const clientId = this.configService.getGoogleClientId();
-    const clientSecret = await this.configService.getGoogleClientSecret();
-    const refreshToken = await this.configService.getGoogleRefreshToken();
+    const clientId = this.configService.getClientId();
+    const clientSecret = await this.configService.getClientSecret();
+    const refreshToken = await this.configService.getRefreshToken();
 
     if (!clientId || !clientSecret || !refreshToken) {
       throw new Error('not configured');
@@ -152,7 +152,7 @@ export class GoogleApiService {
     }
 
     // If no refresh token, start OAuth flow automatically
-    const hasRefreshToken = await this.configService.getGoogleRefreshToken();
+    const hasRefreshToken = await this.configService.getRefreshToken();
     if (!hasRefreshToken) {
       await this.authenticate();
       // authenticate() sets serviceState to 'initialized' on success
@@ -180,7 +180,7 @@ export class GoogleApiService {
   }
 
   async isConfigured(): Promise<boolean> {
-    const refreshToken = await this.configService.getGoogleRefreshToken();
+    const refreshToken = await this.configService.getRefreshToken();
     return !!refreshToken;
   }
 
@@ -189,7 +189,7 @@ export class GoogleApiService {
   }
 
   async signOut(): Promise<void> {
-    await this.configService.clearGoogleTokens();
+    await this.configService.clearTokens();
     this.serviceState = { state: 'uninitialized' };
   }
 
@@ -197,7 +197,7 @@ export class GoogleApiService {
 
   async getEvents(timeMin: string, timeMax: string): Promise<GoogleCalendarEvent[]> {
     const { accessToken } = await this.ensureInitialized();
-    const calendarId = this.configService.getGoogleCalendarId();
+    const calendarId = this.configService.getCalendarId();
 
     const params = new URLSearchParams({
       timeMin,

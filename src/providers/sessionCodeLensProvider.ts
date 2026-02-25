@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { SessionService } from '../services/sessionService';
+import { SessionFileService } from '../services/session/sessionFileService';
 
 export class SessionCodeLensProvider implements vscode.CodeLensProvider {
   private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
 
-  constructor(private sessionService: SessionService) {}
+  constructor(private fileService: SessionFileService) {}
 
   refresh(): void {
     this._onDidChangeCodeLenses.fire();
@@ -13,11 +13,11 @@ export class SessionCodeLensProvider implements vscode.CodeLensProvider {
 
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
     const filePath = document.uri.fsPath;
-    if (!this.sessionService.isSessionFile(filePath)) {
+    if (!this.fileService.isSessionFile(filePath)) {
       return [];
     }
 
-    const parsed = this.sessionService.parseSession(filePath);
+    const parsed = this.fileService.parseSession(filePath);
     if (!parsed) {
       return [];
     }

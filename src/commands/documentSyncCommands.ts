@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BacklogApiService } from '../services/backlogApi';
-import { ConfigService } from '../services/configService';
+import { WorkspaceFileStore } from '../config/workspaceFileStore';
+import { BacklogConfig } from '../config/backlogConfig';
 import { SyncService } from '../services/syncService';
 import { BacklogRemoteContentProvider } from '../providers/backlogRemoteContentProvider';
 import { SyncFileDecorationProvider } from '../providers/syncFileDecorationProvider';
@@ -16,7 +17,8 @@ export class DocumentSyncCommands {
 
   constructor(
     private backlogApi: BacklogApiService,
-    private configService: ConfigService,
+    private backlogConfig: BacklogConfig,
+    private fileStore: WorkspaceFileStore,
     private remoteContentProvider: BacklogRemoteContentProvider,
     private decorationProvider?: SyncFileDecorationProvider
   ) {
@@ -485,7 +487,7 @@ export class DocumentSyncCommands {
     await vscode.env.clipboard.writeText(body);
 
     // Backlog エディタ URL を構築して開く
-    const domain = this.configService.getDomain();
+    const domain = this.backlogConfig.getDomain();
     if (!domain) {
       vscode.window.showWarningMessage('[Nulab] Backlog ドメインが設定されていません。');
       return;
@@ -719,7 +721,7 @@ export class DocumentSyncCommands {
   // ---- Helpers ----
 
   private async resolveMapping(): Promise<DocumentSyncMapping | undefined> {
-    const mappings = this.configService.getDocumentSyncMappings();
+    const mappings = this.fileStore.getDocumentSyncMappings();
     if (mappings.length === 0) {
       vscode.window.showWarningMessage(
         '[Nulab] Document Sync マッピングが設定されていません。Documents ビューからフォルダを右クリックして設定してください。'

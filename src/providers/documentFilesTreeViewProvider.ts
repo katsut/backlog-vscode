@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ConfigService } from '../services/configService';
+import { WorkspaceFileStore } from '../config/workspaceFileStore';
 import { SyncService } from '../services/syncService';
 import { DocumentSyncMapping, SyncManifest } from '../types/backlog';
 
@@ -13,7 +13,7 @@ export class DocumentFilesTreeViewProvider implements vscode.TreeDataProvider<Do
   >();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  constructor(private configService: ConfigService, private syncService: SyncService) {}
+  constructor(private configService: WorkspaceFileStore, private syncService: SyncService) {}
 
   refresh(): void {
     this._onDidChangeTreeData.fire();

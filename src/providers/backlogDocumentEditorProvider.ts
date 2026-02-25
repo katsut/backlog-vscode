@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { SyncService } from '../services/syncService';
-import { ConfigService } from '../services/configService';
+import { BacklogConfig } from '../config/backlogConfig';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
 import { DocumentEditorWebview } from '../webviews/documentEditorWebview';
 export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorProvider {
@@ -11,7 +11,7 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly syncService: SyncService,
-    private readonly configService: ConfigService,
+    private readonly configService: BacklogConfig,
     private readonly markdownRenderer: MarkdownRenderer
   ) {}
 

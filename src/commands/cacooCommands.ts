@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CacooApiService } from '../services/cacooApi';
-import { ConfigService } from '../services/configService';
+import { CacooConfig } from '../config/cacooConfig';
 import { CacooSyncService } from '../services/cacooSyncService';
 import { CacooSheetWebview } from '../webviews/cacooSheetWebview';
 import { CacooSyncMapping, CacooPinnedSheet } from '../types/cacoo';
@@ -17,7 +17,7 @@ export class CacooCommands {
 
   constructor(
     private cacooApi: CacooApiService,
-    private configService: ConfigService,
+    private configService: CacooConfig,
     private syncService: CacooSyncService
   ) {}
 
@@ -32,7 +32,7 @@ export class CacooCommands {
     if (!apiKey) {
       return;
     }
-    await this.configService.setCacooApiKey(apiKey);
+    await this.configService.setApiKey(apiKey);
 
     // Organization selection
     try {
@@ -51,7 +51,7 @@ export class CacooCommands {
       }
 
       if (orgs.length === 1) {
-        await this.configService.setCacooOrganizationKey(orgs[0].key);
+        await this.configService.setOrganizationKey(orgs[0].key);
         vscode.window.showInformationMessage(
           `[Nulab] Cacoo API Key を設定しました。Organization: ${orgs[0].name}`
         );
@@ -61,7 +61,7 @@ export class CacooCommands {
           { placeHolder: 'Organization を選択してください' }
         );
         if (selected) {
-          await this.configService.setCacooOrganizationKey(selected.orgKey);
+          await this.configService.setOrganizationKey(selected.orgKey);
           vscode.window.showInformationMessage(
             `[Nulab] Cacoo API Key を設定しました。Organization: ${selected.label}`
           );
@@ -82,7 +82,7 @@ export class CacooCommands {
 
   async previewSheet(
     context: vscode.ExtensionContext,
-    openPanels: Map<string, vscode.WebviewPanel>,
+    openPanels: import('../panels/panelManager').PanelManager,
     diagramId: string,
     sheetUid: string,
     title: string
@@ -106,7 +106,6 @@ export class CacooCommands {
     );
 
     openPanels.set(panelKey, panel);
-    panel.onDidDispose(() => openPanels.delete(panelKey));
 
     // Message handler
     panel.webview.onDidReceiveMessage(
@@ -166,7 +165,7 @@ export class CacooCommands {
       sheetUid: item.sheet.uid,
       label: `${item.diagram.title} / ${item.sheet.name}`,
     };
-    const pinned = await this.configService.toggleCacooPinnedSheet(sheet);
+    const pinned = await this.configService.togglePinnedSheet(sheet);
     vscode.window.showInformationMessage(
       pinned
         ? `[Nulab] "${sheet.label}" をピン留めしました`
@@ -184,7 +183,7 @@ export class CacooCommands {
     if (item instanceof CacooFolderItem) {
       folderId = item.folder.folderId;
       folderName = item.folder.folderName;
-      organizationKey = this.configService.getCacooOrganizationKey() || '';
+      organizationKey = this.configService.getOrganizationKey() || '';
     } else {
       // Interactive folder selection
       try {
@@ -202,7 +201,7 @@ export class CacooCommands {
         }
         folderId = selected.folder.folderId;
         folderName = selected.folder.folderName;
-        organizationKey = this.configService.getCacooOrganizationKey() || '';
+        organizationKey = this.configService.getOrganizationKey() || '';
       } catch (error) {
         vscode.window.showErrorMessage(`[Nulab] フォルダの取得に失敗しました: ${error}`);
         return;
@@ -224,7 +223,7 @@ export class CacooCommands {
       folderId,
       folderName,
     };
-    await this.configService.addCacooSyncMapping(mapping);
+    await this.configService.addSyncMapping(mapping);
     vscode.window.showInformationMessage(
       `[Nulab] マッピングを設定しました: ${folderName} → ${localPath}`
     );
@@ -238,7 +237,7 @@ export class CacooCommands {
       return;
     }
 
-    const pinnedSheets = this.configService.getCacooPinnedSheets();
+    const pinnedSheets = this.configService.getPinnedSheets();
     if (pinnedSheets.length === 0) {
       vscode.window.showWarningMessage(
         '[Nulab] ピン留めされたシートがありません。ツリーからシートをピン留めしてください。'
@@ -252,7 +251,7 @@ export class CacooCommands {
     }
 
     // Determine local directory: use mapping if exists, otherwise default
-    const mappings = this.configService.getCacooSyncMappings();
+    const mappings = this.configService.getSyncMappings();
     const localPath = mappings.length > 0 ? mappings[0].localPath : 'cacoo-sheets';
     const localDir = path.join(workspaceRoot, localPath);
 

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { SessionService } from '../services/sessionService';
-import { ConfigService } from '../services/configService';
+import { SessionFileService } from '../services/session/sessionFileService';
+import { SessionReplyService } from '../services/session/sessionReplyService';
+import { BacklogConfig } from '../config/backlogConfig';
 import { SlackApiService } from '../services/slackApi';
 import { TodoWebview } from '../webviews/todoWebview';
 import { SlackMessage } from '../types/workspace';
@@ -13,9 +14,10 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly sessionService: SessionService,
+    private readonly fileService: SessionFileService,
+    private readonly replyService: SessionReplyService,
     private readonly todoProvider: TodoTreeViewProvider,
-    private readonly configService: ConfigService,
+    private readonly configService: BacklogConfig,
     private readonly slackApi: SlackApiService,
     private readonly sessionCodeLensProvider: SessionCodeLensProvider
   ) {}
@@ -46,7 +48,7 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
     const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === document.uri.toString() && e.contentChanges.length > 0) {
         // Re-read draft info and push update to webview
-        const draft = this.sessionService.getDraftInfo(todoId);
+        const draft = this.fileService.getDraftInfo(todoId);
         if (draft) {
           webviewPanel.webview.postMessage({ command: 'updateDraft', draft: draft.content });
         }
@@ -94,14 +96,14 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         await this.render(webviewPanel, todoId);
       }
       if (message.command === 'refreshDraft') {
-        const draft = this.sessionService.getDraftInfo(todoId);
+        const draft = this.fileService.getDraftInfo(todoId);
         if (draft) {
           webviewPanel.webview.postMessage({ command: 'updateDraft', draft: draft.content });
         }
       }
       if (message.command === 'postDraft') {
-        const filePath = this.sessionService.getSessionFilePath(todoId);
-        const parsed = this.sessionService.parseSession(filePath);
+        const filePath = this.fileService.getSessionFilePath(todoId);
+        const parsed = this.fileService.parseSession(filePath);
         if (!parsed || !parsed.draft.trim()) {
           vscode.window.showWarningMessage('[Nulab] ドラフトが空です');
           return;
@@ -118,9 +120,9 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         }
         try {
           if (parsed.meta.action === 'backlog-reply') {
-            await this.sessionService.postBacklogReply(filePath);
+            await this.replyService.postBacklogReply(filePath);
           } else if (parsed.meta.action === 'slack-reply') {
-            await this.sessionService.postSlackReply(filePath);
+            await this.replyService.postSlackReply(filePath);
           }
           this.todoProvider.markReplied(todoId);
           vscode.window.showInformationMessage(`[Nulab] ${label}しました`);
@@ -139,7 +141,7 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         if (confirm !== '破棄') {
           return;
         }
-        this.sessionService.clearDraft(todoId);
+        this.fileService.clearDraft(todoId);
         await this.render(webviewPanel, todoId);
         vscode.window.showInformationMessage('[Nulab] ドラフトを破棄しました');
       }
@@ -172,16 +174,31 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
       }
     }
 
-    const draft = this.sessionService.getDraftInfo(todoId);
+    const draft = this.fileService.getDraftInfo(todoId);
+    const fullContext = this.fileService.getContextSection(todoId);
 
-    panel.webview.html = TodoWebview.getWebviewContent(
-      panel.webview,
-      this.extensionUri,
-      todo,
-      this.configService.getBaseUrl(),
-      slackContextBefore,
-      slackContextAfter,
-      draft
-    );
+    try {
+      panel.webview.html = TodoWebview.getWebviewContent(
+        panel.webview,
+        this.extensionUri,
+        todo,
+        this.configService.getBaseUrl(),
+        slackContextBefore,
+        slackContextAfter,
+        draft,
+        fullContext
+      );
+    } catch {
+      // Fallback: render without fullContext if markdown processing fails
+      panel.webview.html = TodoWebview.getWebviewContent(
+        panel.webview,
+        this.extensionUri,
+        todo,
+        this.configService.getBaseUrl(),
+        slackContextBefore,
+        slackContextAfter,
+        draft
+      );
+    }
   }
 }

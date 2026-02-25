@@ -3,6 +3,7 @@ import { Entity } from 'backlog-js';
 import { WebviewHelper } from './common';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
 import { BacklogApiService } from '../services/backlogApi';
+import { resolveBacklogImages } from '../utils/imageResolver';
 
 /**
  * Issue webview content generator
@@ -32,314 +33,252 @@ export class IssueWebview {
     const issueUrl = fullBaseUrl && issue.issueKey ? `${fullBaseUrl}/view/${issue.issueKey}` : '#';
 
     // Resolve Backlog image URLs in description
-    let description = issue.description || '';
-    if (description && backlogApi) {
-      try {
-        description = await backlogApi.resolveBacklogImages(description);
-      } catch {
-        /* use original */
-      }
-    }
+    const description = await resolveBacklogImages(issue.description || '', backlogApi);
 
     // Render description as markdown if present
     const descriptionHtml = description ? this.markdownRenderer.renderMarkdown(description) : '';
 
-    // Separate comments and change history
-    const { regularComments, changeHistory } = this.categorizeComments(comments || []);
+    // Extract additional issue fields
+    const issueAny = issue as any;
+    const issueTypeName = (issue.issueType as { name?: string })?.name || '';
+    const milestones = Array.isArray(issueAny.milestone)
+      ? issueAny.milestone.map((m: any) => m.name).filter(Boolean)
+      : [];
+    const categories = Array.isArray(issueAny.category)
+      ? issueAny.category.map((c: any) => c.name).filter(Boolean)
+      : [];
 
-    // Render regular comments as markdown (resolve images in comments too)
-    const commentsHtml = await Promise.all(
-      regularComments.map(async (comment) => {
-        let content = this.normalizeCommentContent(comment.content);
-        if (content && backlogApi) {
-          try {
-            content = await backlogApi.resolveBacklogImages(content);
-          } catch {
-            /* use original */
-          }
+    // Merge comments and change history into unified timeline
+    const timeline = this.buildTimeline(comments || []);
+    const timelineHtml = await Promise.all(
+      timeline.map(async (entry) => {
+        if (entry.type === 'comment') {
+          const content = await resolveBacklogImages(
+            this.normalizeCommentContent(entry.comment!.content),
+            backlogApi
+          );
+          return { ...entry, contentHtml: this.markdownRenderer.renderMarkdown(content) };
+        } else if (entry.type === 'mixed') {
+          const content = await resolveBacklogImages(
+            this.normalizeCommentContent(entry.comment!.content),
+            backlogApi
+          );
+          return {
+            ...entry,
+            contentHtml: this.markdownRenderer.renderMarkdown(content),
+            changesHtml: this.formatChangeHistory(entry.comment!),
+          };
         }
-        return {
-          ...comment,
-          contentHtml: this.markdownRenderer.renderMarkdown(content),
-        };
+        return { ...entry, changesHtml: this.formatChangeHistory(entry.comment!) };
       })
     );
 
-    // Process change history
-    const changeHistoryHtml = changeHistory.map((comment: Entity.Issue.Comment) => ({
-      ...comment,
-      changesHtml: this.formatChangeHistory(comment),
-    }));
-
     const additionalStyles = `
-        /* Issue-specific styles */
-        .issue-description-content.markdown-content {
+        /* Issue details grid */
+        .issue-details-grid {
+          display: grid;
+          grid-template-columns: auto 1fr auto 1fr;
+          gap: 6px 12px;
+          padding: 12px 16px;
+          background: var(--vscode-editor-inactiveSelectionBackground);
+          border-radius: 6px;
+          margin-bottom: 16px;
+          font-size: 0.9em;
+        }
+        .issue-details-grid .detail-label {
+          color: var(--vscode-descriptionForeground);
+          font-weight: 500;
+          white-space: nowrap;
+        }
+        .issue-details-grid .detail-value {
+          color: var(--vscode-foreground);
+        }
+
+        /* Description */
+        .issue-description { margin-bottom: 16px; }
+        .issue-description h3 {
+          font-size: 1em;
+          font-weight: 600;
+          margin: 0 0 8px 0;
+          padding-bottom: 6px;
+          border-bottom: 1px solid var(--vscode-panel-border);
+        }
+        .issue-description .markdown-content {
           background: transparent;
           border: none;
           padding: 0;
         }
-        
-        /* Fix potential conflicts with markdown content */
-        .content-body .markdown-content h1,
-        .content-body .markdown-content h2,
-        .content-body .markdown-content h3,
-        .content-body .markdown-content h4,
-        .content-body .markdown-content h5,
-        .content-body .markdown-content h6 {
-          color: var(--vscode-foreground);
-          font-weight: 600;
-        }
-        
-        .content-body .markdown-content p {
-          color: var(--vscode-foreground);
-          line-height: 1.7;
-        }
-        
-        .content-body .markdown-content ul,
-        .content-body .markdown-content ol {
-          color: var(--vscode-foreground);
-        }
-        
-        .content-body .markdown-content li {
-          color: var(--vscode-foreground);
-        }
-        
-        .content-body .markdown-content blockquote {
-          color: var(--vscode-descriptionForeground);
-          border-left: 4px solid var(--vscode-textBlockQuote-border);
+        .issue-description .markdown-content p { line-height: 1.6; }
+        .issue-description .markdown-content a { color: var(--vscode-textLink-foreground); }
+        .issue-description .markdown-content a:hover { color: var(--vscode-textLink-activeForeground); }
+        .issue-description .markdown-content blockquote {
+          border-left: 3px solid var(--vscode-textBlockQuote-border);
           background: var(--vscode-textBlockQuote-background);
+          margin: 8px 0;
+          padding: 4px 12px;
         }
-        
-        .content-body .markdown-content code {
+        .issue-description .markdown-content code {
           background: var(--vscode-textCodeBlock-background);
-          color: var(--vscode-textPreformat-foreground);
-          border: 1px solid var(--vscode-panel-border);
-        }
-        
-        .content-body .markdown-content pre {
-          background: var(--vscode-textCodeBlock-background);
-          border: 1px solid var(--vscode-panel-border);
-        }
-        
-        .content-body .markdown-content a {
-          color: var(--vscode-textLink-foreground);
-        }
-        
-        .content-body .markdown-content a:hover {
-          color: var(--vscode-textLink-activeForeground);
-        }
-        
-        /* Change History Styles */
-        .change-history {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5em;
-        }
-        
-        .change-entry {
-          background: var(--vscode-editor-inactiveSelectionBackground);
-          border: 1px solid var(--vscode-panel-border);
-          border-radius: 6px;
-          padding: 12px;
-        }
-        
-        .change-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 8px;
-          font-size: 0.9em;
-        }
-        
-        .change-author {
-          font-weight: 600;
-          color: var(--vscode-foreground);
-        }
-        
-        .change-date {
-          color: var(--vscode-descriptionForeground);
-          font-size: 0.85em;
-        }
-        
-        .change-content {
-          color: var(--vscode-foreground);
-        }
-        
-        .change-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 4px 0;
-        }
-        
-        .change-icon {
-          font-size: 1.1em;
-          min-width: 20px;
-        }
-        
-        .change-text {
-          flex: 1;
-          font-size: 0.9em;
-        }
-        
-        .change-summary {
-          color: var(--vscode-descriptionForeground);
-          font-style: italic;
-          text-align: center;
-          padding: 8px;
-        }
-        
-        .change-assignee .change-icon { color: #4a90e2; }
-        .change-status .change-icon { color: #f39c12; }
-        .change-priority .change-icon { color: #e74c3c; }
-        
-        /* Change details styles */
-        .change-details-text {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-        
-        .change-field {
-          font-weight: 600;
-          font-size: 0.85em;
-          color: var(--vscode-descriptionForeground);
-        }
-        
-        .change-values {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 0.9em;
-        }
-        
-        .change-from {
-          background: var(--vscode-inputValidation-errorBackground);
-          color: var(--vscode-inputValidation-errorForeground);
-          padding: 2px 6px;
+          padding: 1px 4px;
           border-radius: 3px;
-          border: 1px solid var(--vscode-inputValidation-errorBorder);
+          font-size: 0.9em;
         }
-        
-        .change-to {
-          background: var(--vscode-inputValidation-infoBackground);
-          color: var(--vscode-inputValidation-infoForeground);
-          padding: 2px 6px;
-          border-radius: 3px;
-          border: 1px solid var(--vscode-inputValidation-infoBorder);
-        }
-        
-        .change-arrow {
-          color: var(--vscode-descriptionForeground);
-          font-weight: bold;
-        }
-        
-        .change-debug {
-          font-size: 0.75em;
-          color: var(--vscode-descriptionForeground);
-          margin-top: 4px;
-        }
-        
-        /* Unified diff styles (like Backlog) */
-        .change-unified-diff {
-          font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', 'Consolas', 'Courier New', monospace;
-          font-size: 0.85em;
+        .issue-description .markdown-content pre {
           background: var(--vscode-textCodeBlock-background);
           border: 1px solid var(--vscode-panel-border);
           border-radius: 4px;
-          margin-top: 8px;
-          overflow-x: auto;
+          padding: 8px 12px;
         }
-        
-        .diff-line {
+
+        /* Unified timeline */
+        .timeline-section { margin-top: 16px; }
+        .timeline-section h3 {
+          font-size: 1em;
+          margin: 0 0 12px 0;
+          padding-bottom: 6px;
+          border-bottom: 1px solid var(--vscode-panel-border);
+        }
+        .timeline-entry {
+          padding: 10px 0;
+          border-bottom: 1px solid var(--vscode-panel-border);
+        }
+        .timeline-entry:last-child { border-bottom: none; }
+        .timeline-header {
           display: flex;
-          align-items: flex-start;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 6px;
+          font-size: 0.85em;
+        }
+        .timeline-author {
+          font-weight: 600;
+          color: var(--vscode-textLink-foreground);
+        }
+        .timeline-date {
+          color: var(--vscode-descriptionForeground);
+        }
+        .timeline-content .markdown-content {
+          background: transparent;
+          border: none;
+          padding: 0;
+        }
+        .timeline-content .markdown-content p { line-height: 1.6; margin: 4px 0; }
+        .timeline-content .markdown-content a { color: var(--vscode-textLink-foreground); }
+
+        /* Change entries in timeline */
+        .timeline-changes {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          font-size: 0.85em;
+        }
+        .change-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: var(--vscode-editor-inactiveSelectionBackground);
+          border: 1px solid var(--vscode-panel-border);
+          border-radius: 4px;
           padding: 2px 8px;
-          margin: 0;
-          white-space: pre-wrap;
-          word-wrap: break-word;
         }
-        
-        .diff-line:hover {
-          background: var(--vscode-list-hoverBackground);
+        .change-chip .field-name {
+          color: var(--vscode-descriptionForeground);
+          font-weight: 500;
         }
-        
-        .diff-removed {
-          background: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.1));
-          border-left: 3px solid var(--vscode-diffEditor-removedLineBackground, #ff0000);
+        .change-chip .old-val {
+          text-decoration: line-through;
+          color: var(--vscode-descriptionForeground);
+          opacity: 0.7;
         }
-        
-        .diff-added {
-          background: var(--vscode-diffEditor-insertedTextBackground, rgba(0, 255, 0, 0.1));
-          border-left: 3px solid var(--vscode-diffEditor-insertedLineBackground, #00ff00);
+        .change-chip .new-val {
+          color: var(--vscode-foreground);
+          font-weight: 500;
         }
-        
-        .diff-indicator {
-          font-weight: bold;
-          min-width: 20px;
-          text-align: center;
-          user-select: none;
-          margin-right: 8px;
-          flex-shrink: 0;
-        }
-        
-        .diff-removed .diff-indicator {
-          color: var(--vscode-diffEditor-removedTextForeground, #ff4444);
-        }
-        
-        .diff-added .diff-indicator {
-          color: var(--vscode-diffEditor-insertedTextForeground, #00aa00);
-        }
-        
-        .diff-content {
-          flex: 1;
-          word-break: break-word;
-          overflow-wrap: break-word;
-          line-height: 1.4;
-        }
-        
-        .change-no-diff {
+        .change-chip .arrow { color: var(--vscode-descriptionForeground); }
+
+        /* Description diff in timeline */
+        .desc-change-summary {
+          font-size: 0.85em;
           color: var(--vscode-descriptionForeground);
           font-style: italic;
-          font-size: 0.9em;
         }
-        
-        .change-summary-text {
-          font-size: 0.9em;
-          color: var(--vscode-foreground);
-        }
-        
-        .change-diff-details {
-          margin-top: 8px;
-        }
-        
+        .change-diff-details { margin-top: 4px; }
         .change-diff-details summary {
           cursor: pointer;
           color: var(--vscode-textLink-foreground);
           font-size: 0.85em;
-          padding: 4px 0;
           user-select: none;
         }
-        
-        .change-diff-details summary:hover {
-          color: var(--vscode-textLink-activeForeground);
+        .change-diff-details summary:hover { color: var(--vscode-textLink-activeForeground); }
+        .change-unified-diff {
+          font-family: var(--webview-mono-font-family);
+          font-size: 0.85em;
+          background: var(--vscode-textCodeBlock-background);
+          border: 1px solid var(--vscode-panel-border);
+          border-radius: 4px;
+          margin-top: 4px;
+          overflow-x: auto;
         }
-        
-        .change-diff-details[open] summary {
-          margin-bottom: 8px;
+        .diff-line {
+          display: flex;
+          padding: 1px 8px;
+          white-space: pre-wrap;
+          word-wrap: break-word;
         }
-        
+        .diff-removed {
+          background: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.1));
+        }
+        .diff-added {
+          background: var(--vscode-diffEditor-insertedTextBackground, rgba(0, 255, 0, 0.1));
+        }
+        .diff-indicator {
+          font-weight: bold;
+          min-width: 16px;
+          text-align: center;
+          user-select: none;
+          flex-shrink: 0;
+        }
+        .diff-removed .diff-indicator { color: var(--vscode-diffEditor-removedTextForeground, #ff4444); }
+        .diff-added .diff-indicator { color: var(--vscode-diffEditor-insertedTextForeground, #00aa00); }
+        .diff-content { flex: 1; word-break: break-word; line-height: 1.4; }
         .diff-truncated {
           text-align: center;
           color: var(--vscode-descriptionForeground);
           font-style: italic;
-          padding: 8px;
-          background: var(--vscode-editor-inactiveSelectionBackground);
+          padding: 4px;
         }
     `;
 
+    // Build details grid items
+    const detailItems: Array<{ label: string; value: string }> = [];
+    if (issueTypeName) {
+      detailItems.push({ label: '種別', value: issueTypeName });
+    }
+    detailItems.push({ label: '担当', value: issue.assignee?.name || '未割当' });
+    if (issue.dueDate) {
+      detailItems.push({
+        label: '期日',
+        value: new Date(issue.dueDate).toLocaleDateString('ja-JP'),
+      });
+    }
+    if (milestones.length > 0) {
+      detailItems.push({ label: 'マイルストーン', value: milestones.join(', ') });
+    }
+    if (categories.length > 0) {
+      detailItems.push({ label: 'カテゴリ', value: categories.join(', ') });
+    }
+
+    const detailsGridHtml = detailItems
+      .map(
+        (d) =>
+          `<span class="detail-label">${WebviewHelper.escapeHtml(
+            d.label
+          )}</span><span class="detail-value">${WebviewHelper.escapeHtml(d.value)}</span>`
+      )
+      .join('');
+
     return `<!DOCTYPE html>
-      <html lang="en">
+      <html lang="ja">
       ${WebviewHelper.getHtmlHead(
         webview,
         extensionUri,
@@ -351,7 +290,7 @@ export class IssueWebview {
         <div class="webview-header">
           <h1>
             ${WebviewHelper.escapeHtml(issue.summary)}
-            <button class="refresh-button" id="refreshButton" title="Refresh issue content">
+            <button class="refresh-button" id="refreshButton" title="更新">
               <span class="codicon codicon-refresh"></span>
             </button>
           </h1>
@@ -365,50 +304,23 @@ export class IssueWebview {
             )}">${WebviewHelper.escapeHtml(issue.priority.name)}</span>
             ${
               fullBaseUrl && issue.id
-                ? `<a href="#" class="external-link" data-url="${issueUrl}">🔗 Open in Backlog</a>`
+                ? `<a href="#" class="external-link" data-url="${issueUrl}">Open in Backlog</a>`
                 : ''
             }
-            <a href="#" class="external-link" id="addToTodoBtn">+ Add to TODO</a>
+            <a href="#" class="external-link" id="addToTodoBtn">+ TODO</a>
           </div>
         </div>
 
-        <div class="details-section">
-          <div class="details-field">
-            <label>Status:</label>
-            <span>${WebviewHelper.escapeHtml(issue.status.name)}</span>
-          </div>
-          <div class="details-field">
-            <label>Priority:</label>
-            <span>${WebviewHelper.escapeHtml(issue.priority.name)}</span>
-          </div>
-          ${
-            issue.assignee
-              ? `
-            <div class="details-field">
-              <label>Assignee:</label>
-              <span>${WebviewHelper.escapeHtml(issue.assignee.name)}</span>
-            </div>
-          `
-              : ''
-          }
-          ${
-            issue.dueDate
-              ? `
-            <div class="details-field">
-              <label>Due Date:</label>
-              <span>${new Date(issue.dueDate).toLocaleDateString()}</span>
-            </div>
-          `
-              : ''
-          }
+        <div class="issue-details-grid">
+          ${detailsGridHtml}
         </div>
 
         ${
           descriptionHtml
             ? `
-          <div class="content-section">
-            <h3>Description</h3>
-            <div class="content-body markdown-content">
+          <div class="issue-description">
+            <h3>説明</h3>
+            <div class="markdown-content">
               ${descriptionHtml}
             </div>
           </div>
@@ -417,60 +329,47 @@ export class IssueWebview {
         }
 
         ${
-          commentsHtml.length > 0
+          timelineHtml.length > 0
             ? `
-          <div class="content-section">
-            <h3>Comments (${commentsHtml.length})</h3>
-            ${commentsHtml
-              .map(
-                (comment) => `
-              <div class="comment">
-                <div class="comment-header">
-                  <span class="comment-author">${WebviewHelper.escapeHtml(
-                    comment.createdUser.name
-                  )}</span>
-                  <span class="comment-date">${new Date(
-                    comment.created
-                  ).toLocaleDateString()}</span>
-                </div>
-                <div class="comment-content markdown-content">
-                  ${comment.contentHtml}
-                </div>
-              </div>
-            `
-              )
+          <div class="timeline-section">
+            <h3>コメント・変更履歴 (${timelineHtml.length})</h3>
+            ${timelineHtml
+              .map((entry) => {
+                const author = WebviewHelper.escapeHtml(entry.comment!.createdUser.name);
+                const date = new Date(entry.comment!.created).toLocaleDateString('ja-JP');
+                if (entry.type === 'comment') {
+                  return `<div class="timeline-entry">
+                    <div class="timeline-header">
+                      <span class="timeline-author">${author}</span>
+                      <span class="timeline-date">${date}</span>
+                    </div>
+                    <div class="timeline-content markdown-content">${
+                      (entry as any).contentHtml
+                    }</div>
+                  </div>`;
+                } else if (entry.type === 'change') {
+                  return `<div class="timeline-entry">
+                    <div class="timeline-header">
+                      <span class="timeline-author">${author}</span>
+                      <span class="timeline-date">${date}</span>
+                    </div>
+                    <div class="timeline-changes">${(entry as any).changesHtml}</div>
+                  </div>`;
+                } else {
+                  // mixed: comment + changes
+                  return `<div class="timeline-entry">
+                    <div class="timeline-header">
+                      <span class="timeline-author">${author}</span>
+                      <span class="timeline-date">${date}</span>
+                    </div>
+                    <div class="timeline-changes">${(entry as any).changesHtml}</div>
+                    <div class="timeline-content markdown-content">${
+                      (entry as any).contentHtml
+                    }</div>
+                  </div>`;
+                }
+              })
               .join('')}
-          </div>
-        `
-            : ''
-        }
-
-        ${
-          changeHistoryHtml.length > 0
-            ? `
-          <div class="content-section">
-            <h3>Change History (${changeHistoryHtml.length})</h3>
-            <div class="change-history">
-              ${changeHistoryHtml
-                .map(
-                  (change) => `
-                <div class="change-entry">
-                  <div class="change-header">
-                    <span class="change-author">${WebviewHelper.escapeHtml(
-                      change.createdUser.name
-                    )}</span>
-                    <span class="change-date">${new Date(
-                      change.created
-                    ).toLocaleDateString()}</span>
-                  </div>
-                  <div class="change-content">
-                    ${change.changesHtml}
-                  </div>
-                </div>
-              `
-                )
-                .join('')}
-            </div>
           </div>
         `
             : ''
@@ -478,43 +377,29 @@ export class IssueWebview {
 
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
-          
-          // Handle all clicks
+
           document.addEventListener('click', function(event) {
             const target = event.target;
-            
-            // Handle refresh button click
+
             if (target.closest('#refreshButton')) {
               event.preventDefault();
-              event.stopPropagation();
-              vscode.postMessage({
-                command: 'refreshIssue',
-                issueId: '${issue.id || ''}'
-              });
-              return false;
-            }
-            
-            // Handle add to TODO
-            if (target.closest('#addToTodoBtn')) {
-              event.preventDefault();
-              event.stopPropagation();
-              vscode.postMessage({ command: 'addToTodo' });
-              return false;
+              vscode.postMessage({ command: 'refreshIssue', issueId: '${issue.id || ''}' });
+              return;
             }
 
-            // Handle external link clicks
+            if (target.closest('#addToTodoBtn')) {
+              event.preventDefault();
+              vscode.postMessage({ command: 'addToTodo' });
+              return;
+            }
+
             const linkTarget = target.closest('a[data-url]');
             if (linkTarget) {
               event.preventDefault();
-              event.stopPropagation();
               const url = linkTarget.getAttribute('data-url');
               if (url) {
-                vscode.postMessage({
-                  command: 'openExternal',
-                  url: url
-                });
+                vscode.postMessage({ command: 'openExternal', url: url });
               }
-              return false;
             }
           });
         </script>
@@ -567,414 +452,110 @@ export class IssueWebview {
   }
 
   /**
-   * Categorize comments into regular comments and change history
+   * Build a unified chronological timeline from comments.
+   * Each entry is either 'comment', 'change', or 'mixed' (has both changeLog and text content).
    */
-  private static categorizeComments(comments: Entity.Issue.Comment[]): {
-    regularComments: Entity.Issue.Comment[];
-    changeHistory: Entity.Issue.Comment[];
-  } {
-    const regularComments: Entity.Issue.Comment[] = [];
-    const changeHistory: Entity.Issue.Comment[] = [];
-
-    comments.forEach((comment: Entity.Issue.Comment) => {
-      if (this.isChangeHistoryComment(comment)) {
-        changeHistory.push(comment);
+  private static buildTimeline(
+    comments: Entity.Issue.Comment[]
+  ): Array<{ type: 'comment' | 'change' | 'mixed'; comment: Entity.Issue.Comment }> {
+    return comments.map((c) => {
+      const hasChangeLog = Array.isArray((c as any).changeLog) && (c as any).changeLog.length > 0;
+      const hasContent = !!(c.content && c.content.trim());
+      if (hasChangeLog && hasContent) {
+        return { type: 'mixed' as const, comment: c };
+      } else if (hasChangeLog) {
+        return { type: 'change' as const, comment: c };
       } else {
-        regularComments.push(comment);
+        return { type: 'comment' as const, comment: c };
       }
     });
-
-    return { regularComments, changeHistory };
   }
 
   /**
-   * Check if a comment is a change history entry
-   */
-  private static isChangeHistoryComment(comment: Entity.Issue.Comment): boolean {
-    // Backlogの変更履歴の特徴:
-    // 1. コメント内容が空またはシステム生成
-    // 2. changeLogプロパティが存在する場合がある
-    // 3. 特定のパターンを含む（担当者変更、ステータス変更など）
-
-    if (!comment.content || comment.content.trim() === '') {
-      return true;
-    }
-
-    // システム生成の変更通知パターンをチェック
-    const changePatterns = [
-      /^担当者を.+に変更しました$/,
-      /^状態を.+に変更しました$/,
-      /^種別を.+に変更しました$/,
-      /^優先度を.+に変更しました$/,
-      /^期限日を.+に変更しました$/,
-      /^マイルストーンを.+に変更しました$/,
-      /^カテゴリーを.+に変更しました$/,
-      /assigned to/i,
-      /status changed/i,
-      /priority changed/i,
-      /due date changed/i,
-    ];
-
-    return changePatterns.some((pattern) => pattern.test(comment.content));
-  }
-
-  /**
-   * Format change history comment
+   * Format change history as compact chips
    */
   private static formatChangeHistory(comment: Entity.Issue.Comment): string {
-    // Check all possible properties for change information
-    const commentWithExtended = comment as Entity.Issue.Comment & {
-      changeLog?: Entity.ChangeLog.IssueChangeLog[] | Entity.ChangeLog.IssueChangeLog;
-      changes?: Entity.ChangeLog.IssueChangeLog[];
-      notifications?: Entity.Notification.Notification[];
-      statusId?: number;
-      assigneeId?: number;
-      priorityId?: number;
-      summary?: string;
-      description?: string;
-    };
-
-    // Try different property names for change information
-    let changeData: Entity.ChangeLog.IssueChangeLog[] | null = null;
-    if (commentWithExtended.changeLog && Array.isArray(commentWithExtended.changeLog)) {
-      changeData = commentWithExtended.changeLog;
-    } else if (commentWithExtended.changes && Array.isArray(commentWithExtended.changes)) {
-      changeData = commentWithExtended.changes;
-    } else if (commentWithExtended.changeLog && typeof commentWithExtended.changeLog === 'object') {
-      changeData = [commentWithExtended.changeLog];
+    const changeLog = (comment as any).changeLog as any[] | undefined;
+    if (!changeLog || !Array.isArray(changeLog) || changeLog.length === 0) {
+      return '<span class="desc-change-summary">変更あり</span>';
     }
 
-    if (changeData && changeData.length > 0) {
-      const changes = changeData
-        .map((change: Entity.ChangeLog.IssueChangeLog) => {
-          return this.formatIndividualChange(change);
-        })
-        .join('');
+    return changeLog
+      .map((change: any) => {
+        const field = change.field || 'unknown';
+        const oldVal = change.originalValue || '';
+        const newVal = change.newValue || '';
 
-      return `<div class="change-details">${changes}</div>`;
+        // Description changes: just show summary with expandable diff
+        if (field.toLowerCase() === 'description' || field.toLowerCase() === '説明') {
+          return this.formatDescriptionChange(oldVal, newVal);
+        }
+
+        // Simple field changes as chips
+        if (oldVal && newVal) {
+          return `<span class="change-chip">
+            <span class="field-name">${WebviewHelper.escapeHtml(field)}</span>
+            <span class="old-val">${WebviewHelper.escapeHtml(this.truncate(oldVal, 40))}</span>
+            <span class="arrow">&rarr;</span>
+            <span class="new-val">${WebviewHelper.escapeHtml(this.truncate(newVal, 40))}</span>
+          </span>`;
+        } else if (newVal) {
+          return `<span class="change-chip">
+            <span class="field-name">${WebviewHelper.escapeHtml(field)}</span>
+            <span class="arrow">&rarr;</span>
+            <span class="new-val">${WebviewHelper.escapeHtml(this.truncate(newVal, 40))}</span>
+          </span>`;
+        }
+        return `<span class="change-chip"><span class="field-name">${WebviewHelper.escapeHtml(
+          field
+        )}</span> を変更</span>`;
+      })
+      .join('');
+  }
+
+  private static truncate(s: string, max: number): string {
+    return s.length > max ? s.slice(0, max) + '...' : s;
+  }
+
+  /**
+   * Format description change with expandable diff
+   */
+  private static formatDescriptionChange(oldVal: string, newVal: string): string {
+    if (!oldVal && !newVal) {
+      return '<span class="desc-change-summary">説明を変更</span>';
     }
 
-    // Check if there are notifications or other change indicators
-    if (commentWithExtended.notifications && Array.isArray(commentWithExtended.notifications)) {
-      const notifications = commentWithExtended.notifications
-        .map((notif: Entity.Notification.Notification) => {
-          return `<div class="change-item">
-          <span class="change-icon">🔔</span>
-          <span class="change-text">${WebviewHelper.escapeHtml(String(notif))}</span>
-        </div>`;
-        })
-        .join('');
-      return `<div class="change-details">${notifications}</div>`;
-    }
-
-    // If no specific change data but has other properties, show them
-    const relevantProps: (keyof typeof commentWithExtended)[] = [
-      'statusId',
-      'assigneeId',
-      'priorityId',
-      'summary',
-      'description',
+    const fromLines = (oldVal || '').trim().split('\n');
+    const toLines = (newVal || '').trim().split('\n');
+    const removed = fromLines.filter((l) => !toLines.includes(l) && l.trim());
+    const added = toLines.filter((l) => !fromLines.includes(l) && l.trim());
+    const diffLines = [
+      ...removed.slice(0, 10).map((l) => ({ type: 'removed', content: l })),
+      ...added.slice(0, 10).map((l) => ({ type: 'added', content: l })),
     ];
-    const foundProps = relevantProps.filter((prop) => commentWithExtended[prop] !== undefined);
 
-    if (foundProps.length > 0) {
-      const propDetails = foundProps
-        .map((prop) => `${String(prop)}: ${commentWithExtended[prop]}`)
-        .join(', ');
-      return `<div class="change-item">
-        <span class="change-icon">🔄</span>
-        <span class="change-text">変更: ${WebviewHelper.escapeHtml(propDetails)}</span>
-      </div>`;
+    if (diffLines.length === 0) {
+      return '<span class="desc-change-summary">説明を更新（書式変更）</span>';
     }
 
-    if (!comment.content) {
-      return `<div class="change-summary">
-        システムによる変更 (${new Date(comment.created).toLocaleString()})
-        <div class="change-debug">Comment ID: ${comment.id}</div>
-      </div>`;
-    }
-
-    // Extract change information from comment content
-    const content = comment.content.trim();
-
-    // Format different types of changes
-    if (content.includes('担当者') || content.includes('assigned')) {
-      return `<div class="change-item change-assignee">
-        <span class="change-icon">👤</span>
-        <span class="change-text">${WebviewHelper.escapeHtml(content)}</span>
-      </div>`;
-    }
-
-    if (content.includes('状態') || content.includes('status')) {
-      return `<div class="change-item change-status">
-        <span class="change-icon">📋</span>
-        <span class="change-text">${WebviewHelper.escapeHtml(content)}</span>
-      </div>`;
-    }
-
-    if (content.includes('優先度') || content.includes('priority')) {
-      return `<div class="change-item change-priority">
-        <span class="change-icon">⚡</span>
-        <span class="change-text">${WebviewHelper.escapeHtml(content)}</span>
-      </div>`;
-    }
-
-    // Default format for other changes
-    return `<div class="change-item">
-      <span class="change-icon">📝</span>
-      <span class="change-text">${WebviewHelper.escapeHtml(content)}</span>
-    </div>`;
-  }
-
-  /**
-   * Format individual change from changeLog
-   */
-  private static formatIndividualChange(change: any): string {
-    const field = change.field || change.name || change.type || 'unknown';
-    const originalValue = change.originalValue || change.oldValue || change.from || '';
-    const newValue = change.newValue || change.value || change.to || '';
-
-    let icon = '📝';
-    let changeClass = '';
-
-    // Determine icon and class based on field type
-    switch (field.toLowerCase()) {
-      case 'assignee':
-      case 'assigneeid':
-      case '担当者':
-        icon = '👤';
-        changeClass = 'change-assignee';
-        break;
-      case 'status':
-      case 'statusid':
-      case '状態':
-        icon = '📋';
-        changeClass = 'change-status';
-        break;
-      case 'priority':
-      case 'priorityid':
-      case '優先度':
-        icon = '⚡';
-        changeClass = 'change-priority';
-        break;
-      case 'duedate':
-      case '期限日':
-        icon = '📅';
-        changeClass = 'change-duedate';
-        break;
-      case 'summary':
-      case 'タイトル':
-        icon = '📝';
-        changeClass = 'change-summary';
-        break;
-      case 'description':
-      case '説明':
-        icon = '📄';
-        changeClass = 'change-description';
-        break;
-      default:
-        icon = '🔄';
-        changeClass = 'change-other';
-    }
-
-    const fromText = originalValue ? String(originalValue) : '';
-    const toText = newValue ? String(newValue) : '';
-
-    // Check if we have meaningful changes to display
-    if (fromText === toText) {
-      return `<div class="change-item ${changeClass}">
-        <span class="change-icon">${icon}</span>
-        <div class="change-details-text">
-          <div class="change-field">${WebviewHelper.escapeHtml(field)}</div>
-          <div class="change-no-diff">値に変更なし</div>
-        </div>
-      </div>`;
-    }
-
-    // Special handling for description and long text changes
-    if (
-      (field.toLowerCase() === 'description' || field.toLowerCase() === '説明') &&
-      (fromText.length > 50 || toText.length > 50)
-    ) {
-      return this.formatTextDiff(field, fromText, toText, icon, changeClass);
-    }
-
-    // Simple field changes (status, priority, etc.)
-    return `<div class="change-item ${changeClass}">
-      <span class="change-icon">${icon}</span>
-      <div class="change-details-text">
-        <div class="change-field">${WebviewHelper.escapeHtml(field)}</div>
+    const total = removed.length + added.length;
+    return `<span class="desc-change-summary">説明を更新</span>
+      <details class="change-diff-details">
+        <summary>差分を表示 (-${removed.length} +${added.length})</summary>
         <div class="change-unified-diff">
-          ${
-            fromText
-              ? `<div class="diff-line diff-removed">
-            <span class="diff-indicator">-</span>
-            <span class="diff-content">${WebviewHelper.escapeHtml(fromText)}</span>
-          </div>`
-              : ''
-          }
-          ${
-            toText
-              ? `<div class="diff-line diff-added">
-            <span class="diff-indicator">+</span>
-            <span class="diff-content">${WebviewHelper.escapeHtml(toText)}</span>
-          </div>`
-              : ''
-          }
-        </div>
-      </div>
-    </div>`;
-  }
-
-  /**
-   * Format text diff in unified style (like Backlog)
-   */
-  private static formatTextDiff(
-    field: string,
-    fromText: string,
-    toText: string,
-    icon: string,
-    changeClass: string
-  ): string {
-    // Clean up text - trim and normalize whitespace
-    const cleanFromText = fromText.trim().replace(/\n{3,}/g, '\n\n');
-    const cleanToText = toText.trim().replace(/\n{3,}/g, '\n\n');
-
-    // For long text, create a simple line-based diff
-    const fromLines = cleanFromText
-      .split('\n')
-      .filter((line) => line.trim() !== '' || cleanFromText.includes('\n\n'));
-    const toLines = cleanToText
-      .split('\n')
-      .filter((line) => line.trim() !== '' || cleanToText.includes('\n\n'));
-
-    // Simple diff algorithm - mark lines as removed/added
-    const diffLines: Array<{ type: 'removed' | 'added' | 'context'; content: string }> = [];
-
-    // Add removed lines (excluding empty lines unless they're meaningful)
-    fromLines.forEach((line) => {
-      if (!toLines.includes(line) && (line.trim() !== '' || line.length > 0)) {
-        diffLines.push({ type: 'removed', content: line });
-      }
-    });
-
-    // Add added lines (excluding empty lines unless they're meaningful)
-    toLines.forEach((line) => {
-      if (!fromLines.includes(line) && (line.trim() !== '' || line.length > 0)) {
-        diffLines.push({ type: 'added', content: line });
-      }
-    });
-
-    // Remove consecutive empty line changes
-    const filteredDiffLines = this.filterConsecutiveEmptyLines(diffLines);
-
-    // If too many changes, show summary instead
-    if (filteredDiffLines.length > 10) {
-      const fromLength = cleanFromText.length;
-      const toLength = cleanToText.length;
-
-      return `<div class="change-item ${changeClass}">
-        <span class="change-icon">${icon}</span>
-        <div class="change-details-text">
-          <div class="change-field">${WebviewHelper.escapeHtml(field)}</div>
-          <div class="change-summary-text">
-            内容が更新されました (${fromLength} → ${toLength} 文字)
-            <details class="change-diff-details">
-              <summary>差分を表示</summary>
-              <div class="change-unified-diff">
-                ${filteredDiffLines
-                  .slice(0, 20)
-                  .map(
-                    (line) => `
-                  <div class="diff-line diff-${line.type}">
-                    <span class="diff-indicator">${line.type === 'removed' ? '-' : '+'}</span>
-                    <span class="diff-content">${WebviewHelper.escapeHtml(
-                      line.content.substring(0, 200)
-                    )}</span>
-                  </div>
-                `
-                  )
-                  .join('')}
-                ${
-                  filteredDiffLines.length > 20
-                    ? '<div class="diff-truncated">... (truncated)</div>'
-                    : ''
-                }
-              </div>
-            </details>
-          </div>
-        </div>
-      </div>`;
-    }
-
-    // If no meaningful changes after filtering
-    if (filteredDiffLines.length === 0) {
-      return `<div class="change-item ${changeClass}">
-        <span class="change-icon">${icon}</span>
-        <div class="change-details-text">
-          <div class="change-field">${WebviewHelper.escapeHtml(field)}</div>
-          <div class="change-summary-text">
-            内容が更新されました（主に空白文字や改行の変更）
-          </div>
-        </div>
-      </div>`;
-    }
-
-    return `<div class="change-item ${changeClass}">
-      <span class="change-icon">${icon}</span>
-      <div class="change-details-text">
-        <div class="change-field">${WebviewHelper.escapeHtml(field)}</div>
-        <div class="change-unified-diff">
-          ${filteredDiffLines
+          ${diffLines
             .map(
-              (line) => `
-            <div class="diff-line diff-${line.type}">
-              <span class="diff-indicator">${line.type === 'removed' ? '-' : '+'}</span>
-              <span class="diff-content">${WebviewHelper.escapeHtml(
-                line.content || '(空行)'
-              )}</span>
-            </div>
-          `
+              (l) =>
+                `<div class="diff-line diff-${l.type}"><span class="diff-indicator">${
+                  l.type === 'removed' ? '-' : '+'
+                }</span><span class="diff-content">${WebviewHelper.escapeHtml(
+                  this.truncate(l.content, 200)
+                )}</span></div>`
             )
             .join('')}
+          ${total > 20 ? '<div class="diff-truncated">... (省略)</div>' : ''}
         </div>
-      </div>
-    </div>`;
-  }
-
-  /**
-   * Filter consecutive empty lines to reduce noise in diff
-   */
-  private static filterConsecutiveEmptyLines(
-    diffLines: Array<{ type: 'removed' | 'added' | 'context'; content: string }>
-  ): Array<{ type: 'removed' | 'added' | 'context'; content: string }> {
-    const filtered: Array<{ type: 'removed' | 'added' | 'context'; content: string }> = [];
-    let consecutiveEmptyCount = 0;
-
-    for (let i = 0; i < diffLines.length; i++) {
-      const line = diffLines[i];
-      const isEmpty = line.content.trim() === '';
-
-      if (isEmpty) {
-        consecutiveEmptyCount++;
-        // Only show first 2 consecutive empty lines
-        if (consecutiveEmptyCount <= 2) {
-          filtered.push(line);
-        } else if (consecutiveEmptyCount === 3) {
-          // Add a summary line for multiple empty lines
-          filtered.push({
-            type: line.type,
-            content: `... (${consecutiveEmptyCount - 2} more empty lines)`,
-          });
-        }
-        // Skip additional consecutive empty lines
-      } else {
-        consecutiveEmptyCount = 0;
-        filtered.push(line);
-      }
-    }
-
-    return filtered;
+      </details>`;
   }
 
   /**

@@ -126,43 +126,40 @@ export class MarkdownRenderer {
    * Task lists are handled by marked.js with GFM support
    */
   private processBacklogFeatures(html: string): string {
-    let processed = html;
+    // Process only text nodes (outside HTML tags) to avoid mangling attributes
+    return html.replace(/([^<]*)(<[^>]*>)?/g, (_, text, tag) => {
+      let processed = text || '';
+      if (processed) {
+        // Backlog issue mentions: #PROJ-123
+        processed = processed.replace(
+          /#([A-Z][A-Z0-9_]*-\d+)/g,
+          '<span class="issue-mention" title="Issue: $1">#$1</span>'
+        );
 
-    // Backlog issue mentions: #PROJ-123
-    processed = processed.replace(
-      /#([A-Z][A-Z0-9_]*-\d+)/g,
-      '<span class="issue-mention" title="Issue: $1">#$1</span>'
-    );
+        // User mentions: @user.id or @Display Name (with optional parenthetical)
+        processed = processed.replace(
+          /@([a-zA-Z0-9_.-]+(?:\s+[A-Z\u00C0-\u024F][a-zA-Z\u00C0-\u024F]*)*(?:（[^）]*）)?)/g,
+          '<span class="user-mention" title="User: $1">@$1</span>'
+        );
 
-    // User mentions: @username
-    processed = processed.replace(
-      /@([a-zA-Z0-9_.-]+)/g,
-      '<span class="user-mention" title="User: $1">@$1</span>'
-    );
-
-    // Backlog emoticons
-    const emoticons: { [key: string]: string } = {
-      '(smile)': '😊',
-      '(sad)': '😢',
-      '(wink)': '😉',
-      '(tongue)': '😛',
-      '(laugh)': '😄',
-      '(cool)': '😎',
-      '(angry)': '😠',
-      '(surprised)': '😲',
-      '(confused)': '😕',
-      '(heart)': '❤️',
-      '(star)': '⭐',
-      '(thumbsup)': '👍',
-      '(thumbsdown)': '👎',
-    };
-
-    Object.entries(emoticons).forEach(([emoticon, emoji]) => {
-      const regex = new RegExp(this.escapeRegex(emoticon), 'g');
-      processed = processed.replace(regex, emoji);
+        // Backlog emoticons
+        processed = processed
+          .replace(/\(smile\)/g, '😊')
+          .replace(/\(sad\)/g, '😢')
+          .replace(/\(wink\)/g, '😉')
+          .replace(/\(tongue\)/g, '😛')
+          .replace(/\(laugh\)/g, '😄')
+          .replace(/\(cool\)/g, '😎')
+          .replace(/\(angry\)/g, '😠')
+          .replace(/\(surprised\)/g, '😲')
+          .replace(/\(confused\)/g, '😕')
+          .replace(/\(heart\)/g, '❤️')
+          .replace(/\(star\)/g, '⭐')
+          .replace(/\(thumbsup\)/g, '👍')
+          .replace(/\(thumbsdown\)/g, '👎');
+      }
+      return processed + (tag || '');
     });
-
-    return processed;
   }
 
   /**

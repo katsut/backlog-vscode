@@ -3,6 +3,7 @@ import { Entity } from 'backlog-js';
 import { WebviewHelper } from './common';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
 import { BacklogApiService } from '../services/backlogApi';
+import { resolveBacklogImages } from '../utils/imageResolver';
 
 /**
  * Wiki webview content generator
@@ -31,14 +32,7 @@ export class WikiWebview {
     const wikiUrl = fullBaseUrl && wiki.id ? `${fullBaseUrl}/alias/wiki/${wiki.id}` : '#';
 
     // Resolve Backlog image URLs and render wiki content as markdown
-    let content = wiki.content || '';
-    if (content && backlogApi) {
-      try {
-        content = await backlogApi.resolveBacklogImages(content);
-      } catch {
-        /* use original */
-      }
-    }
+    const content = await resolveBacklogImages(wiki.content || '', backlogApi);
     const contentHtml = content ? this.markdownRenderer.renderMarkdown(content) : '';
 
     const additionalStyles = `

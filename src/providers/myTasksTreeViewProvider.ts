@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
 import { Entity } from 'backlog-js';
+import { getStatusIcon, getPriorityColor } from './base/backlogIcons';
 
 export class MyTasksTreeViewProvider implements vscode.TreeDataProvider<MyTaskTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<
@@ -46,15 +47,10 @@ class MyTaskTreeItem extends vscode.TreeItem {
 
     // Status icon
     const statusName = issue.status?.name || '';
-    if (statusName === 'Closed' || statusName === 'クローズ') {
-      this.iconPath = new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
-    } else if (statusName === 'Resolved' || statusName === '解決済み') {
-      this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
-    } else if (statusName === 'In Progress' || statusName === '処理中') {
-      this.iconPath = new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.blue'));
-    } else {
-      this.iconPath = new vscode.ThemeIcon('circle-outline');
-    }
+    this.iconPath = new vscode.ThemeIcon(
+      getStatusIcon(statusName),
+      getPriorityColor(issue.priority?.name || '')
+    );
 
     // Description: priority / status
     const priority = issue.priority?.name || '';

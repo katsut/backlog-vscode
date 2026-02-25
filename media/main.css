@@ -124,11 +124,7 @@
 }
 
 .issue-description-content {
-	padding: 15px;
-	background: var(--vscode-textCodeBlock-background);
-	border-radius: 6px;
 	line-height: 1.5;
-	white-space: pre-wrap;
 	word-wrap: break-word;
 }
 
@@ -144,23 +140,20 @@
 }
 
 .comment {
-	margin-bottom: 15px;
-	padding: 12px;
-	background: var(--vscode-editor-inactiveSelectionBackground);
-	border-radius: 6px;
-	border-left: 3px solid var(--vscode-textLink-foreground);
+	padding: 10px 0;
+	border-bottom: 1px solid var(--vscode-panel-border);
 }
 
 .comment:last-child {
-	margin-bottom: 0;
+	border-bottom: none;
 }
 
 .comment-header {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 8px;
-	font-size: 0.9em;
+	margin-bottom: 6px;
+	font-size: 0.85em;
 }
 
 .comment-author {
@@ -174,7 +167,6 @@
 
 .comment-content {
 	line-height: 1.5;
-	white-space: pre-wrap;
 	word-wrap: break-word;
 }
 

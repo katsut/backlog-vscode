@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
-import { ConfigService } from '../services/configService';
+import { BacklogConfig } from '../config/backlogConfig';
 import { Entity } from 'backlog-js';
+import { getStatusIcon, getPriorityColor } from './base/backlogIcons';
 
 export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> =
@@ -27,7 +28,7 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   private sortBy: 'updated' | 'created' | 'priority' | 'status' | 'summary' = 'updated';
   private sortOrder: 'asc' | 'desc' = 'desc';
 
-  constructor(private backlogApi: BacklogApiService, private configService: ConfigService) {
+  constructor(private backlogApi: BacklogApiService, private configService: BacklogConfig) {
     this.loadInitialData().catch((error) => {
       console.error('Error in loadInitialData from constructor:', error);
     });
@@ -421,8 +422,8 @@ export class IssueTreeItem extends TreeItem {
     public readonly issue: Entity.Issue.Issue,
     public readonly allIssues?: Entity.Issue.Issue[]
   ) {
-    const statusIcon = IssueTreeItem.getStatusIcon(issue.status.name);
-    const priorityColor = IssueTreeItem.getPriorityColor(issue.priority.name);
+    const statusIcon = getStatusIcon(issue.status.name);
+    const priorityColor = getPriorityColor(issue.priority.name);
 
     // 子課題があるかチェック
     const hasChildren = allIssues ? allIssues.some((i) => i.parentIssueId === issue.id) : false;
@@ -453,41 +454,6 @@ export class IssueTreeItem extends TreeItem {
       return [];
     }
     return this.allIssues.filter((issue) => issue.parentIssueId === this.issue.id);
-  }
-
-  private static getStatusIcon(statusName: string): string {
-    switch (statusName.toLowerCase()) {
-      case 'open':
-      case 'オープン':
-        return 'circle-outline';
-      case 'in progress':
-      case '処理中':
-        return 'sync';
-      case 'resolved':
-      case '解決済み':
-        return 'check';
-      case 'closed':
-      case 'クローズ':
-        return 'circle-filled';
-      default:
-        return 'circle-outline';
-    }
-  }
-
-  private static getPriorityColor(priorityName: string): vscode.ThemeColor {
-    switch (priorityName.toLowerCase()) {
-      case 'high':
-      case '高':
-        return new vscode.ThemeColor('charts.red');
-      case 'medium':
-      case '中':
-        return new vscode.ThemeColor('charts.orange');
-      case 'low':
-      case '低':
-        return new vscode.ThemeColor('charts.green');
-      default:
-        return new vscode.ThemeColor('foreground');
-    }
   }
 }
 

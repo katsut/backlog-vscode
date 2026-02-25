@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { BacklogApiService } from '../services/backlogApi';
-import { ConfigService } from '../services/configService';
+import { WorkspaceFileStore } from '../config/workspaceFileStore';
 import { SyncService } from '../services/syncService';
 import { SyncManifest } from '../types/backlog';
 import { Entity } from 'backlog-js';
@@ -25,7 +25,7 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
 
   constructor(
     private backlogApi: BacklogApiService,
-    private configService: ConfigService,
+    private configService: WorkspaceFileStore,
     private syncService: SyncService
   ) {}
 

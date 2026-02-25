@@ -50,32 +50,31 @@ body {
 
 /* Common header styling */
 .webview-header {
-  border-bottom: 2px solid var(--vscode-panel-border);
+  border-bottom: 1px solid var(--vscode-panel-border);
   padding-bottom: var(--webview-space-sm);
-  margin-bottom: var(--webview-space-lg);
-  background: var(--vscode-editor-background);
+  margin-bottom: var(--webview-space-md);
 }
 
 .webview-header h1 {
   margin: 0 0 var(--webview-space-xs) 0;
   color: var(--vscode-foreground);
-  font-size: var(--webview-font-size-3xl);
+  font-size: var(--webview-font-size-2xl);
   font-weight: 600;
   line-height: 1.3;
   display: flex;
   align-items: center;
-  gap: var(--webview-space-md);
+  gap: var(--webview-space-sm);
   font-family: var(--webview-font-family);
 }
 
 .webview-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--webview-space-md);
+  gap: var(--webview-space-sm);
   color: var(--vscode-descriptionForeground);
   font-size: var(--webview-font-size-sm);
   align-items: center;
-  margin-top: var(--webview-space-sm);
+  margin-top: var(--webview-space-xs);
 }
 
 /* Common meta items */
@@ -148,11 +147,9 @@ body {
 /* Common details section */
 .details-section {
   background: var(--vscode-editor-inactiveSelectionBackground);
-  border-left: 4px solid var(--vscode-textBlockQuote-border);
-  padding: var(--webview-space-lg);
-  margin: var(--webview-space-xl) 0;
-  border-radius: 0 var(--webview-radius-lg) var(--webview-radius-lg) 0;
-  box-shadow: var(--webview-shadow-sm);
+  padding: var(--webview-space-md) var(--webview-space-lg);
+  margin: var(--webview-space-md) 0;
+  border-radius: var(--webview-radius-md);
 }
 
 .details-field {
@@ -169,24 +166,20 @@ body {
 
 /* Common content section */
 .content-section {
-  margin-top: var(--webview-space-3xl);
+  margin-top: var(--webview-space-xl);
 }
 
 .content-section h3 {
   color: var(--vscode-foreground);
-  font-size: var(--webview-font-size-xl);
+  font-size: var(--webview-font-size-lg);
   font-weight: 600;
-  margin: 0 0 var(--webview-space-lg) 0;
-  padding-bottom: var(--webview-space-sm);
+  margin: 0 0 var(--webview-space-md) 0;
+  padding-bottom: var(--webview-space-xs);
   border-bottom: 1px solid var(--vscode-panel-border);
   font-family: var(--webview-font-family);
 }
 
 .content-body {
-  background: var(--vscode-textCodeBlock-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: var(--webview-radius-md);
-  padding: var(--webview-space-lg);
   font-family: var(--webview-font-family);
 }
 
@@ -351,37 +344,34 @@ body {
 
 /* Common comment styling */
 .comment {
-  background: var(--vscode-editor-inactiveSelectionBackground);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: var(--webview-radius-md);
-  margin-bottom: var(--webview-space-lg);
-  overflow: hidden;
-  box-shadow: var(--webview-shadow-sm);
+  padding: var(--webview-space-md) 0;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.comment:last-child {
+  border-bottom: none;
 }
 
 .comment-header {
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-  padding: var(--webview-space-md) var(--webview-space-lg);
-  border-bottom: 1px solid var(--vscode-panel-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: var(--webview-space-xs);
   font-family: var(--webview-font-family);
 }
 
 .comment-author {
-  font-weight: 500;
+  font-weight: 600;
   font-size: var(--webview-font-size-sm);
+  color: var(--vscode-textLink-foreground);
 }
 
 .comment-date {
   font-size: var(--webview-font-size-xs);
-  opacity: 0.8;
+  color: var(--vscode-descriptionForeground);
 }
 
 .comment-content {
-  padding: var(--webview-space-lg);
   font-family: var(--webview-font-family);
 }
 
@@ -441,7 +431,3 @@ body {
   outline-offset: 2px;
 }
 
-/* Smooth transitions */
-* {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}

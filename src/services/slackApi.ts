@@ -1,5 +1,5 @@
 import { WebClient } from '@slack/web-api';
-import { ConfigService } from './configService';
+import { SlackConfig } from '../config/slackConfig';
 import {
   SlackServiceState,
   InitializedSlackService,
@@ -17,14 +17,14 @@ export class SlackApiService {
   private tokenType: SlackTokenType = 'unknown';
   private selfUserId: string | null = null;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private configService: SlackConfig) {}
 
   getTokenType(): SlackTokenType {
     return this.tokenType;
   }
 
   private async initializeService(): Promise<InitializedSlackService> {
-    const token = await this.configService.getSlackToken();
+    const token = await this.configService.getToken();
     if (!token) {
       throw new Error('Slack token is not configured');
     }
@@ -57,7 +57,7 @@ export class SlackApiService {
   }
 
   async isConfigured(): Promise<boolean> {
-    const token = await this.configService.getSlackToken();
+    const token = await this.configService.getToken();
     return !!token;
   }
 

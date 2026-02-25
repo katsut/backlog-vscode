@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { CacooApiService } from '../services/cacooApi';
-import { ConfigService } from '../services/configService';
+import { CacooConfig } from '../config/cacooConfig';
 import { CacooFolder, CacooDiagram, CacooSheet, CacooPinnedSheet } from '../types/cacoo';
 
 // Tree item types
@@ -17,7 +17,7 @@ export class CacooTreeViewProvider implements vscode.TreeDataProvider<CacooTreeI
   private sheetCache = new Map<string, CacooSheet[]>();
   private searchKeyword: string | null = null;
 
-  constructor(private cacooApi: CacooApiService, private configService: ConfigService) {}
+  constructor(private cacooApi: CacooApiService, private configService: CacooConfig) {}
 
   refresh(): void {
     this.folders = null;
@@ -82,7 +82,7 @@ export class CacooTreeViewProvider implements vscode.TreeDataProvider<CacooTreeI
 
     // Pinned sheets section
     if (!filter) {
-      const pins = this.configService.getCacooPinnedSheets();
+      const pins = this.configService.getPinnedSheets();
       if (pins.length > 0) {
         items.push(new CacooPinnedSectionItem(pins.length));
       }
@@ -199,7 +199,7 @@ export class CacooTreeViewProvider implements vscode.TreeDataProvider<CacooTreeI
 
       const sheets = this.sheetCache.get(diagram.diagramId) || [];
       return sheets.map((s) => {
-        const isPinned = this.configService.isCacooPinnedSheet(diagram.diagramId, s.uid);
+        const isPinned = this.configService.isPinnedSheet(diagram.diagramId, s.uid);
         return new CacooSheetItem(diagram, s, isPinned);
       });
     } catch (error) {
@@ -209,7 +209,7 @@ export class CacooTreeViewProvider implements vscode.TreeDataProvider<CacooTreeI
   }
 
   private getPinnedSheetItems(): CacooTreeItem[] {
-    const pins = this.configService.getCacooPinnedSheets();
+    const pins = this.configService.getPinnedSheets();
     return pins.map((p) => {
       const item = new vscode.TreeItem(p.label, vscode.TreeItemCollapsibleState.None);
       item.iconPath = new vscode.ThemeIcon('pinned', CACOO_COLOR);

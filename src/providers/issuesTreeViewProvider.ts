@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { BacklogApiService } from '../services/backlogApi';
 import { Entity } from 'backlog-js';
+import { getStatusIcon, getPriorityColor } from './base/backlogIcons';
 
 export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
@@ -304,8 +305,8 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
 
 export class IssueTreeItem extends vscode.TreeItem {
   constructor(public readonly issue: Entity.Issue.Issue) {
-    const statusIcon = IssueTreeItem.getStatusIcon(issue.status.name);
-    const priorityColor = IssueTreeItem.getPriorityColor(issue.priority.name);
+    const statusIcon = getStatusIcon(issue.status.name);
+    const priorityColor = getPriorityColor(issue.priority.name);
 
     super(`${issue.issueKey}: ${issue.summary}`, vscode.TreeItemCollapsibleState.None);
 
@@ -320,40 +321,5 @@ export class IssueTreeItem extends vscode.TreeItem {
       title: 'Open Issue',
       arguments: ['nulab.openIssue', this.issue],
     };
-  }
-
-  private static getStatusIcon(statusName: string): string {
-    switch (statusName.toLowerCase()) {
-      case 'open':
-      case 'オープン':
-        return 'circle-outline';
-      case 'in progress':
-      case '処理中':
-        return 'sync';
-      case 'resolved':
-      case '解決済み':
-        return 'check';
-      case 'closed':
-      case 'クローズ':
-        return 'circle-filled';
-      default:
-        return 'circle-outline';
-    }
-  }
-
-  private static getPriorityColor(priorityName: string): vscode.ThemeColor {
-    switch (priorityName.toLowerCase()) {
-      case 'high':
-      case '高':
-        return new vscode.ThemeColor('charts.red');
-      case 'medium':
-      case '中':
-        return new vscode.ThemeColor('charts.orange');
-      case 'low':
-      case '低':
-        return new vscode.ThemeColor('charts.green');
-      default:
-        return new vscode.ThemeColor('foreground');
-    }
   }
 }

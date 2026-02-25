@@ -11,7 +11,7 @@ interface BacklogNotification {
   project?: { projectKey: string; name: string };
   issue?: { issueKey: string; summary: string; id: number };
   comment?: { id: number; content: string };
-  sender?: { name: string; userId: string };
+  sender?: { id: number; name: string; userId: string };
   created: string;
   updated: string;
 }

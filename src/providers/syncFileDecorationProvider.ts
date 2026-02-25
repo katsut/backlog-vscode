@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { SyncService } from '../services/syncService';
-import { ConfigService } from '../services/configService';
+import { WorkspaceFileStore } from '../config/workspaceFileStore';
 import { SyncManifest } from '../types/backlog';
 
 export class SyncFileDecorationProvider implements vscode.FileDecorationProvider {
@@ -14,7 +14,7 @@ export class SyncFileDecorationProvider implements vscode.FileDecorationProvider
   // Cache to avoid repeated file I/O
   private manifestCache = new Map<string, { manifest: SyncManifest; mtime: number }>();
 
-  constructor(private syncService: SyncService, private configService: ConfigService) {}
+  constructor(private syncService: SyncService, private configService: WorkspaceFileStore) {}
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
     if (uri.scheme !== 'file' || !uri.fsPath.endsWith('.bdoc')) {

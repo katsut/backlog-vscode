@@ -2,6 +2,12 @@
 
 export type TodoStatus = 'open' | 'in_progress' | 'waiting' | 'done';
 
+export interface BacklogParticipant {
+  id: number;
+  userId: string;
+  name: string;
+}
+
 export interface TodoContext {
   source: 'backlog-notification' | 'slack-mention' | 'slack-search' | 'manual';
   // Backlog
@@ -9,7 +15,10 @@ export interface TodoContext {
   issueId?: number;
   issueSummary?: string;
   notificationId?: number;
+  commentId?: number;
   sender?: string;
+  senderId?: number;
+  senderUserId?: string;
   reason?: string;
   comment?: string;
   // Slack

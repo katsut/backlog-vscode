@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { WebviewHelper } from './common';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
-import { ConfigService } from '../services/configService';
 import { BacklogApiService } from '../services/backlogApi';
 import { Entity } from 'backlog-js';
 
@@ -18,12 +17,11 @@ export class DocumentWebview {
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
     document: Entity.Document.Document,
-    configService: ConfigService,
+    baseUrl: string | undefined,
     backlogApi: BacklogApiService,
     projectKey?: string
   ): Promise<string> {
     const nonce = WebviewHelper.getNonce();
-    const baseUrl = configService.getBaseUrl();
 
     // Ensure baseUrl has https:// protocol
     const fullBaseUrl = baseUrl
@@ -40,7 +38,7 @@ export class DocumentWebview {
     const displayTitle = document.title || 'Unnamed Document';
 
     // Convert document content if available
-    const contentHtml = await this.convertDocumentContent(document, configService, backlogApi);
+    const contentHtml = await this.convertDocumentContent(document, baseUrl, backlogApi);
 
     const additionalStyles = `
         /* Document-specific styles */
@@ -243,7 +241,7 @@ export class DocumentWebview {
    */
   private static async convertDocumentContent(
     document: Entity.Document.Document,
-    configService: ConfigService,
+    baseUrl: string | undefined,
     backlogApi: BacklogApiService
   ): Promise<string> {
     // Try ProseMirror JSON first (has proper image node references)
@@ -252,12 +250,7 @@ export class DocumentWebview {
         const jsonContent =
           typeof document.json === 'string' ? JSON.parse(document.json) : document.json;
         if (jsonContent && jsonContent.type === 'doc') {
-          return await this.convertProseMirrorToHtml(
-            jsonContent,
-            configService,
-            backlogApi,
-            document
-          );
+          return await this.convertProseMirrorToHtml(jsonContent, baseUrl, backlogApi, document);
         }
       } catch (error) {
         console.error('Failed to parse ProseMirror JSON, falling back to plain:', error);
@@ -303,7 +296,7 @@ export class DocumentWebview {
    */
   private static async convertProseMirrorToHtml(
     node: Record<string, unknown>,
-    configService: ConfigService,
+    baseUrl: string | undefined,
     backlogApi: BacklogApiService,
     document: Entity.Document.Document
   ): Promise<string> {
@@ -355,7 +348,7 @@ export class DocumentWebview {
         // Root document node - process content
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         break;
@@ -364,7 +357,7 @@ export class DocumentWebview {
         html += '<p>';
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += '</p>';
@@ -377,7 +370,7 @@ export class DocumentWebview {
         html += `<${headingTag}>`;
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += `</${headingTag}>`;
@@ -388,7 +381,7 @@ export class DocumentWebview {
         html += '<ul>';
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += '</ul>';
@@ -400,7 +393,7 @@ export class DocumentWebview {
         html += `<ol${start !== 1 ? ` start="${start}"` : ''}>`;
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += '</ol>';
@@ -411,7 +404,7 @@ export class DocumentWebview {
         html += '<li>';
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += '</li>';
@@ -421,7 +414,7 @@ export class DocumentWebview {
         html += '<blockquote>';
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += '</blockquote>';
@@ -438,7 +431,7 @@ export class DocumentWebview {
         }
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += '</code></pre>';
@@ -449,7 +442,7 @@ export class DocumentWebview {
         html += '<table class="document-table">';
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += '</table>';
@@ -459,7 +452,7 @@ export class DocumentWebview {
         html += '<tr>';
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += '</tr>';
@@ -477,7 +470,7 @@ export class DocumentWebview {
         html += `<${tag}${colspanAttr}${rowspanAttr}>`;
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         html += `</${tag}>`;
@@ -545,7 +538,7 @@ export class DocumentWebview {
         // For unknown node types, process content if available
         if (node.content && Array.isArray(node.content)) {
           for (const child of node.content) {
-            html += await this.convertProseMirrorToHtml(child, configService, backlogApi, document);
+            html += await this.convertProseMirrorToHtml(child, baseUrl, backlogApi, document);
           }
         }
         break;

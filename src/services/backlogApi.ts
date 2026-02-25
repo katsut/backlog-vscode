@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
 import { Backlog, Entity, Option } from 'backlog-js';
-import { ConfigService } from './configService';
+import { BacklogConfig } from '../config/backlogConfig';
 import { BacklogServiceState, isInitialized, isInitializing } from '../types/backlog';
 
 // Backlog.jsの型を使用した初期化済みサービス
@@ -13,9 +13,9 @@ interface InitializedBacklogService {
 
 export class BacklogApiService {
   private serviceState: BacklogServiceState;
-  private configService: ConfigService;
+  private configService: BacklogConfig;
 
-  constructor(configService: ConfigService) {
+  constructor(configService: BacklogConfig) {
     this.configService = configService;
     this.serviceState = { state: 'uninitialized' };
     this.checkInitialConfiguration();
@@ -169,15 +169,15 @@ export class BacklogApiService {
     return response || [];
   }
 
-  async getIssue(issueId: number): Promise<Entity.Issue.Issue> {
+  async getIssue(issueIdOrKey: string | number): Promise<Entity.Issue.Issue> {
     const initializedService = await this.ensureInitialized();
-    const response = await initializedService.backlog.getIssue(issueId);
+    const response = await initializedService.backlog.getIssue(issueIdOrKey);
     return response;
   }
 
-  async getIssueComments(issueId: number): Promise<Entity.Issue.Comment[]> {
+  async getIssueComments(issueIdOrKey: string | number): Promise<Entity.Issue.Comment[]> {
     const initializedService = await this.ensureInitialized();
-    const response = await initializedService.backlog.getIssueComments(issueId, {});
+    const response = await initializedService.backlog.getIssueComments(issueIdOrKey, {});
     return response || [];
   }
 

@@ -1,5 +1,5 @@
 import * as https from 'https';
-import { ConfigService } from './configService';
+import { CacooConfig } from '../config/cacooConfig';
 import {
   CacooServiceState,
   InitializedCacooService,
@@ -23,13 +23,13 @@ interface DiagramListOptions {
 export class CacooApiService {
   private serviceState: CacooServiceState;
 
-  constructor(private configService: ConfigService) {
+  constructor(private configService: CacooConfig) {
     this.serviceState = { state: 'uninitialized' };
   }
 
   private async initializeService(): Promise<InitializedCacooService> {
-    const apiKey = await this.configService.getCacooApiKey();
-    const organizationKey = this.configService.getCacooOrganizationKey();
+    const apiKey = await this.configService.getApiKey();
+    const organizationKey = this.configService.getOrganizationKey();
 
     if (!apiKey) {
       throw new Error('Cacoo API Key is not configured');
@@ -63,8 +63,8 @@ export class CacooApiService {
   }
 
   async isConfigured(): Promise<boolean> {
-    const apiKey = await this.configService.getCacooApiKey();
-    const orgKey = this.configService.getCacooOrganizationKey();
+    const apiKey = await this.configService.getApiKey();
+    const orgKey = this.configService.getOrganizationKey();
     return !!(apiKey && orgKey);
   }
 
@@ -77,7 +77,7 @@ export class CacooApiService {
 
   async getOrganizations(): Promise<CacooOrganization[]> {
     // Organizations endpoint only needs apiKey (organizationKey is not yet known)
-    const apiKey = await this.configService.getCacooApiKey();
+    const apiKey = await this.configService.getApiKey();
     if (!apiKey) {
       throw new Error('Cacoo API Key is not configured');
     }

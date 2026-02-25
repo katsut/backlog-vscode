@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WorkspaceTodoItem, TodoStatus, SlackMessage } from '../types/workspace';
 import { WebviewHelper } from './common';
+import { MarkdownRenderer } from '../utils/markdownRenderer';
 
 export interface DraftInfo {
   content: string;
@@ -16,7 +17,8 @@ export class TodoWebview {
     baseUrl?: string,
     slackContextBefore: SlackMessage[] = [],
     slackContextAfter: SlackMessage[] = [],
-    draft?: DraftInfo | null
+    draft?: DraftInfo | null,
+    fullContext?: string
   ): string {
     const nonce = WebviewHelper.getNonce();
     const head = WebviewHelper.getHtmlHead(
@@ -39,8 +41,13 @@ export class TodoWebview {
 
     // Source link (Backlog issue or Slack thread)
     let sourceLink = '';
-    if (ctx?.source === 'backlog-notification' && ctx.issueKey && baseUrl) {
-      const issueUrl = `${baseUrl}/view/${ctx.issueKey}`;
+    const fullBaseUrl = baseUrl
+      ? baseUrl.startsWith('http')
+        ? baseUrl
+        : `https://${baseUrl}`
+      : '';
+    if (ctx?.source === 'backlog-notification' && ctx.issueKey && fullBaseUrl) {
+      const issueUrl = `${fullBaseUrl}/view/${ctx.issueKey}`;
       sourceLink = `<a href="#" class="external-link" data-url="${esc(
         issueUrl
       )}">Open in Backlog</a>`;
@@ -53,7 +60,47 @@ export class TodoWebview {
 
     // Context details section
     let contextHtml = '';
-    if (ctx?.source === 'backlog-notification') {
+    let commentHistoryHtml = '';
+    if (ctx?.source === 'backlog-notification' && fullContext) {
+      // Split fullContext into issue details and comment history
+      const { issueDetails, commentHistory } = splitBacklogContext(fullContext);
+
+      // 1. Issue details (metadata + description)
+      contextHtml = `
+        <div class="content-section">
+          <div class="full-context">${markdownToHtml(issueDetails)}</div>
+        </div>`;
+
+      // 2. Triggering notification (shown prominently)
+      if (ctx.sender || ctx.comment) {
+        const reasonLabel = ctx.reason
+          ? `<span class="notif-reason">${esc(ctx.reason)}</span>`
+          : '';
+        const senderHtml = ctx.sender ? `<span class="notif-sender">${esc(ctx.sender)}</span>` : '';
+        const commentHtml = ctx.comment
+          ? `<div class="notif-comment">${MarkdownRenderer.getInstance().renderMarkdown(
+              ctx.comment
+            )}</div>`
+          : '';
+        contextHtml += `
+          <div class="content-section notif-trigger-section">
+            <h3>対象の通知</h3>
+            <div class="notif-trigger">
+              <div class="notif-meta">${senderHtml}${reasonLabel}</div>
+              ${commentHtml}
+            </div>
+          </div>`;
+      }
+
+      // 4. Comment history (rendered after draft)
+      if (commentHistory.trim()) {
+        commentHistoryHtml = `
+          <div class="content-section">
+            <div class="full-context">${markdownToHtml(commentHistory)}</div>
+          </div>`;
+      }
+    } else if (ctx?.source === 'backlog-notification') {
+      // Fallback: light context from notification data
       const fields: string[] = [];
       if (ctx.issueKey) {
         fields.push(
@@ -216,7 +263,7 @@ export class TodoWebview {
       (ctx.source === 'backlog-notification' ||
         ctx.source === 'slack-mention' ||
         ctx.source === 'slack-search') &&
-      !draft
+      (!draft || !draft.content.trim())
         ? '<button class="action-btn claude-btn" data-action="startClaudeSession">✦ Claude で対応</button>'
         : ''
     }
@@ -232,6 +279,7 @@ export class TodoWebview {
 
   ${contextHtml}
   ${draftHtml}
+  ${commentHistoryHtml}
   ${notesHtml}
   ${timestampsHtml}
 
@@ -358,12 +406,124 @@ function buildSlackContextMessageHtml(msg: SlackMessage): string {
     </div>`;
 }
 
+/** Split fullContext markdown into issue details and comment/change history */
+function splitBacklogContext(md: string): { issueDetails: string; commentHistory: string } {
+  const marker = '### コメント・変更履歴';
+  const idx = md.indexOf(marker);
+  if (idx < 0) {
+    return { issueDetails: md, commentHistory: '' };
+  }
+  return {
+    issueDetails: md.slice(0, idx).trimEnd(),
+    commentHistory: md.slice(idx),
+  };
+}
+
 function esc(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** Markdown → HTML for context section */
+function markdownToHtml(md: string): string {
+  const lines = md.split('\n');
+  const out: string[] = [];
+  let inQuote = false;
+  let quoteLines: string[] = [];
+
+  const md2html = MarkdownRenderer.getInstance();
+  const flushQuote = () => {
+    if (quoteLines.length > 0) {
+      out.push(`<blockquote>${md2html.renderMarkdown(quoteLines.join('\n'))}</blockquote>`);
+      quoteLines = [];
+    }
+    inQuote = false;
+  };
+
+  for (const raw of lines) {
+    const line = raw;
+
+    // Blockquote
+    if (line.startsWith('> ')) {
+      inQuote = true;
+      quoteLines.push(line.slice(2));
+      continue;
+    }
+    if (inQuote) {
+      flushQuote();
+    }
+
+    // Empty line
+    if (!line.trim()) {
+      continue;
+    }
+
+    // Headings
+    if (line.startsWith('## ')) {
+      out.push(`<h2>${applyInline(esc(line.slice(3)))}</h2>`);
+      continue;
+    }
+    if (line.startsWith('### ')) {
+      out.push(`<h3>${applyInline(esc(line.slice(4)))}</h3>`);
+      continue;
+    }
+
+    const escaped = esc(line);
+
+    // Metadata line: **key:** value | **key:** value
+    if (escaped.startsWith('**') && escaped.includes(':**')) {
+      const pairs = escaped.split(' | ');
+      const badges = pairs
+        .map((p) => {
+          const m = p.match(/\*\*(.+?):\*\*\s*(.*)/);
+          if (m) {
+            return `<span class="ctx-meta-item"><span class="ctx-meta-label">${m[1]}</span>${m[2]}</span>`;
+          }
+          return applyInline(p);
+        })
+        .join('');
+
+      // Single item without | → its own row
+      if (pairs.length === 1) {
+        out.push(`<div class="ctx-meta-row">${badges}</div>`);
+      } else {
+        out.push(`<div class="ctx-meta-row">${badges}</div>`);
+      }
+      continue;
+    }
+
+    // Comment author line: **Author** (date): text or **Author** (date):
+    const authorMatch = escaped.match(/^\*\*(.+?)\*\*\s*\((.+?)\):\s*(.*)/);
+    if (authorMatch) {
+      const rest = authorMatch[3];
+      out.push(
+        `<div class="ctx-comment-header"><span class="ctx-author">${
+          authorMatch[1]
+        }</span><span class="ctx-date">${authorMatch[2]}</span>${
+          rest ? `<span class="ctx-change">${rest}</span>` : ''
+        }</div>`
+      );
+      continue;
+    }
+
+    // Regular paragraph
+    out.push(`<p>${applyInline(escaped)}</p>`);
+  }
+
+  flushQuote();
+  return out.join('\n');
+}
+
+function applyInline(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/~~(.+?)~~/g, '<del>$1</del>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="ctx-link">$1</a>');
 }
 
 const additionalStyles = `
@@ -573,5 +733,112 @@ const additionalStyles = `
     margin-top: var(--webview-space-xl);
     padding-top: var(--webview-space-md);
     border-top: 1px solid var(--vscode-panel-border);
+  }
+  .full-context {
+    font-size: var(--webview-font-size-sm);
+    line-height: 1.6;
+  }
+  .full-context h2 {
+    font-size: 1.15em;
+    margin: 0 0 var(--webview-space-sm) 0;
+    padding-bottom: var(--webview-space-xs);
+    border-bottom: 2px solid var(--vscode-textLink-foreground);
+  }
+  .full-context h3 {
+    font-size: 0.95em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--vscode-descriptionForeground);
+    margin: var(--webview-space-lg) 0 var(--webview-space-sm) 0;
+    padding-bottom: var(--webview-space-xs);
+    border-bottom: 1px solid var(--vscode-panel-border);
+  }
+  .full-context blockquote {
+    margin: 0 0 var(--webview-space-sm) 0;
+    padding: var(--webview-space-sm) var(--webview-space-md);
+    border-left: 3px solid var(--vscode-textLink-foreground);
+    background: var(--vscode-textCodeBlock-background);
+    border-radius: 0 var(--webview-radius-sm) var(--webview-radius-sm) 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .full-context p {
+    margin: var(--webview-space-xs) 0;
+  }
+  .ctx-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--webview-space-sm) var(--webview-space-lg);
+    margin: 2px 0;
+  }
+  .ctx-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--webview-space-xs);
+  }
+  .ctx-meta-label {
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+  }
+  .ctx-meta-label::after {
+    content: ':';
+  }
+  .ctx-comment-header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--webview-space-sm);
+    margin-top: var(--webview-space-sm);
+    padding: var(--webview-space-xs) 0;
+  }
+  .ctx-author {
+    font-weight: 600;
+  }
+  .ctx-date {
+    font-size: 0.85em;
+    color: var(--vscode-descriptionForeground);
+  }
+  .ctx-change {
+    font-size: 0.85em;
+    color: var(--vscode-charts-orange);
+    background: var(--vscode-textCodeBlock-background);
+    padding: 1px var(--webview-space-xs);
+    border-radius: 3px;
+  }
+  .notif-trigger-section {
+    border: 2px solid var(--vscode-textLink-foreground);
+    border-radius: var(--webview-radius-md);
+    padding: var(--webview-space-md);
+    background: color-mix(in srgb, var(--vscode-textLink-foreground) 6%, transparent);
+  }
+  .notif-trigger-section h3 {
+    margin-top: 0;
+    color: var(--vscode-textLink-foreground);
+  }
+  .notif-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--webview-space-sm);
+    margin-bottom: var(--webview-space-sm);
+  }
+  .notif-sender {
+    font-weight: 600;
+  }
+  .notif-reason {
+    font-size: 0.85em;
+    padding: 2px var(--webview-space-sm);
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-radius: 3px;
+  }
+  .notif-comment {
+    white-space: pre-wrap;
+    word-break: break-word;
+    padding: var(--webview-space-md);
+    background: var(--vscode-textCodeBlock-background);
+    border-left: 3px solid var(--vscode-textLink-foreground);
+    border-radius: 0 var(--webview-radius-sm) var(--webview-radius-sm) 0;
+    font-size: var(--webview-font-size-sm);
+    line-height: 1.6;
   }
 `;
