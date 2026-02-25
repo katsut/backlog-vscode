@@ -503,6 +503,18 @@
         "category": "Slack"
       },
       {
+        "command": "workspace.postToSlack",
+        "title": "Post to Slack",
+        "icon": "$(send)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.editSlackFavoriteChannels",
+        "title": "Edit Favorite Channels",
+        "icon": "$(star)",
+        "category": "Slack"
+      },
+      {
         "command": "workspace.addTodo",
         "title": "Add TODO",
         "icon": "$(add)",
