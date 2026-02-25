@@ -26,8 +26,21 @@ export class NotificationsTreeViewProvider
 
   private notifications: BacklogNotification[] | null = null;
   private filterUnreadOnly = false;
+  private todoIssueKeys: Set<string> = new Set();
 
   constructor(private backlogApi: BacklogApiService) {}
+
+  /** Update the set of issueKeys that have active TODOs */
+  setTodoIssueKeys(keys: Set<string>): void {
+    if (
+      keys.size === this.todoIssueKeys.size &&
+      [...keys].every((k) => this.todoIssueKeys.has(k))
+    ) {
+      return; // no change
+    }
+    this.todoIssueKeys = keys;
+    this._onDidChangeTreeData.fire();
+  }
 
   /** Clear cache and re-render (triggers loading spinner) */
   refresh(): void {
@@ -88,7 +101,10 @@ export class NotificationsTreeViewProvider
       items = items.filter((n) => !n.alreadyRead);
     }
 
-    return items.map((n) => new NotificationTreeItem(n));
+    return items.map((n) => {
+      const hasTodo = !!(n.issue?.issueKey && this.todoIssueKeys.has(n.issue.issueKey));
+      return new NotificationTreeItem(n, hasTodo);
+    });
   }
 
   async getUnreadCount(): Promise<number> {
@@ -136,7 +152,7 @@ export class NotificationTreeItem extends vscode.TreeItem {
   public readonly notification: BacklogNotification;
   public readonly todoSummary: string = '';
 
-  constructor(notification: BacklogNotification) {
+  constructor(notification: BacklogNotification, hasTodo: boolean) {
     const sender = notification.sender?.name || 'Unknown';
     const reason = NOTIFICATION_REASONS[notification.reason] || `reason:${notification.reason}`;
     const issueKey = notification.issue?.issueKey || '';
@@ -149,11 +165,18 @@ export class NotificationTreeItem extends vscode.TreeItem {
     if (notification.alreadyRead) {
       this.iconPath = new vscode.ThemeIcon('bell', new vscode.ThemeColor('disabledForeground'));
     } else {
-      this.iconPath = new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.orange'));
+      this.iconPath = new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.green'));
     }
 
-    // Description: relative time
-    this.description = formatRelativeTime(notification.created);
+    // Description: relative time + state badges
+    const parts = [formatRelativeTime(notification.created)];
+    if (notification.alreadyRead) {
+      parts.push('既読');
+    }
+    if (hasTodo) {
+      parts.push('TODO');
+    }
+    this.description = parts.join(' · ');
 
     // Tooltip
     const lines = [label];
@@ -165,7 +188,10 @@ export class NotificationTreeItem extends vscode.TreeItem {
     }
     this.tooltip = lines.join('\n');
 
-    this.contextValue = notification.alreadyRead ? 'notificationRead' : 'notificationUnread';
+    // contextValue: notificationRead / notificationUnread + optional _todo suffix
+    const base = notification.alreadyRead ? 'notificationRead' : 'notificationUnread';
+    this.contextValue = hasTodo ? `${base}_todo` : base;
+
     // Store summary for TODO conversion
     this.todoSummary = NotificationsTreeViewProvider.getNotificationSummary(notification);
 

@@ -95,22 +95,15 @@
         },
         {
           "id": "workspaceNotifications",
-          "name": "Backlog"
+          "name": "Backlog: Notifications"
         },
         {
           "id": "workspaceSlack",
-          "name": "Notifications"
+          "name": "Slack: Notifications"
         },
         {
           "id": "workspaceSlackSearch",
           "name": "Slack: Search"
-        }
-      ],
-      "backlogIssueDetail": [
-        {
-          "id": "backlogIssueDetailView",
-          "name": "Issue Detail",
-          "type": "webview"
         }
       ]
     },
@@ -130,13 +123,6 @@
           "id": "notificationsContainer",
           "title": "Notifications",
           "icon": "media/nulab-icon.svg"
-        }
-      ],
-      "panel": [
-        {
-          "id": "backlogIssueDetail",
-          "title": "Backlog Issue Detail",
-          "icon": "$(bug)"
         }
       ]
     },
@@ -505,6 +491,18 @@
         "category": "Slack"
       },
       {
+        "command": "workspace.slackSearchViewGrouped",
+        "title": "Grouped View",
+        "icon": "$(list-tree)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.slackSearchViewFlat",
+        "title": "Flat View",
+        "icon": "$(list-flat)",
+        "category": "Slack"
+      },
+      {
         "command": "workspace.addTodo",
         "title": "Add TODO",
         "icon": "$(add)",
@@ -795,6 +793,16 @@
           "group": "navigation@2"
         },
         {
+          "command": "workspace.slackSearchViewGrouped",
+          "when": "view == workspaceSlackSearch && nulab.slackSearch.viewMode == flat",
+          "group": "navigation@3"
+        },
+        {
+          "command": "workspace.slackSearchViewFlat",
+          "when": "view == workspaceSlackSearch && nulab.slackSearch.viewMode == grouped",
+          "group": "navigation@3"
+        },
+        {
           "command": "workspace.refreshDocumentFiles",
           "when": "view == workspaceDocumentFiles",
           "group": "navigation@1"
@@ -858,7 +866,7 @@
         },
         {
           "command": "workspace.markNotificationRead",
-          "when": "view == workspaceNotifications && viewItem == notificationUnread",
+          "when": "view == workspaceNotifications && viewItem =~ /^notificationUnread/",
           "group": "notification@1"
         },
         {

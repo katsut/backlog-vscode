@@ -104,7 +104,9 @@ export class SlackMentionItem extends vscode.TreeItem {
     const preview = message.text.substring(0, 60) + (message.text.length > 60 ? '...' : '');
     const sender = message.userName || message.user;
     super(`${sender}: ${preview}`, vscode.TreeItemCollapsibleState.None);
-    this.iconPath = new vscode.ThemeIcon('mention', new vscode.ThemeColor('charts.orange'));
+    this.iconPath = message.is_dm
+      ? new vscode.ThemeIcon('mail', new vscode.ThemeColor('charts.orange'))
+      : new vscode.ThemeIcon('mention', new vscode.ThemeColor('charts.orange'));
     this.description = formatSlackTime(message.ts);
     this.tooltip = `${sender}\n${message.text}`;
     this.contextValue = 'slackMention';

@@ -8,7 +8,6 @@ import { GoogleConfig } from './config/googleConfig';
 import { WorkspaceFileStore } from './config/workspaceFileStore';
 import { BacklogApiService } from './services/backlogApi';
 import { BacklogTreeViewProvider } from './providers/treeViewProvider';
-import { BacklogWebviewProvider } from './providers/webviewProvider';
 import { BacklogProjectsWebviewProvider } from './providers/projectsWebviewProvider';
 import { BacklogIssuesTreeViewProvider } from './providers/issuesTreeViewProvider';
 import { BacklogWikiTreeViewProvider } from './providers/wikiTreeViewProvider';
@@ -100,7 +99,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   // ---- Providers ----
   const backlogTreeViewProvider = new BacklogTreeViewProvider(backlogApi, backlogConfig);
-  const backlogWebviewProvider = new BacklogWebviewProvider(context.extensionUri, backlogApi);
   const backlogProjectsWebviewProvider = new BacklogProjectsWebviewProvider(
     context.extensionUri,
     backlogApi
@@ -208,6 +206,7 @@ export function activate(context: vscode.ExtensionContext) {
   const notificationsTreeView = vscode.window.createTreeView('workspaceNotifications', {
     treeDataProvider: notificationsProvider,
   });
+  notificationsProvider.setTodoIssueKeys(todoProvider.getTodoIssueKeys());
   const cacooTreeView = vscode.window.createTreeView('cacooDiagrams', {
     treeDataProvider: cacooTreeProvider,
     showCollapseAll: true,
@@ -219,6 +218,7 @@ export function activate(context: vscode.ExtensionContext) {
   const slackSearchTreeView = vscode.window.createTreeView('workspaceSlackSearch', {
     treeDataProvider: slackSearchProvider,
     showCollapseAll: true,
+    dragAndDropController: slackSearchProvider,
   });
   const documentFilesTreeView = vscode.window.createTreeView('workspaceDocumentFiles', {
     treeDataProvider: documentFilesProvider,
@@ -337,12 +337,6 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  // ---- Webview provider ----
-  const webviewProvider = vscode.window.registerWebviewViewProvider(
-    'backlogIssueDetail',
-    backlogWebviewProvider
-  );
-
   // ---- Slack context ----
   slackApi.isConfigured().then((configured) => {
     vscode.commands.executeCommand('setContext', 'nulab.slack.configured', configured);
@@ -371,6 +365,7 @@ export function activate(context: vscode.ExtensionContext) {
     async () => {
       log('polling: backlog-notifications tick');
       await notificationsProvider.fetchAndRefresh();
+      notificationsProvider.setTodoIssueKeys(todoProvider.getTodoIssueKeys());
       const count = await notificationsProvider.getUnreadCount();
       notificationsTreeView.badge = {
         value: count,
@@ -704,7 +699,6 @@ export function activate(context: vscode.ExtensionContext) {
     localProviderDisposable,
     decorationProviderDisposable,
     bdocEditorRegistration,
-    webviewProvider,
     // Document sync commands
     syncPullCommand,
     syncStatusCommand,

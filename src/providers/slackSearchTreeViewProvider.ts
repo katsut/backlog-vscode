@@ -6,18 +6,79 @@ import { formatSlackTime } from './slackTreeViewProvider';
 
 type SearchTreeItem = SearchSectionItem | SearchResultItem;
 
-export class SlackSearchTreeViewProvider implements vscode.TreeDataProvider<SearchTreeItem> {
+const DRAG_MIME = 'application/vnd.code.tree.workspaceSlackSearch';
+
+export class SlackSearchTreeViewProvider
+  implements
+    vscode.TreeDataProvider<SearchTreeItem>,
+    vscode.TreeDragAndDropController<SearchTreeItem>
+{
   private _onDidChangeTreeData = new vscode.EventEmitter<
     SearchTreeItem | undefined | null | void
   >();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  readonly dragMimeTypes = [DRAG_MIME];
+  readonly dropMimeTypes = [DRAG_MIME];
+
   private keywordResults = new Map<string, SlackMessage[]>();
   private keywordErrors = new Map<string, string>();
   private configured: boolean | null = null;
   private loaded = false;
+  private _viewMode: 'grouped' | 'flat' = 'grouped';
 
-  constructor(private slackApi: SlackApiService, private configService: SlackConfig) {}
+  constructor(private slackApi: SlackApiService, private configService: SlackConfig) {
+    vscode.commands.executeCommand('setContext', 'nulab.slackSearch.viewMode', this._viewMode);
+  }
+
+  get viewMode(): 'grouped' | 'flat' {
+    return this._viewMode;
+  }
+
+  toggleViewMode(): void {
+    this._viewMode = this._viewMode === 'grouped' ? 'flat' : 'grouped';
+    vscode.commands.executeCommand('setContext', 'nulab.slackSearch.viewMode', this._viewMode);
+    this._onDidChangeTreeData.fire();
+  }
+
+  // ---- Drag & Drop ----
+
+  handleDrag(source: readonly SearchTreeItem[], dataTransfer: vscode.DataTransfer): void {
+    const section = source.find((s) => s instanceof SearchSectionItem) as
+      | SearchSectionItem
+      | undefined;
+    if (section) {
+      dataTransfer.set(DRAG_MIME, new vscode.DataTransferItem(section.keyword));
+    }
+  }
+
+  handleDrop(target: SearchTreeItem | undefined, dataTransfer: vscode.DataTransfer): void {
+    const item = dataTransfer.get(DRAG_MIME);
+    if (!item) return;
+
+    const draggedKeyword = item.value as string;
+    const keywords = this.configService.getSearchKeywords();
+    const fromIndex = keywords.indexOf(draggedKeyword);
+    if (fromIndex === -1) return;
+
+    let toIndex: number;
+    if (!target || !(target instanceof SearchSectionItem)) {
+      toIndex = keywords.length - 1;
+    } else {
+      toIndex = keywords.indexOf(target.keyword);
+      if (toIndex === -1) return;
+    }
+
+    if (fromIndex === toIndex) return;
+
+    const reordered = [...keywords];
+    const [removed] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, removed);
+    this.configService.setSearchKeywords(reordered);
+    this._onDidChangeTreeData.fire();
+  }
+
+  // ---- Data ----
 
   /** Clear cache and re-render (triggers loading spinner until fetchAndRefresh completes) */
   refresh(): void {
@@ -77,7 +138,9 @@ export class SlackSearchTreeViewProvider implements vscode.TreeDataProvider<Sear
     }
 
     if (!element) {
-      return this.getRootChildren(keywords);
+      return this._viewMode === 'grouped'
+        ? this.getRootChildrenGrouped(keywords)
+        : this.getRootChildrenFlat(keywords);
     }
 
     if (element instanceof SearchSectionItem) {
@@ -87,12 +150,9 @@ export class SlackSearchTreeViewProvider implements vscode.TreeDataProvider<Sear
     return [];
   }
 
-  private getRootChildren(keywords: string[]): SearchTreeItem[] {
+  private getRootChildrenGrouped(keywords: string[]): SearchTreeItem[] {
     if (this.slackApi.getTokenType() === 'bot') {
-      const hint = new vscode.TreeItem('Bot token: 検索は利用不可');
-      hint.iconPath = new vscode.ThemeIcon('info');
-      hint.tooltip = 'search.messages はユーザートークン (xoxp-) でのみ利用可能です';
-      return [hint as SearchTreeItem];
+      return [this.botHintItem()];
     }
 
     const items: SearchTreeItem[] = [];
@@ -112,6 +172,37 @@ export class SlackSearchTreeViewProvider implements vscode.TreeDataProvider<Sear
     return items;
   }
 
+  private getRootChildrenFlat(keywords: string[]): SearchTreeItem[] {
+    if (this.slackApi.getTokenType() === 'bot') {
+      return [this.botHintItem()];
+    }
+
+    const all: { keyword: string; message: SlackMessage }[] = [];
+    for (const keyword of keywords) {
+      if (this.keywordErrors.has(keyword)) continue;
+      const results = this.keywordResults.get(keyword) || [];
+      for (const m of results) {
+        all.push({ keyword, message: m });
+      }
+    }
+
+    // Sort by timestamp descending (newest first)
+    all.sort((a, b) => {
+      const tsA = parseFloat(a.message.ts) || 0;
+      const tsB = parseFloat(b.message.ts) || 0;
+      return tsB - tsA;
+    });
+
+    return all.map(({ keyword, message }) => new SearchResultItem(message, keyword));
+  }
+
+  private botHintItem(): SearchTreeItem {
+    const hint = new vscode.TreeItem('Bot token: 検索は利用不可');
+    hint.iconPath = new vscode.ThemeIcon('info');
+    hint.tooltip = 'search.messages はユーザートークン (xoxp-) でのみ利用可能です';
+    return hint as SearchTreeItem;
+  }
+
   private getResultItems(keyword: string): SearchTreeItem[] {
     const results = this.keywordResults.get(keyword) || [];
     return results.map((m) => new SearchResultItem(m));
@@ -127,12 +218,13 @@ class SearchSectionItem extends vscode.TreeItem {
 }
 
 class SearchResultItem extends vscode.TreeItem {
-  constructor(public readonly message: SlackMessage) {
+  constructor(public readonly message: SlackMessage, keyword?: string) {
     const preview = message.text.substring(0, 60) + (message.text.length > 60 ? '...' : '');
     const sender = message.userName || message.user;
     super(`${sender}: ${preview}`, vscode.TreeItemCollapsibleState.None);
     this.iconPath = new vscode.ThemeIcon('comment', new vscode.ThemeColor('charts.blue'));
-    this.description = formatSlackTime(message.ts);
+    const time = formatSlackTime(message.ts);
+    this.description = keyword ? `[${keyword}] ${time}` : time;
     this.tooltip = `${sender}\n${message.text}`;
     this.contextValue = 'slackMention';
 

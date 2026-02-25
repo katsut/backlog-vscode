@@ -7,6 +7,7 @@ import {
   EventItem,
 } from '../../providers/googleCalendarTreeViewProvider';
 import { GoogleDriveFile, GoogleCalendarEvent } from '../../types/google';
+import { CalendarEventWebview } from '../../webviews/calendarEventWebview';
 
 export function registerGoogleCalendar(
   context: vscode.ExtensionContext,
@@ -170,11 +171,54 @@ export function registerGoogleCalendar(
     }
   );
 
+  const eventDetailPanels = new Map<string, vscode.WebviewPanel>();
+
+  const openEventDetailCmd = vscode.commands.registerCommand(
+    'nulab.google.openEventDetail',
+    (event: GoogleCalendarEvent) => {
+      if (!event) return;
+
+      const existing = eventDetailPanels.get(event.id);
+      if (existing) {
+        existing.reveal(vscode.ViewColumn.One);
+        return;
+      }
+
+      const panel = vscode.window.createWebviewPanel(
+        'calendarEvent',
+        event.summary || 'Event',
+        vscode.ViewColumn.One,
+        { enableScripts: true, localResourceRoots: [context.extensionUri] }
+      );
+
+      eventDetailPanels.set(event.id, panel);
+      panel.onDidDispose(() => eventDetailPanels.delete(event.id));
+
+      panel.webview.html = CalendarEventWebview.getWebviewContent(
+        panel.webview,
+        context.extensionUri,
+        event
+      );
+
+      panel.webview.onDidReceiveMessage(
+        (msg) => {
+          if (msg.command === 'openExternal' && msg.url) {
+            vscode.env.openExternal(vscode.Uri.parse(msg.url));
+          }
+        },
+        undefined,
+        context.subscriptions
+      );
+    }
+  );
+
   const openSelectedCalendarItemCmd = vscode.commands.registerCommand(
     'nulab.google.openSelectedCalendarItem',
     () => {
       const selected = calendarTreeView.selection[0];
-      if (selected instanceof DocumentItem && selected.file && selected.event) {
+      if (selected instanceof EventItem && selected.event) {
+        vscode.commands.executeCommand('nulab.google.openEventDetail', selected.event);
+      } else if (selected instanceof DocumentItem && selected.file && selected.event) {
         vscode.commands.executeCommand(
           'nulab.google.openMeetingNotes',
           selected.file,
@@ -194,6 +238,7 @@ export function registerGoogleCalendar(
       refreshCmd,
       openMeetingNotesCmd,
       openInBrowserCmd,
+      openEventDetailCmd,
       openSelectedCalendarItemCmd,
     ],
   };

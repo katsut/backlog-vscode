@@ -73,6 +73,9 @@ export function registerNotificationCommands(c: ServiceContainer): vscode.Dispos
           );
         }
 
+        // Sync TODO state to notifications tree
+        c.notificationsProvider.setTodoIssueKeys(c.todoProvider.getTodoIssueKeys());
+
         vscode.window.showInformationMessage('[Nulab] TODO に追加しました');
       }
     ),

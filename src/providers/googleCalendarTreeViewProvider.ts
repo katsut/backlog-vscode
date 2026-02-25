@@ -33,6 +33,12 @@ export class EventItem extends vscode.TreeItem {
     this.iconPath = event.hangoutLink
       ? new vscode.ThemeIcon('device-camera-video')
       : new vscode.ThemeIcon('calendar');
+
+    this.command = {
+      command: 'nulab.treeItemClicked',
+      title: 'Open Event Detail',
+      arguments: ['nulab.google.openEventDetail', event],
+    };
   }
 
   private static buildLabel(event: GoogleCalendarEvent): string {

@@ -457,6 +457,15 @@ export class SlackApiService {
     }
   }
 
+  async postMessage(channel: string, text: string): Promise<void> {
+    await this.ensureInitialized();
+    if (!this.client) {
+      return;
+    }
+
+    await this.client.chat.postMessage({ channel, text });
+  }
+
   async postReply(channel: string, threadTs: string, text: string): Promise<void> {
     await this.ensureInitialized();
     if (!this.client) {

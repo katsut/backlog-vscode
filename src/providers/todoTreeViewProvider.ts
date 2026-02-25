@@ -370,6 +370,21 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
   findTodoById(id: string): WorkspaceTodoItem | undefined {
     return this.todos.find((t) => t.id === id);
   }
+
+  /** Active (non-done) TODO の issueKey 一覧（通知ステート照合用）*/
+  getTodoIssueKeys(): Set<string> {
+    const keys = new Set<string>();
+    for (const t of this.todos) {
+      if (
+        t.status !== 'done' &&
+        t.context?.source === 'backlog-notification' &&
+        t.context.issueKey
+      ) {
+        keys.add(t.context.issueKey);
+      }
+    }
+    return keys;
+  }
 }
 
 // ---- Tree Items ----

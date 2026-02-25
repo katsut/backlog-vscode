@@ -226,6 +226,18 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
       }
     }),
 
+    vscode.commands.registerCommand('workspace.slackSearchViewGrouped', () => {
+      if (c.slackSearchProvider.viewMode !== 'grouped') {
+        c.slackSearchProvider.toggleViewMode();
+      }
+    }),
+
+    vscode.commands.registerCommand('workspace.slackSearchViewFlat', () => {
+      if (c.slackSearchProvider.viewMode !== 'flat') {
+        c.slackSearchProvider.toggleViewMode();
+      }
+    }),
+
     vscode.commands.registerCommand('workspace.editSlackSearchKeywords', async () => {
       const current = c.slackConfig.getSearchKeywords();
       const action = await vscode.window.showQuickPick(
@@ -269,6 +281,109 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
         c.slackConfig.setSearchKeywords(updated);
         vscode.window.showInformationMessage(
           `[Nulab] ${toRemove.length}件のキーワードを削除しました。`
+        );
+      }
+    }),
+
+    vscode.commands.registerCommand('workspace.postToSlack', async () => {
+      const favorites = c.slackConfig.getFavoriteChannels();
+      if (favorites.length === 0) {
+        const setup = await vscode.window.showInformationMessage(
+          '[Nulab] お気に入りチャンネルが未登録です。先に登録しますか？',
+          '登録する'
+        );
+        if (setup) {
+          await vscode.commands.executeCommand('workspace.editSlackFavoriteChannels');
+        }
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(
+        favorites.map((ch) => ({ label: `#${ch.name}`, channelId: ch.id })),
+        { placeHolder: '投稿先チャンネルを選択' }
+      );
+      if (!selected) {
+        return;
+      }
+
+      const text = await vscode.window.showInputBox({
+        prompt: `#${selected.label} に投稿`,
+        placeHolder: 'メッセージを入力',
+      });
+      if (!text) {
+        return;
+      }
+
+      try {
+        await c.slackApi.postMessage(selected.channelId, text);
+        vscode.window.showInformationMessage(`[Nulab] ${selected.label} に投稿しました。`);
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `[Nulab] 投稿に失敗しました: ${error instanceof Error ? error.message : error}`
+        );
+      }
+    }),
+
+    vscode.commands.registerCommand('workspace.editSlackFavoriteChannels', async () => {
+      const current = c.slackConfig.getFavoriteChannels();
+      const action = await vscode.window.showQuickPick(
+        [
+          { label: '$(add) チャンネルを追加', action: 'add' as const },
+          ...(current.length > 0
+            ? [{ label: '$(trash) チャンネルを削除', action: 'remove' as const }]
+            : []),
+        ],
+        {
+          placeHolder: `お気に入り: ${
+            current.length > 0 ? current.map((ch) => '#' + ch.name).join(', ') : '(なし)'
+          }`,
+        }
+      );
+      if (!action) {
+        return;
+      }
+
+      if (action.action === 'add') {
+        const channels = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'チャンネル一覧を取得中...' },
+          () => c.slackApi.getChannels()
+        );
+        const currentIds = new Set(current.map((ch) => ch.id));
+        const available = channels
+          .filter((ch) => !ch.is_im && !ch.is_mpim && !currentIds.has(ch.id))
+          .map((ch) => ({ label: `#${ch.name}`, channel: { id: ch.id, name: ch.name } }));
+
+        if (available.length === 0) {
+          vscode.window.showInformationMessage('[Nulab] 追加可能なチャンネルがありません。');
+          return;
+        }
+
+        const picked = await vscode.window.showQuickPick(available, {
+          placeHolder: '追加するチャンネルを選択',
+          canPickMany: true,
+        });
+        if (!picked || picked.length === 0) {
+          return;
+        }
+
+        const updated = [...current, ...picked.map((p) => p.channel)];
+        c.slackConfig.setFavoriteChannels(updated);
+        vscode.window.showInformationMessage(
+          `[Nulab] ${picked.length}件のチャンネルを追加しました。`
+        );
+      } else {
+        const toRemove = await vscode.window.showQuickPick(
+          current.map((ch) => ({ label: `#${ch.name}`, id: ch.id })),
+          { placeHolder: '削除するチャンネルを選択', canPickMany: true }
+        );
+        if (!toRemove || toRemove.length === 0) {
+          return;
+        }
+        const removeIds = new Set(toRemove.map((item) => item.id));
+        const updated = current.filter((ch) => !removeIds.has(ch.id));
+        c.slackConfig.setFavoriteChannels(updated);
+        vscode.window.showInformationMessage(
+          `[Nulab] ${toRemove.length}件のチャンネルを削除しました。`
         );
       }
     }),

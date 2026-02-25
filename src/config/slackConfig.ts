@@ -7,6 +7,7 @@ import { WorkspaceFileStore } from './workspaceFileStore';
  */
 export class SlackConfig {
   private static readonly FILE_SLACK_SEARCH_KEYWORDS = 'slack-search-keywords.json';
+  private static readonly FILE_FAVORITE_CHANNELS = 'slack-favorite-channels.json';
   private readonly configSection = 'nulab';
 
   constructor(
@@ -52,5 +53,16 @@ export class SlackConfig {
 
   setSearchKeywords(keywords: string[]): void {
     this.fileStore.writeJsonFile(SlackConfig.FILE_SLACK_SEARCH_KEYWORDS, keywords);
+  }
+
+  getFavoriteChannels(): { id: string; name: string }[] {
+    return this.fileStore.readJsonFile<{ id: string; name: string }[]>(
+      SlackConfig.FILE_FAVORITE_CHANNELS,
+      []
+    );
+  }
+
+  setFavoriteChannels(channels: { id: string; name: string }[]): void {
+    this.fileStore.writeJsonFile(SlackConfig.FILE_FAVORITE_CHANNELS, channels);
   }
 }
