@@ -167,6 +167,9 @@ storybook-static/
 # Backlog RAG data (contains indexed vectors/graphs)
 .backlog/
 
+# Nulab workspace context (exported by extension for Claude Code)
+.nulab/
+
 # MCP config (contains API keys)
 .mcp.json
 

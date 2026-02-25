@@ -57,10 +57,17 @@ export class BacklogRemoteContentProvider implements vscode.TextDocumentContentP
     this._onDidChange.fire(uri);
   }
 
-  static buildUri(projectKey: string, documentId: string, title: string, scheme = 'backlog-remote'): vscode.Uri {
+  static buildUri(
+    projectKey: string,
+    documentId: string,
+    title: string,
+    scheme = 'backlog-remote'
+  ): vscode.Uri {
     const safeName = title.replace(/[/\\:*?"<>|]/g, '-') + '.md';
     return vscode.Uri.parse(
-      `${scheme}:/${encodeURIComponent(projectKey)}/${encodeURIComponent(documentId)}/${encodeURIComponent(safeName)}`
+      `${scheme}:/${encodeURIComponent(projectKey)}/${encodeURIComponent(
+        documentId
+      )}/${encodeURIComponent(safeName)}`
     );
   }
 }

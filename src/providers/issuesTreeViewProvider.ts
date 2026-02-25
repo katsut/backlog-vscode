@@ -20,7 +20,7 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
   private sortBy: 'updated' | 'created' | 'priority' | 'status' | 'summary' = 'updated';
   private sortOrder: 'asc' | 'desc' = 'desc';
 
-  constructor(private backlogApi: BacklogApiService) { }
+  constructor(private backlogApi: BacklogApiService) {}
 
   // プロジェクトを設定して課題を読み込み
   async setProject(projectId: number): Promise<void> {
@@ -79,7 +79,7 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
     item.iconPath = new vscode.ThemeIcon('gear', new vscode.ThemeColor('charts.orange'));
     item.tooltip = 'Configure Backlog API URL and credentials to start using the extension';
     item.command = {
-      command: 'backlog.openSettings',
+      command: 'nulab.openSettings',
       title: 'Open Settings',
       arguments: [],
     };
@@ -165,7 +165,7 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
       this.applyFilters();
       this._onDidChangeTreeData.fire();
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to get user information: ${error}`);
+      vscode.window.showErrorMessage(`[Nulab] Failed to get user information: ${error}`);
     }
   }
 
@@ -268,7 +268,7 @@ export class BacklogIssuesTreeViewProvider implements vscode.TreeDataProvider<vs
       this.applyFilters();
     } catch (error) {
       console.error('Error loading issues:', error);
-      vscode.window.showErrorMessage(`Failed to load issues: ${error}`);
+      vscode.window.showErrorMessage(`[Nulab] Failed to load issues: ${error}`);
     }
   }
 
@@ -309,12 +309,13 @@ export class IssueTreeItem extends vscode.TreeItem {
 
     super(`${issue.issueKey}: ${issue.summary}`, vscode.TreeItemCollapsibleState.None);
 
-    this.tooltip = `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${issue.priority.name
-      }\nAssignee: ${issue.assignee?.name || 'Unassigned'}`;
+    this.tooltip = `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${
+      issue.priority.name
+    }\nAssignee: ${issue.assignee?.name || 'Unassigned'}`;
     this.iconPath = new vscode.ThemeIcon(statusIcon, priorityColor);
     this.contextValue = 'issue';
     this.command = {
-      command: 'backlog.openIssue',
+      command: 'nulab.openIssue',
       title: 'Open Issue',
       arguments: [this.issue],
     };

@@ -14,10 +14,7 @@ export class SyncFileDecorationProvider implements vscode.FileDecorationProvider
   // Cache to avoid repeated file I/O
   private manifestCache = new Map<string, { manifest: SyncManifest; mtime: number }>();
 
-  constructor(
-    private syncService: SyncService,
-    private configService: ConfigService
-  ) {}
+  constructor(private syncService: SyncService, private configService: ConfigService) {}
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
     if (uri.scheme !== 'file' || !uri.fsPath.endsWith('.bdoc')) {

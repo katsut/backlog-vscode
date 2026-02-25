@@ -218,7 +218,8 @@
   background: var(--vscode-editor-inactiveSelectionBackground);
 }
 
-.markdown-content tr:nth-child(2n) {
+.markdown-content td:first-child {
+  font-weight: 600;
   background: var(--vscode-editor-inactiveSelectionBackground);
 }
 

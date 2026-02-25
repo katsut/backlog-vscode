@@ -76,39 +76,80 @@ export class CacooApiService {
   // ---- API Methods ----
 
   async getOrganizations(): Promise<CacooOrganization[]> {
-    const { apiKey } = await this.ensureInitialized();
-    const data = await this.apiGet<{ result: CacooOrganization[] }>(
-      '/api/v1/organizations.json',
-      { apiKey }
-    );
+    // Organizations endpoint only needs apiKey (organizationKey is not yet known)
+    const apiKey = await this.configService.getCacooApiKey();
+    if (!apiKey) {
+      throw new Error('Cacoo API Key is not configured');
+    }
+    const data = await this.apiGet<{ result: CacooOrganization[] }>('/api/v1/organizations.json', {
+      apiKey,
+    });
     return data.result || [];
   }
 
   async getFolders(): Promise<CacooFolder[]> {
     const { apiKey, organizationKey } = await this.ensureInitialized();
-    const data = await this.apiGet<{ result: CacooFolder[] }>(
-      '/api/v1/folders.json',
-      { apiKey, organizationKey }
-    );
+    const data = await this.apiGet<{ result: CacooFolder[] }>('/api/v1/folders.json', {
+      apiKey,
+      organizationKey,
+    });
     return data.result || [];
   }
 
   async getDiagrams(opts: DiagramListOptions = {}): Promise<CacooDiagramsResponse> {
     const { apiKey, organizationKey } = await this.ensureInitialized();
-    const params: Record<string, string> = { apiKey, organizationKey };
 
-    if (opts.folderId !== undefined) { params.folderId = String(opts.folderId); }
-    if (opts.type) { params.type = opts.type; }
-    if (opts.sortOn) { params.sortOn = opts.sortOn; }
-    if (opts.sortType) { params.sortType = opts.sortType; }
-    if (opts.limit !== undefined) { params.limit = String(opts.limit); }
-    if (opts.offset !== undefined) { params.offset = String(opts.offset); }
-    if (opts.keyword) { params.keyword = opts.keyword; }
+    const buildParams = (includeOrgKey: boolean): Record<string, string> => {
+      const params: Record<string, string> = { apiKey };
+      if (includeOrgKey) {
+        params.organizationKey = organizationKey;
+      }
+      if (opts.folderId !== undefined) {
+        params.folderId = String(opts.folderId);
+      }
+      if (opts.type) {
+        params.type = opts.type;
+      }
+      if (opts.sortOn) {
+        params.sortOn = opts.sortOn;
+      }
+      if (opts.sortType) {
+        params.sortType = opts.sortType;
+      }
+      if (opts.limit !== undefined) {
+        params.limit = String(opts.limit);
+      }
+      if (opts.offset !== undefined) {
+        params.offset = String(opts.offset);
+      }
+      if (opts.keyword) {
+        params.keyword = opts.keyword;
+      }
+      return params;
+    };
 
-    return await this.apiGet<CacooDiagramsResponse>(
-      '/api/v1/diagrams.json',
-      params
-    );
+    // Try with organizationKey first; fall back without on 403
+    let raw: Record<string, unknown>;
+    try {
+      raw = await this.apiGet<Record<string, unknown>>('/api/v1/diagrams.json', buildParams(true));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('403')) {
+        raw = await this.apiGet<Record<string, unknown>>(
+          '/api/v1/diagrams.json',
+          buildParams(false)
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    // Parse response — API may return { result: [...], count: N } or a raw array
+    if (Array.isArray(raw)) {
+      return { result: raw as unknown as CacooDiagram[], count: (raw as unknown[]).length };
+    }
+    const resp = raw as unknown as CacooDiagramsResponse;
+    const result = resp.result || [];
+    return { result, count: resp.count ?? result.length };
   }
 
   async getDiagramDetail(diagramId: string): Promise<CacooDiagramDetail> {
@@ -131,8 +172,12 @@ export class CacooApiService {
       : `/api/v1/diagrams/${encodeURIComponent(diagramId)}.png`;
 
     const params: Record<string, string> = { apiKey };
-    if (width) { params.width = String(width); }
-    if (height) { params.height = String(height); }
+    if (width) {
+      params.width = String(width);
+    }
+    if (height) {
+      params.height = String(height);
+    }
 
     return await this.downloadBinary(pathPart, params);
   }

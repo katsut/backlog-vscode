@@ -1,22 +1,111 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { DocumentSyncMapping } from '../types/backlog';
 import { CacooSyncMapping, CacooPinnedSheet } from '../types/cacoo';
+import { WorkspaceTodoItem } from '../types/workspace';
 
 export class ConfigService {
-  private readonly configSection = 'backlog';
+  private readonly configSection = 'nulab';
   private readonly secretStorage: vscode.SecretStorage;
+  private readonly globalState: vscode.Memento;
 
-  constructor(secretStorage: vscode.SecretStorage) {
+  /** File names under .nulab/ for workspace-local data */
+  private static readonly FILE_DOC_SYNC_MAPPINGS = 'document-sync-mappings.json';
+  private static readonly FILE_TODOS = 'todos.json';
+  private static readonly FILE_SLACK_SEARCH_KEYWORDS = 'slack-search-keywords.json';
+
+  constructor(secretStorage: vscode.SecretStorage, globalState: vscode.Memento) {
     this.secretStorage = secretStorage;
+    this.globalState = globalState;
+  }
+
+  // ---- .nulab/ file helpers ----
+
+  private getNulabDir(): string | undefined {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root) {
+      return undefined;
+    }
+    return path.join(root, '.nulab');
+  }
+
+  private readJsonFile<T>(fileName: string, fallback: T): T {
+    const dir = this.getNulabDir();
+    if (!dir) {
+      return fallback;
+    }
+    const filePath = path.join(dir, fileName);
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return JSON.parse(content) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private writeJsonFile<T>(fileName: string, data: T): void {
+    const dir = this.getNulabDir();
+    if (!dir) {
+      return;
+    }
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const filePath = path.join(dir, fileName);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+  }
+
+  /** Legacy key mapping for migration from old key names */
+  private static readonly LEGACY_KEY_MAP: Record<string, string> = {
+    'nulab.backlog.apiKey': 'backlog.apiKey',
+    'nulab.cacoo.apiKey': 'cacoo.apiKey',
+    'nulab.slack.token': 'slack.token',
+  };
+
+  /** Get a secret with globalState fallback (survives extension reinstall) */
+  private async getSecret(key: string): Promise<string | undefined> {
+    const value = await this.secretStorage.get(key);
+    if (value) {
+      return value;
+    }
+    // Fallback: globalState survives reinstall
+    const fallback = this.globalState.get<string>(`secret.${key}`);
+    if (fallback) {
+      // Restore to SecretStorage
+      await this.secretStorage.store(key, fallback);
+      return fallback;
+    }
+    // Migrate from legacy key names (backlog.apiKey → nulab.backlog.apiKey etc.)
+    const legacyKey = ConfigService.LEGACY_KEY_MAP[key];
+    if (legacyKey) {
+      const legacyValue =
+        (await this.secretStorage.get(legacyKey)) ||
+        this.globalState.get<string>(`secret.${legacyKey}`);
+      if (legacyValue) {
+        await this.setSecret(key, legacyValue);
+        // Clean up old keys
+        await this.secretStorage.delete(legacyKey);
+        await this.globalState.update(`secret.${legacyKey}`, undefined);
+        return legacyValue;
+      }
+    }
+    return undefined;
+  }
+
+  /** Store a secret in both SecretStorage and globalState */
+  private async setSecret(key: string, value: string): Promise<void> {
+    await this.secretStorage.store(key, value);
+    await this.globalState.update(`secret.${key}`, value);
   }
 
   getDomain(): string | undefined {
-    return vscode.workspace.getConfiguration(this.configSection).get<string>('domain');
+    return vscode.workspace.getConfiguration(this.configSection).get<string>('backlog.domain');
   }
 
   async getApiKey(): Promise<string | undefined> {
     // Try to get from Secret Storage first (secure)
-    const secretKey = await this.secretStorage.get('backlog.apiKey');
+    const secretKey = await this.getSecret('nulab.backlog.apiKey');
     if (secretKey) {
       return secretKey;
     }
@@ -29,7 +118,7 @@ export class ConfigService {
       await vscode.workspace
         .getConfiguration(this.configSection)
         .update('apiKey', undefined, vscode.ConfigurationTarget.Global);
-      vscode.window.showInformationMessage('API Key has been migrated to secure storage.');
+      vscode.window.showInformationMessage('[Nulab] API Key has been migrated to secure storage.');
       return legacyKey;
     }
 
@@ -37,24 +126,26 @@ export class ConfigService {
   }
 
   isAutoRefreshEnabled(): boolean {
-    return vscode.workspace.getConfiguration(this.configSection).get<boolean>('autoRefresh', true);
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<boolean>('backlog.autoRefresh', true);
   }
 
   getRefreshInterval(): number {
     return vscode.workspace
       .getConfiguration(this.configSection)
-      .get<number>('refreshInterval', 300);
+      .get<number>('backlog.refreshInterval', 300);
   }
 
   async setDomain(domain: string): Promise<void> {
     await vscode.workspace
       .getConfiguration(this.configSection)
-      .update('domain', domain, vscode.ConfigurationTarget.Global);
+      .update('backlog.domain', domain, vscode.ConfigurationTarget.Global);
   }
 
   async setApiKey(apiKey: string): Promise<void> {
     // Store in Secret Storage (secure)
-    await this.secretStorage.store('backlog.apiKey', apiKey);
+    await this.setSecret('nulab.backlog.apiKey', apiKey);
   }
 
   async isConfigured(): Promise<boolean> {
@@ -75,7 +166,7 @@ export class ConfigService {
   getFavoriteProjects(): string[] {
     return vscode.workspace
       .getConfiguration(this.configSection)
-      .get<string[]>('favoriteProjects', []);
+      .get<string[]>('backlog.favoriteProjects', []);
   }
 
   isFavoriteProject(projectKey: string): boolean {
@@ -89,30 +180,27 @@ export class ConfigService {
       favorites.splice(index, 1);
       await vscode.workspace
         .getConfiguration(this.configSection)
-        .update('favoriteProjects', favorites, vscode.ConfigurationTarget.Global);
+        .update('backlog.favoriteProjects', favorites, vscode.ConfigurationTarget.Global);
       return false;
     } else {
       favorites.push(projectKey);
       await vscode.workspace
         .getConfiguration(this.configSection)
-        .update('favoriteProjects', favorites, vscode.ConfigurationTarget.Global);
+        .update('backlog.favoriteProjects', favorites, vscode.ConfigurationTarget.Global);
       return true;
     }
   }
 
   getDocumentSyncMappings(): DocumentSyncMapping[] {
-    return vscode.workspace
-      .getConfiguration(this.configSection)
-      .get<DocumentSyncMapping[]>('documentSync.mappings', []);
+    return this.readJsonFile<DocumentSyncMapping[]>(ConfigService.FILE_DOC_SYNC_MAPPINGS, []);
   }
 
   getMappingForProject(projectKey: string): DocumentSyncMapping | undefined {
     return this.getDocumentSyncMappings().find((m) => m.projectKey === projectKey);
   }
 
-  async addDocumentSyncMapping(mapping: DocumentSyncMapping): Promise<void> {
+  addDocumentSyncMapping(mapping: DocumentSyncMapping): void {
     const mappings = this.getDocumentSyncMappings();
-    // 同じプロジェクト+ノードの既存マッピングを置換
     const idx = mappings.findIndex(
       (m) => m.projectKey === mapping.projectKey && m.documentNodeId === mapping.documentNodeId
     );
@@ -121,28 +209,24 @@ export class ConfigService {
     } else {
       mappings.push(mapping);
     }
-    await vscode.workspace
-      .getConfiguration(this.configSection)
-      .update('documentSync.mappings', mappings, vscode.ConfigurationTarget.Workspace);
+    this.writeJsonFile(ConfigService.FILE_DOC_SYNC_MAPPINGS, mappings);
   }
 
-  async removeDocumentSyncMapping(projectKey: string, documentNodeId: string): Promise<void> {
+  removeDocumentSyncMapping(projectKey: string, documentNodeId: string): void {
     const mappings = this.getDocumentSyncMappings().filter(
       (m) => !(m.projectKey === projectKey && m.documentNodeId === documentNodeId)
     );
-    await vscode.workspace
-      .getConfiguration(this.configSection)
-      .update('documentSync.mappings', mappings, vscode.ConfigurationTarget.Workspace);
+    this.writeJsonFile(ConfigService.FILE_DOC_SYNC_MAPPINGS, mappings);
   }
 
   // ---- Cacoo ----
 
   async getCacooApiKey(): Promise<string | undefined> {
-    return await this.secretStorage.get('cacoo.apiKey');
+    return await this.getSecret('nulab.cacoo.apiKey');
   }
 
   async setCacooApiKey(apiKey: string): Promise<void> {
-    await this.secretStorage.store('cacoo.apiKey', apiKey);
+    await this.setSecret('nulab.cacoo.apiKey', apiKey);
   }
 
   getCacooOrganizationKey(): string | undefined {
@@ -213,5 +297,110 @@ export class ConfigService {
         .update('cacoo.pinnedSheets', pins, vscode.ConfigurationTarget.Global);
       return true;
     }
+  }
+
+  // ---- Slack ----
+
+  async getSlackToken(): Promise<string | undefined> {
+    return await this.getSecret('nulab.slack.token');
+  }
+
+  async setSlackToken(token: string): Promise<void> {
+    await this.setSecret('nulab.slack.token', token);
+  }
+
+  // ---- Anthropic ----
+
+  async getAnthropicApiKey(): Promise<string | undefined> {
+    return await this.getSecret('nulab.anthropic.apiKey');
+  }
+
+  async setAnthropicApiKey(apiKey: string): Promise<void> {
+    await this.setSecret('nulab.anthropic.apiKey', apiKey);
+  }
+
+  // ---- Workspace TODO ----
+
+  getWorkspaceTodos(): WorkspaceTodoItem[] {
+    return this.readJsonFile<WorkspaceTodoItem[]>(ConfigService.FILE_TODOS, []);
+  }
+
+  setWorkspaceTodos(todos: WorkspaceTodoItem[]): void {
+    this.writeJsonFile(ConfigService.FILE_TODOS, todos);
+  }
+
+  // ---- Workspace Polling ----
+
+  getNotificationPollingInterval(): number {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<number>('backlog.notificationPollingInterval', 60);
+  }
+
+  getSlackPollingInterval(): number {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<number>('slack.pollingInterval', 180);
+  }
+
+  // ---- Auto TODO ----
+
+  isBacklogAutoTodoEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<boolean>('backlog.autoTodoEnabled', true);
+  }
+
+  getAutoTodoReasons(): number[] {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<number[]>('backlog.autoTodoReasons', [1, 2, 9, 10]);
+  }
+
+  isSlackAutoTodoEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<boolean>('slack.autoTodoEnabled', true);
+  }
+
+  getSlackSearchKeywords(): string[] {
+    return this.readJsonFile<string[]>(ConfigService.FILE_SLACK_SEARCH_KEYWORDS, []);
+  }
+
+  setSlackSearchKeywords(keywords: string[]): void {
+    this.writeJsonFile(ConfigService.FILE_SLACK_SEARCH_KEYWORDS, keywords);
+  }
+
+  // ---- Google (OAuth) ----
+
+  async getGoogleClientSecret(): Promise<string | undefined> {
+    return await this.getSecret('nulab.google.clientSecret');
+  }
+
+  async setGoogleClientSecret(secret: string): Promise<void> {
+    await this.setSecret('nulab.google.clientSecret', secret);
+  }
+
+  async getGoogleRefreshToken(): Promise<string | undefined> {
+    return await this.getSecret('nulab.google.refreshToken');
+  }
+
+  async setGoogleRefreshToken(token: string): Promise<void> {
+    await this.setSecret('nulab.google.refreshToken', token);
+  }
+
+  async clearGoogleTokens(): Promise<void> {
+    await this.setSecret('nulab.google.refreshToken', '');
+  }
+
+  getGoogleClientId(): string | undefined {
+    return vscode.workspace.getConfiguration(this.configSection).get<string>('google.clientId');
+  }
+
+  getGoogleCalendarId(): string {
+    return (
+      vscode.workspace.getConfiguration(this.configSection).get<string>('google.calendarId') ||
+      'primary'
+    );
   }
 }

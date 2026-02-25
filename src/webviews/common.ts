@@ -47,7 +47,7 @@ export class WebviewHelper {
       return '0 Bytes';
     }
     const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)).toString());
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + ' ' + sizes[i];
   }
 
   /**
@@ -55,21 +55,17 @@ export class WebviewHelper {
    */
   static getStyleUris(webview: vscode.Webview, extensionUri: vscode.Uri) {
     return {
-      styleResetUri: webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'reset.css')
-      ),
+      styleResetUri: webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'reset.css')),
       styleVSCodeUri: webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'media', 'vscode.css')
       ),
-      styleMainUri: webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'main.css')
-      ),
+      styleMainUri: webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'main.css')),
       styleMarkdownUri: webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'media', 'markdown.css')
       ),
       styleWebviewCommonUri: webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'media', 'webview-common.css')
-      )
+      ),
     };
   }
 
@@ -87,14 +83,18 @@ export class WebviewHelper {
     const styleNonce = nonce || this.getNonce();
 
     // Wrap additional styles with nonce if provided
-    const wrappedStyles = additionalStyles ?
-      `<style nonce="${styleNonce}">${additionalStyles.replace(/<\/?style[^>]*>/g, '')}</style>` :
-      '';
+    const wrappedStyles = additionalStyles
+      ? `<style nonce="${styleNonce}">${additionalStyles.replace(/<\/?style[^>]*>/g, '')}</style>`
+      : '';
 
     return `
       <head>
         <meta charset="UTF-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${styleNonce}'; script-src 'nonce-${styleNonce}'; font-src ${webview.cspSource}; img-src https: data: ${webview.cspSource};">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${
+          webview.cspSource
+        } 'nonce-${styleNonce}'; script-src 'nonce-${styleNonce}'; font-src ${
+      webview.cspSource
+    }; img-src https: data: ${webview.cspSource};">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${styles.styleResetUri}" rel="stylesheet">
         <link href="${styles.styleVSCodeUri}" rel="stylesheet">

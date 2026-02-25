@@ -1,12 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
-import {
-  SyncManifest,
-  SyncManifestEntry,
-  SyncStatus,
-  SyncStatusEntry,
-} from '../types/backlog';
+import { SyncManifest, SyncManifestEntry, SyncStatus, SyncStatusEntry } from '../types/backlog';
 
 export class SyncService {
   private static readonly MANIFEST_FILENAME = '.sync-manifest.json';
@@ -154,9 +149,7 @@ export class SyncService {
 
     const localHash = this.computeLocalFileHash(absolutePath);
     const localChanged = localHash !== entry.content_hash;
-    const remoteChanged = remoteUpdatedAt
-      ? remoteUpdatedAt !== entry.remote_updated_at
-      : false;
+    const remoteChanged = remoteUpdatedAt ? remoteUpdatedAt !== entry.remote_updated_at : false;
 
     if (!localChanged && !remoteChanged) {
       return 'unchanged';

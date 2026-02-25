@@ -125,7 +125,9 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Cacoo: ${title}`, additional
           <button class="zoom-btn" id="btn100">100%</button>
           <button class="zoom-btn" id="btn150">150%</button>
         </div>
-        ${diagramUrl ? `<button class="action-btn primary" id="btnOpen">Open in Cacoo</button>` : ''}
+        ${
+          diagramUrl ? `<button class="action-btn primary" id="btnOpen">Open in Cacoo</button>` : ''
+        }
       </div>
     </div>
 

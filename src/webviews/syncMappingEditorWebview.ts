@@ -26,12 +26,14 @@ export class SyncMappingEditorWebview {
     });
 
     const projectOptions = sortedProjects
-      .map(
-        (p) => {
-          const star = favorites.includes(p.projectKey) ? '\u2605 ' : '';
-          return `<option value="${p.id}" data-key="${WebviewHelper.escapeHtml(p.projectKey)}" ${p.projectKey === currentProjectKey ? 'selected' : ''}>${star}${WebviewHelper.escapeHtml(p.projectKey)}: ${WebviewHelper.escapeHtml(p.name)}</option>`;
-        }
-      )
+      .map((p) => {
+        const star = favorites.includes(p.projectKey) ? '\u2605 ' : '';
+        return `<option value="${p.id}" data-key="${WebviewHelper.escapeHtml(p.projectKey)}" ${
+          p.projectKey === currentProjectKey ? 'selected' : ''
+        }>${star}${WebviewHelper.escapeHtml(p.projectKey)}: ${WebviewHelper.escapeHtml(
+          p.name
+        )}</option>`;
+      })
       .join('\n');
 
     const treeHtml = documentTree?.activeTree?.children
@@ -166,7 +168,13 @@ export class SyncMappingEditorWebview {
 
     return `<!DOCTYPE html>
 <html lang="ja">
-${WebviewHelper.getHtmlHead(webview, extensionUri, 'Document Sync Mapping Editor', additionalStyles, nonce)}
+${WebviewHelper.getHtmlHead(
+  webview,
+  extensionUri,
+  'Document Sync Mapping Editor',
+  additionalStyles,
+  nonce
+)}
 <body>
   <div class="editor-container">
     <h1 class="editor-title">Document Sync Mapping</h1>
@@ -310,10 +318,14 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, 'Document Sync Mapping Editor
           }
         }
 
-        const childrenHtml =
-          hasChildren
-            ? `<div class="tree-children">${this.renderTree(node.children!, projectKey, mappings, depth + 1)}</div>`
-            : '';
+        const childrenHtml = hasChildren
+          ? `<div class="tree-children">${this.renderTree(
+              node.children!,
+              projectKey,
+              mappings,
+              depth + 1
+            )}</div>`
+          : '';
 
         return `
           <div class="tree-node">

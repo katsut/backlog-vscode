@@ -23,9 +23,7 @@ export class DocumentEditorWebview {
     const escapedContent = WebviewHelper.escapeHtml(content);
     const escapedTitle = WebviewHelper.escapeHtml(meta.title);
     const escapedProject = WebviewHelper.escapeHtml(meta.project);
-    const syncedDate = meta.syncedAt
-      ? new Date(meta.syncedAt).toLocaleString('ja-JP')
-      : '';
+    const syncedDate = meta.syncedAt ? new Date(meta.syncedAt).toLocaleString('ja-JP') : '';
 
     const hasBacklogId = !!meta.backlogId;
 
@@ -208,10 +206,15 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
         <div class="tab-group">
           <button class="tab-btn" id="btnEdit">Edit</button>
           <button class="tab-btn active" id="btnPreview">Preview</button>
+          ${hasBacklogId ? `<button class="tab-btn" id="btnDiff">Diff</button>` : ''}
         </div>
-        ${hasBacklogId ? `<span class="toolbar-separator"></span>
-        <button class="action-btn" id="btnDiff">Diff</button>
-        <button class="action-btn primary" id="btnCopyOpen">Copy &amp; Open</button>` : ''}
+        ${
+          hasBacklogId
+            ? `<span class="toolbar-separator"></span>
+        <button class="action-btn" id="btnPull" title="Pull from Backlog">Pull</button>
+        <button class="action-btn primary" id="btnCopyOpen">Copy &amp; Open</button>`
+            : ''
+        }
       </div>
     </div>
 
@@ -237,6 +240,7 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
     const charCount = document.getElementById('charCount');
     const btnEdit = document.getElementById('btnEdit');
     const btnPreview = document.getElementById('btnPreview');
+    const btnPull = document.getElementById('btnPull');
     const btnDiff = document.getElementById('btnDiff');
     const btnCopyOpen = document.getElementById('btnCopyOpen');
 
@@ -296,6 +300,12 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
     btnEdit.addEventListener('click', function() { switchMode('edit'); });
     btnPreview.addEventListener('click', function() { switchMode('preview'); });
 
+    if (btnPull) {
+      btnPull.addEventListener('click', function() {
+        vscode.postMessage({ command: 'pull' });
+      });
+    }
+
     if (btnDiff) {
       btnDiff.addEventListener('click', function() {
         vscode.postMessage({ command: 'diff' });
@@ -330,6 +340,17 @@ ${WebviewHelper.getHtmlHead(webview, extensionUri, `Edit: ${meta.title}`, additi
           break;
         case 'saveError':
           statusText.textContent = 'Save failed: ' + message.error;
+          break;
+        case 'externalUpdate':
+          // File was modified externally (e.g., by Claude Code or pull)
+          editor.value = message.content;
+          savedContent = message.content;
+          setDirty(false);
+          updateCharCount();
+          if (mode === 'preview') {
+            vscode.postMessage({ command: 'requestPreview', content: editor.value });
+            preview.innerHTML = '<p style="color:var(--vscode-descriptionForeground);">Rendering...</p>';
+          }
           break;
       }
     });

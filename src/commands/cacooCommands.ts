@@ -46,14 +46,14 @@ export class CacooCommands {
     try {
       const orgs = await this.cacooApi.getOrganizations();
       if (orgs.length === 0) {
-        vscode.window.showWarningMessage('Organization が見つかりません。');
+        vscode.window.showWarningMessage('[Nulab] Organization が見つかりません。');
         return;
       }
 
       if (orgs.length === 1) {
         await this.configService.setCacooOrganizationKey(orgs[0].key);
         vscode.window.showInformationMessage(
-          `Cacoo API Key を設定しました。Organization: ${orgs[0].name}`
+          `[Nulab] Cacoo API Key を設定しました。Organization: ${orgs[0].name}`
         );
       } else {
         const selected = await vscode.window.showQuickPick(
@@ -63,7 +63,7 @@ export class CacooCommands {
         if (selected) {
           await this.configService.setCacooOrganizationKey(selected.orgKey);
           vscode.window.showInformationMessage(
-            `Cacoo API Key を設定しました。Organization: ${selected.label}`
+            `[Nulab] Cacoo API Key を設定しました。Organization: ${selected.label}`
           );
         }
       }
@@ -71,7 +71,9 @@ export class CacooCommands {
       await this.cacooApi.reinitialize();
     } catch (error) {
       vscode.window.showErrorMessage(
-        `Organization の取得に失敗しました: ${error instanceof Error ? error.message : error}`
+        `[Nulab] Organization の取得に失敗しました: ${
+          error instanceof Error ? error.message : error
+        }`
       );
     }
   }
@@ -132,7 +134,9 @@ export class CacooCommands {
         diagramUrl
       );
     } catch (error) {
-      panel.webview.html = `<html><body><p>Error: ${error instanceof Error ? error.message : error}</p></body></html>`;
+      panel.webview.html = `<html><body><p>Error: ${
+        error instanceof Error ? error.message : error
+      }</p></body></html>`;
     }
   }
 
@@ -164,7 +168,9 @@ export class CacooCommands {
     };
     const pinned = await this.configService.toggleCacooPinnedSheet(sheet);
     vscode.window.showInformationMessage(
-      pinned ? `"${sheet.label}" をピン留めしました` : `"${sheet.label}" のピンを外しました`
+      pinned
+        ? `[Nulab] "${sheet.label}" をピン留めしました`
+        : `[Nulab] "${sheet.label}" のピンを外しました`
     );
   }
 
@@ -198,7 +204,7 @@ export class CacooCommands {
         folderName = selected.folder.folderName;
         organizationKey = this.configService.getCacooOrganizationKey() || '';
       } catch (error) {
-        vscode.window.showErrorMessage(`フォルダの取得に失敗しました: ${error}`);
+        vscode.window.showErrorMessage(`[Nulab] フォルダの取得に失敗しました: ${error}`);
         return;
       }
     }
@@ -219,19 +225,24 @@ export class CacooCommands {
       folderName,
     };
     await this.configService.addCacooSyncMapping(mapping);
-    vscode.window.showInformationMessage(`マッピングを設定しました: ${folderName} → ${localPath}`);
+    vscode.window.showInformationMessage(
+      `[Nulab] マッピングを設定しました: ${folderName} → ${localPath}`
+    );
   }
 
-  // ---- Pull ----
+  // ---- Pull (pinned sheets only) ----
 
-  async pull(mapping?: CacooSyncMapping): Promise<void> {
+  async pull(): Promise<void> {
     if (this.isPulling) {
-      vscode.window.showWarningMessage('Pull is already in progress.');
+      vscode.window.showWarningMessage('[Nulab] Pull is already in progress.');
       return;
     }
 
-    const resolved = mapping || (await this.resolveMapping());
-    if (!resolved) {
+    const pinnedSheets = this.configService.getCacooPinnedSheets();
+    if (pinnedSheets.length === 0) {
+      vscode.window.showWarningMessage(
+        '[Nulab] ピン留めされたシートがありません。ツリーからシートをピン留めしてください。'
+      );
       return;
     }
 
@@ -240,109 +251,76 @@ export class CacooCommands {
       return;
     }
 
-    const localDir = path.join(workspaceRoot, resolved.localPath);
+    // Determine local directory: use mapping if exists, otherwise default
+    const mappings = this.configService.getCacooSyncMappings();
+    const localPath = mappings.length > 0 ? mappings[0].localPath : 'cacoo-sheets';
+    const localDir = path.join(workspaceRoot, localPath);
+
     this.isPulling = true;
 
     try {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Pulling Cacoo sheets...',
+          title: 'Pulling pinned Cacoo sheets...',
           cancellable: true,
         },
         async (progress, token) => {
-          // 1. Get all diagrams in the folder
-          const allDiagrams: Array<{ diagramId: string; title: string; updated: string }> = [];
-          let offset = 0;
-          const limit = 50;
-
-          while (true) {
-            if (token.isCancellationRequested) { break; }
-            const resp = await this.cacooApi.getDiagrams({
-              folderId: resolved.folderId,
-              sortOn: 'updated',
-              sortType: 'desc',
-              limit,
-              offset,
-            });
-            allDiagrams.push(...resp.result.map((d) => ({
-              diagramId: d.diagramId,
-              title: d.title,
-              updated: d.updated,
-            })));
-            if (allDiagrams.length >= resp.count || resp.result.length < limit) {
-              break;
-            }
-            offset += limit;
-          }
-
-          progress.report({ message: `${allDiagrams.length} diagrams found` });
-
           const manifest = this.syncService.loadManifest(localDir);
           let pulled = 0;
           let unchanged = 0;
           let skipped = 0;
+          const total = pinnedSheets.length;
 
-          // 2. For each diagram, get sheets and download images
-          for (let di = 0; di < allDiagrams.length; di++) {
-            if (token.isCancellationRequested) { break; }
-            const diagram = allDiagrams[di];
+          for (let i = 0; i < pinnedSheets.length; i++) {
+            if (token.isCancellationRequested) {
+              break;
+            }
+            const pin = pinnedSheets[i];
 
             progress.report({
-              increment: (1 / allDiagrams.length) * 100,
-              message: `${diagram.title} (${di + 1}/${allDiagrams.length})`,
+              increment: (1 / total) * 100,
+              message: `${pin.label} (${i + 1}/${total})`,
             });
 
-            let detail;
+            // Parse label "DiagramTitle / SheetName" for file path
+            const parts = pin.label.split(' / ');
+            const diagramTitle = parts.length > 1 ? parts.slice(0, -1).join(' / ') : pin.diagramId;
+            const sheetName = parts.length > 1 ? parts[parts.length - 1] : pin.sheetUid;
+
+            const relativePath = path.relative(
+              localDir,
+              this.syncService.resolveSheetPath(localDir, diagramTitle, sheetName)
+            );
+
             try {
-              detail = await this.cacooApi.getDiagramDetail(diagram.diagramId);
-            } catch (error) {
-              console.error(`[Cacoo] Failed to get detail for ${diagram.diagramId}:`, error);
-              skipped++;
-              continue;
-            }
+              const buffer = await this.cacooApi.downloadSheetImage(pin.diagramId, pin.sheetUid);
 
-            for (const sheet of detail.sheets || []) {
-              if (token.isCancellationRequested) { break; }
-
-              const relativePath = path.relative(
-                localDir,
-                this.syncService.resolveSheetPath(localDir, diagram.title, sheet.name)
-              );
-
-              // Check manifest for unchanged
+              // Check if content changed via hash
+              const newHash = this.syncService.computeImageHash(buffer);
               const existing = manifest[relativePath];
-              if (existing && existing.remote_updated_at === diagram.updated) {
+              if (existing && existing.content_hash === newHash) {
                 unchanged++;
                 continue;
               }
 
-              try {
-                const buffer = await this.cacooApi.downloadSheetImage(
-                  diagram.diagramId,
-                  sheet.uid
-                );
-                const absolutePath = path.join(localDir, relativePath);
-                fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-                fs.writeFileSync(absolutePath, buffer);
+              const absolutePath = path.join(localDir, relativePath);
+              fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+              fs.writeFileSync(absolutePath, buffer);
 
-                const now = new Date().toISOString();
-                manifest[relativePath] = {
-                  diagramId: diagram.diagramId,
-                  sheetUid: sheet.uid,
-                  sheetName: sheet.name,
-                  diagramTitle: diagram.title,
-                  synced_at: now,
-                  remote_updated_at: diagram.updated,
-                  content_hash: this.syncService.computeImageHash(buffer),
-                };
-                pulled++;
-              } catch (error) {
-                console.error(`[Cacoo] Failed to download sheet ${sheet.name}:`, error);
-                skipped++;
-              }
-
-              await this.delay(100);
+              manifest[relativePath] = {
+                diagramId: pin.diagramId,
+                sheetUid: pin.sheetUid,
+                sheetName: sheetName,
+                diagramTitle: diagramTitle,
+                synced_at: new Date().toISOString(),
+                remote_updated_at: new Date().toISOString(),
+                content_hash: newHash,
+              };
+              pulled++;
+            } catch (error) {
+              console.error(`[Cacoo] Failed to download ${pin.label}:`, error);
+              skipped++;
             }
 
             await this.delay(100);
@@ -350,10 +328,14 @@ export class CacooCommands {
 
           this.syncService.saveManifest(localDir, manifest);
 
-          const parts = [`${pulled} 件ダウンロード`];
-          if (unchanged > 0) { parts.push(`${unchanged} 件変更なし`); }
-          if (skipped > 0) { parts.push(`${skipped} 件スキップ`); }
-          vscode.window.showInformationMessage(`Cacoo Pull 完了: ${parts.join(', ')}`);
+          const summary = [`${pulled} 件ダウンロード`];
+          if (unchanged > 0) {
+            summary.push(`${unchanged} 件変更なし`);
+          }
+          if (skipped > 0) {
+            summary.push(`${skipped} 件スキップ`);
+          }
+          vscode.window.showInformationMessage(`[Nulab] Cacoo Pull 完了: ${summary.join(', ')}`);
         }
       );
     } finally {
@@ -363,35 +345,10 @@ export class CacooCommands {
 
   // ---- Helpers ----
 
-  private async resolveMapping(): Promise<CacooSyncMapping | undefined> {
-    const mappings = this.configService.getCacooSyncMappings();
-    if (mappings.length === 0) {
-      vscode.window.showWarningMessage(
-        'Cacoo Sync マッピングが設定されていません。フォルダを右クリックして設定してください。'
-      );
-      return undefined;
-    }
-
-    if (mappings.length === 1) {
-      return mappings[0];
-    }
-
-    const selected = await vscode.window.showQuickPick(
-      mappings.map((m) => ({
-        label: m.folderName || String(m.folderId),
-        description: m.localPath,
-        mapping: m,
-      })),
-      { placeHolder: '同期するマッピングを選択' }
-    );
-
-    return selected?.mapping;
-  }
-
   private getWorkspaceRoot(): string | undefined {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
-      vscode.window.showWarningMessage('ワークスペースを開いてください。');
+      vscode.window.showWarningMessage('[Nulab] ワークスペースを開いてください。');
       return undefined;
     }
     return folders[0].uri.fsPath;

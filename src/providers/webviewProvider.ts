@@ -53,7 +53,7 @@ export class BacklogWebviewProvider implements vscode.WebviewViewProvider {
         });
       } catch (error) {
         console.error('Error loading issue details:', error);
-        vscode.window.showErrorMessage(`Failed to load issue details: ${error}`);
+        vscode.window.showErrorMessage(`[Nulab] Failed to load issue details: ${error}`);
       }
     }
   }

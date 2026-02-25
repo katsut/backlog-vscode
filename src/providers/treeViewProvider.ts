@@ -28,7 +28,7 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   private sortOrder: 'asc' | 'desc' = 'desc';
 
   constructor(private backlogApi: BacklogApiService, private configService: ConfigService) {
-    this.loadInitialData().catch(error => {
+    this.loadInitialData().catch((error) => {
       console.error('Error in loadInitialData from constructor:', error);
     });
   }
@@ -76,7 +76,9 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
         const bFav = favorites.includes(b.projectKey) ? 0 : 1;
         return aFav - bFav;
       });
-      return sorted.map((project) => new ProjectTreeItem(project, favorites.includes(project.projectKey)));
+      return sorted.map(
+        (project) => new ProjectTreeItem(project, favorites.includes(project.projectKey))
+      );
     }
 
     if (element instanceof CategoryTreeItem) {
@@ -84,7 +86,9 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
         case 'issues': {
           // 課題データが未読み込みの場合のみ取得
           if (!this.projectIssues.has(element.projectId)) {
-            const issues = await this.backlogApi.getProjectIssues(element.projectId, { count: 100 });
+            const issues = await this.backlogApi.getProjectIssues(element.projectId, {
+              count: 100,
+            });
             this.projectIssues.set(element.projectId, issues);
           }
           const filteredIssues = this.filteredIssues.get(element.projectId);
@@ -112,7 +116,10 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
           if (!documentTree || !documentTree.activeTree) {
             return [];
           }
-          return this.convertDocumentTreeToItems(documentTree.activeTree.children, element.projectId);
+          return this.convertDocumentTreeToItems(
+            documentTree.activeTree.children,
+            element.projectId
+          );
         }
       }
     }
@@ -162,7 +169,9 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
     } catch (error) {
       console.error('Error loading projects:', error);
       this.projects = [];
-      vscode.window.showErrorMessage(`Failed to load Backlog projects: ${error instanceof Error ? error.message : error}`);
+      vscode.window.showErrorMessage(
+        `[Nulab] Failed to load Backlog projects: ${error instanceof Error ? error.message : error}`
+      );
     }
 
     this._onDidChangeTreeData.fire();
@@ -296,7 +305,10 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
   }
 
   // DocumentTreeNodeをTreeItemに変換するヘルパーメソッド
-  private convertDocumentTreeToItems(nodes: Entity.Document.DocumentTreeNode[], projectId: number): TreeItem[] {
+  private convertDocumentTreeToItems(
+    nodes: Entity.Document.DocumentTreeNode[],
+    projectId: number
+  ): TreeItem[] {
     return nodes.map((node) => {
       if (node.children && node.children.length > 0) {
         // フォルダノード
@@ -304,7 +316,7 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
           node.name || node.id,
           vscode.TreeItemCollapsibleState.Collapsed,
           `Folder: ${node.name || node.id}`,
-          new vscode.ThemeIcon('folder', new vscode.ThemeColor('backlog.brandColor')),
+          new vscode.ThemeIcon('folder', new vscode.ThemeColor('nulab.brandColor')),
           node,
           projectId
         );
@@ -313,9 +325,10 @@ export class BacklogTreeViewProvider implements vscode.TreeDataProvider<TreeItem
         return new DocumentTreeNodeItem(
           node.name || node.id,
           vscode.TreeItemCollapsibleState.None,
-          `Document: ${node.name || node.id}${node.updated ? `\nUpdated: ${new Date(node.updated).toLocaleDateString()}` : ''
+          `Document: ${node.name || node.id}${
+            node.updated ? `\nUpdated: ${new Date(node.updated).toLocaleDateString()}` : ''
           }`,
-          new vscode.ThemeIcon('file-text', new vscode.ThemeColor('backlog.brandColor')),
+          new vscode.ThemeIcon('file-text', new vscode.ThemeColor('nulab.brandColor')),
           node,
           projectId
         );
@@ -357,10 +370,13 @@ export class TreeItem extends vscode.TreeItem {
 }
 
 export class ProjectTreeItem extends TreeItem {
-  constructor(public readonly project: Entity.Project.Project, public readonly isFavorite: boolean = false) {
+  constructor(
+    public readonly project: Entity.Project.Project,
+    public readonly isFavorite: boolean = false
+  ) {
     const icon = isFavorite
-      ? new vscode.ThemeIcon('star-full', new vscode.ThemeColor('backlog.brandColor'))
-      : new vscode.ThemeIcon('folder', new vscode.ThemeColor('backlog.brandColor'));
+      ? new vscode.ThemeIcon('star-full', new vscode.ThemeColor('nulab.brandColor'))
+      : new vscode.ThemeIcon('folder', new vscode.ThemeColor('nulab.brandColor'));
     super(
       `${project.projectKey}: ${project.name}`,
       vscode.TreeItemCollapsibleState.None,
@@ -371,7 +387,7 @@ export class ProjectTreeItem extends TreeItem {
 
     // クリックでプロジェクトにフォーカス
     this.command = {
-      command: 'backlog.focusProject',
+      command: 'nulab.focusProject',
       title: 'Focus Project',
       arguments: [this.project.id],
     };
@@ -396,7 +412,7 @@ export class CategoryTreeItem extends TreeItem {
       case 'wiki':
         return new vscode.ThemeIcon('book', new vscode.ThemeColor('charts.green'));
       case 'documents':
-        return new vscode.ThemeIcon('file-text', new vscode.ThemeColor('backlog.brandColor'));
+        return new vscode.ThemeIcon('file-text', new vscode.ThemeColor('nulab.brandColor'));
     }
   }
 }
@@ -414,15 +430,18 @@ export class IssueTreeItem extends TreeItem {
 
     super(
       `${issue.issueKey}: ${issue.summary}`,
-      hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
-      `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${issue.priority.name
+      hasChildren
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None,
+      `${issue.summary}\nStatus: ${issue.status.name}\nPriority: ${
+        issue.priority.name
       }\nAssignee: ${issue.assignee?.name || 'Unassigned'}`,
       new vscode.ThemeIcon(statusIcon, priorityColor)
     );
 
     this.contextValue = 'issue';
     this.command = {
-      command: 'backlog.openIssue',
+      command: 'nulab.openIssue',
       title: 'Open Issue',
       arguments: [this.issue],
     };
@@ -485,7 +504,7 @@ export class WikiTreeItem extends TreeItem {
 
     this.contextValue = 'wiki';
     this.command = {
-      command: 'backlog.openWiki',
+      command: 'nulab.openWiki',
       title: 'Open Wiki',
       arguments: [this.wiki],
     };
@@ -498,12 +517,12 @@ export class DocumentTreeItem extends TreeItem {
       document.title,
       vscode.TreeItemCollapsibleState.None,
       `${document.title}\nCreated: ${new Date(document.created).toLocaleDateString()}`,
-      new vscode.ThemeIcon('file-text', new vscode.ThemeColor('backlog.brandColor'))
+      new vscode.ThemeIcon('file-text', new vscode.ThemeColor('nulab.brandColor'))
     );
 
     this.contextValue = 'document';
     this.command = {
-      command: 'backlog.openDocument',
+      command: 'nulab.openDocument',
       title: 'Open Document',
       arguments: [this.document],
     };
@@ -520,12 +539,13 @@ export class DocumentTreeNodeItem extends TreeItem {
     public readonly projectId: number
   ) {
     super(label, collapsibleState, tooltip, iconPath);
-    this.contextValue = node.children && node.children.length > 0 ? 'documentFolder' : 'documentFile';
+    this.contextValue =
+      node.children && node.children.length > 0 ? 'documentFolder' : 'documentFile';
 
     // ドキュメントファイルの場合、クリックで開く
     if (!(node.children && node.children.length > 0)) {
       this.command = {
-        command: 'backlog.openDocumentFromNode',
+        command: 'nulab.openDocumentFromNode',
         title: 'Open Document',
         arguments: [this.node.id, this.projectId],
       };

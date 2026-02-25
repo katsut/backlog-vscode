@@ -1,9 +1,9 @@
 {
-  "name": "backlog-vscode",
-  "displayName": "Backlog Viewer",
-  "description": "Backlog viewer and management extension for VS Code",
+  "name": "nulab-vscode",
+  "displayName": "Nulab Workspace Extension",
+  "description": "Backlog, Cacoo, and Slack integration for VS Code",
   "version": "0.0.1",
-  "publisher": "backlog-vscode",
+  "publisher": "nulab-vscode",
   "license": "MIT",
   "engines": {
     "vscode": "^1.74.0"
@@ -14,18 +14,20 @@
   "keywords": [
     "backlog",
     "cacoo",
+    "slack",
+    "nulab",
     "project management",
-    "issue tracking",
-    "viewer"
+    "issue tracking"
   ],
   "activationEvents": [
     "*"
   ],
+  "icon": "images/Nulab_icon.png",
   "main": "./out/extension.js",
   "contributes": {
     "colors": [
       {
-        "id": "backlog.brandColor",
+        "id": "nulab.brandColor",
         "description": "Backlog brand color for tree view icons",
         "defaults": {
           "dark": "#42CE9F",
@@ -48,30 +50,60 @@
     "views": {
       "backlogContainer": [
         {
-          "id": "backlogProjects",
-          "name": "Projects",
-          "when": "!backlogProjectFocused && backlogExplorer.enabled"
-        },
-        {
           "id": "backlogIssues",
           "name": "Issues",
-          "when": "backlogExplorer.enabled && backlogProjectFocused"
+          "when": "nulabExplorer.enabled && nulabProjectFocused"
         },
         {
           "id": "backlogWiki",
           "name": "Wiki",
-          "when": "backlogExplorer.enabled && backlogProjectFocused"
+          "when": "nulabExplorer.enabled && nulabProjectFocused"
         },
         {
           "id": "backlogDocuments",
           "name": "Documents",
-          "when": "backlogExplorer.enabled && backlogProjectFocused"
+          "when": "nulabExplorer.enabled && nulabProjectFocused"
         }
       ],
-      "cacooContainer": [
+      "workspaceContainer": [
+        {
+          "id": "workspaceMyTasks",
+          "name": "My Tasks"
+        },
+        {
+          "id": "workspaceTodos",
+          "name": "TODO"
+        },
+        {
+          "id": "workspaceDocumentFiles",
+          "name": "Documents"
+        },
+        {
+          "id": "backlogProjects",
+          "name": "Projects",
+          "when": "nulabExplorer.enabled"
+        },
         {
           "id": "cacooDiagrams",
-          "name": "Diagrams"
+          "name": "Cacoo"
+        }
+      ],
+      "notificationsContainer": [
+        {
+          "id": "workspaceGoogleCalendar",
+          "name": "Google Calendar"
+        },
+        {
+          "id": "workspaceNotifications",
+          "name": "Backlog"
+        },
+        {
+          "id": "workspaceSlack",
+          "name": "Notifications"
+        },
+        {
+          "id": "workspaceSlackSearch",
+          "name": "Slack: Search"
         }
       ],
       "backlogIssueDetail": [
@@ -87,12 +119,17 @@
         {
           "id": "backlogContainer",
           "title": "Backlog",
-          "icon": "$(project)"
+          "icon": "media/nulab-icon.svg"
         },
         {
-          "id": "cacooContainer",
-          "title": "Cacoo",
-          "icon": "$(symbol-misc)"
+          "id": "workspaceContainer",
+          "title": "Workspace",
+          "icon": "media/nulab-icon.svg"
+        },
+        {
+          "id": "notificationsContainer",
+          "title": "Notifications",
+          "icon": "media/nulab-icon.svg"
         }
       ],
       "panel": [
@@ -106,154 +143,210 @@
     "viewsWelcome": [
       {
         "view": "backlogProjects",
-        "contents": "Configure Backlog settings to get started.\n[Open Settings](command:backlog.openSettings)"
+        "contents": "Configure Backlog settings to get started.\n[Open Settings](command:nulab.openSettings)"
       },
       {
         "view": "cacooDiagrams",
         "contents": "Configure Cacoo API Key to get started.\n[Set Cacoo API Key](command:cacoo.setApiKey)"
+      },
+      {
+        "view": "workspaceMyTasks",
+        "contents": "Configure Backlog settings to see your tasks.\n[Open Settings](command:nulab.openSettings)"
+      },
+      {
+        "view": "workspaceSlack",
+        "contents": "Slack トークンを設定してメッセージを確認しましょう。\n[Set Slack Token](command:workspace.setSlackToken)",
+        "when": "nulab.slack.showWelcome"
+      },
+      {
+        "view": "workspaceSlackSearch",
+        "contents": "検索キーワードを追加して、Slack メッセージを監視しましょう。\n[キーワードを設定](command:workspace.editSlackSearchKeywords)",
+        "when": "!nulab.slackSearch.hasKeywords"
+      },
+      {
+        "view": "workspaceSlackSearch",
+        "contents": "Slack トークンを設定してください。\n[Set Slack Token](command:workspace.setSlackToken)",
+        "when": "nulab.slack.showWelcome"
+      },
+      {
+        "view": "workspaceDocumentFiles",
+        "contents": "ドキュメント同期マッピングが設定されていません。\n[マッピングを設定](command:nulab.editDocumentSyncMapping)"
+      },
+      {
+        "view": "workspaceGoogleCalendar",
+        "contents": "Google アカウントにサインインして会議の議事録を確認しましょう。\n[Sign in to Google](command:nulab.google.authenticate)"
       }
     ],
     "commands": [
       {
-        "command": "backlog.refreshProjects",
-        "title": "Refresh",
-        "icon": "$(refresh)"
+        "command": "nulab.refreshProjects",
+        "title": "Refresh Projects",
+        "icon": "$(refresh)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.refreshIssues",
+        "command": "nulab.refreshIssues",
         "title": "Refresh Issues",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.refreshWiki",
+        "command": "nulab.refreshWiki",
         "title": "Refresh Wiki",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.refreshDocuments",
+        "command": "nulab.refreshDocuments",
         "title": "Refresh Documents",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.searchProjects",
+        "command": "nulab.filterModifiedDocuments",
+        "title": "Filter Modified Documents",
+        "icon": "$(filter)",
+        "category": "Backlog"
+      },
+      {
+        "command": "nulab.searchProjects",
         "title": "Search Projects",
-        "icon": "$(search)"
+        "icon": "$(search)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.clearProjectSearch",
+        "command": "nulab.clearProjectSearch",
         "title": "Clear Search",
-        "icon": "$(clear-all)"
+        "icon": "$(clear-all)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.openIssue",
-        "title": "Open Issue"
+        "command": "nulab.openIssue",
+        "title": "Open Issue",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.openSettings",
+        "command": "nulab.openSettings",
         "title": "Open Settings",
         "icon": "$(gear)",
         "category": "Backlog"
       },
       {
-        "command": "backlog.setApiKey",
-        "title": "Set API Key",
-        "icon": "$(key)"
+        "command": "nulab.setApiKey",
+        "title": "Set Backlog API Key",
+        "icon": "$(key)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.search",
+        "command": "nulab.search",
         "title": "Search Issues",
-        "icon": "$(search)"
+        "icon": "$(search)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.filter",
+        "command": "nulab.filter",
         "title": "Filter Issues",
-        "icon": "$(filter)"
+        "icon": "$(filter)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.sort",
+        "command": "nulab.sort",
         "title": "Sort Issues",
-        "icon": "$(sort-precedence)"
+        "icon": "$(sort-precedence)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.clearFilters",
+        "command": "nulab.clearFilters",
         "title": "Clear Filters",
-        "icon": "$(clear-all)"
+        "icon": "$(clear-all)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.focusProject",
-        "title": "Focus Project"
+        "command": "nulab.focusProject",
+        "title": "Focus Project",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.unfocusProject",
+        "command": "nulab.unfocusProject",
         "title": "Back to Projects",
-        "icon": "$(arrow-left)"
+        "icon": "$(arrow-left)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.openWiki",
-        "title": "Open Wiki"
+        "command": "nulab.openWiki",
+        "title": "Open Wiki",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.openDocument",
-        "title": "Open Document"
+        "command": "nulab.openDocument",
+        "title": "Open Document",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.openProjectByKey",
+        "command": "nulab.openProjectByKey",
         "title": "Open Project by Key",
         "category": "Backlog"
       },
       {
-        "command": "backlog.openIssueByKey",
+        "command": "nulab.openIssueByKey",
         "title": "Open Issue by Key",
         "category": "Backlog"
       },
       {
-        "command": "backlog.setDocumentSyncMapping",
+        "command": "nulab.setDocumentSyncMapping",
         "title": "Set Document Sync Mapping",
         "icon": "$(link)"
       },
       {
-        "command": "backlog.documentSync.pull",
+        "command": "nulab.documentSync.pull",
         "title": "Pull Documents from Backlog",
         "icon": "$(cloud-download)",
         "category": "Backlog"
       },
       {
-        "command": "backlog.documentSync.status",
+        "command": "nulab.documentSync.status",
         "title": "Show Document Sync Status",
         "icon": "$(sync)",
         "category": "Backlog"
       },
       {
-        "command": "backlog.documentSync.diff",
+        "command": "nulab.documentSync.diff",
         "title": "Diff with Remote Backlog Document",
         "icon": "$(diff)",
         "category": "Backlog"
       },
       {
-        "command": "backlog.documentSync.copyAndOpen",
+        "command": "nulab.documentSync.copyAndOpen",
         "title": "Copy to Clipboard & Open in Backlog",
         "icon": "$(link-external)",
         "category": "Backlog"
       },
       {
-        "command": "backlog.documentSync.push",
+        "command": "nulab.documentSync.push",
         "title": "Push New Document to Backlog",
         "icon": "$(cloud-upload)",
         "category": "Backlog"
       },
       {
-        "command": "backlog.toggleFavorite",
-        "title": "Toggle Favorite",
-        "icon": "$(star)"
+        "command": "nulab.documentSync.pullFile",
+        "title": "Pull This File from Backlog",
+        "icon": "$(cloud-download)",
+        "category": "Backlog"
       },
       {
-        "command": "backlog.editDocumentSyncMapping",
+        "command": "nulab.toggleFavorite",
+        "title": "Toggle Favorite",
+        "icon": "$(star)",
+        "category": "Backlog"
+      },
+      {
+        "command": "nulab.editDocumentSyncMapping",
         "title": "Edit Document Sync Mappings",
         "icon": "$(settings-gear)",
         "category": "Backlog"
       },
       {
-        "command": "backlog.documentSync.edit",
+        "command": "nulab.documentSync.edit",
         "title": "Open in Document Editor",
         "icon": "$(edit)",
         "category": "Backlog"
@@ -262,6 +355,12 @@
         "command": "cacoo.refreshDiagrams",
         "title": "Refresh Diagrams",
         "icon": "$(refresh)",
+        "category": "Cacoo"
+      },
+      {
+        "command": "cacoo.searchDiagrams",
+        "title": "Search Diagrams",
+        "icon": "$(search)",
         "category": "Cacoo"
       },
       {
@@ -299,79 +398,343 @@
         "title": "Set Cacoo Sync Mapping",
         "icon": "$(link)",
         "category": "Cacoo"
+      },
+      {
+        "command": "workspace.refreshMyTasks",
+        "title": "Refresh My Tasks",
+        "icon": "$(refresh)",
+        "category": "Backlog"
+      },
+      {
+        "command": "workspace.refreshNotifications",
+        "title": "Refresh Notifications",
+        "icon": "$(refresh)",
+        "category": "Backlog"
+      },
+      {
+        "command": "workspace.markNotificationRead",
+        "title": "Mark as Read",
+        "icon": "$(check)",
+        "category": "Backlog"
+      },
+      {
+        "command": "workspace.markAllNotificationsRead",
+        "title": "Mark All as Read",
+        "icon": "$(check-all)",
+        "category": "Backlog"
+      },
+      {
+        "command": "workspace.toggleNotificationFilter",
+        "title": "Toggle Unread Filter",
+        "icon": "$(filter)",
+        "category": "Backlog"
+      },
+      {
+        "command": "workspace.notificationToTodo",
+        "title": "Add to TODO",
+        "icon": "$(add)",
+        "category": "Backlog"
+      },
+      {
+        "command": "workspace.setSlackToken",
+        "title": "Set Slack Token",
+        "icon": "$(key)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.refreshSlack",
+        "title": "Refresh Messages",
+        "icon": "$(refresh)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.refreshSlackSearch",
+        "title": "Refresh Search",
+        "icon": "$(refresh)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.refreshDocumentFiles",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Documents"
+      },
+      {
+        "command": "workspace.openDocumentFileFolder",
+        "title": "Open Folder",
+        "icon": "$(folder-opened)",
+        "category": "Documents"
+      },
+      {
+        "command": "workspace.replyToSlack",
+        "title": "Reply",
+        "icon": "$(reply)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.openSlackThread",
+        "title": "Open Thread",
+        "icon": "$(comment-discussion)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.openInSlack",
+        "title": "Open in Slack",
+        "icon": "$(link-external)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.addTodoFromSlack",
+        "title": "Add TODO",
+        "icon": "$(add)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.addTodo",
+        "title": "Add TODO",
+        "icon": "$(add)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.toggleTodo",
+        "title": "Toggle TODO",
+        "icon": "$(check)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.editTodo",
+        "title": "Edit TODO",
+        "icon": "$(edit)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.deleteTodo",
+        "title": "Delete TODO",
+        "icon": "$(trash)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.moveTodoUp",
+        "title": "Move Up",
+        "icon": "$(arrow-up)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.moveTodoDown",
+        "title": "Move Down",
+        "icon": "$(arrow-down)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.clearCompletedTodos",
+        "title": "Clear Completed",
+        "icon": "$(clear-all)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.cycleTodoStatus",
+        "title": "Cycle Status",
+        "icon": "$(sync)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.openTodoSource",
+        "title": "Open Source",
+        "icon": "$(link-external)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.openTodoDetail",
+        "title": "Open TODO Detail",
+        "icon": "$(open-preview)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.cycleTodoStatus",
+        "title": "Cycle Status",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.setTodoStatus",
+        "title": "Set Status",
+        "icon": "$(symbol-event)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.editTodoNotes",
+        "title": "Edit Notes",
+        "icon": "$(note)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.replyToTodoIssue",
+        "title": "Reply to Issue",
+        "icon": "$(reply)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.replyToTodoSlack",
+        "title": "Reply in Thread",
+        "icon": "$(reply)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.openTodoSource",
+        "title": "Open Source",
+        "icon": "$(link-external)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.exportContext",
+        "title": "Export Context for Claude Code",
+        "icon": "$(export)",
+        "category": "Workspace"
+      },
+      {
+        "command": "workspace.editSlackSearchKeywords",
+        "title": "Edit Slack Search Keywords",
+        "icon": "$(edit)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.startClaudeSession",
+        "title": "Claude で対応",
+        "icon": "$(sparkle)",
+        "category": "Workspace"
+      },
+      {
+        "command": "nulab.postSessionReply",
+        "title": "セッション返信を投稿",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.discardSession",
+        "title": "セッションを破棄",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.setAnthropicApiKey",
+        "title": "Set Anthropic API Key",
+        "icon": "$(key)",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.setClientSecret",
+        "title": "Set Google Client Secret",
+        "icon": "$(key)",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.authenticate",
+        "title": "Sign in to Google",
+        "icon": "$(sign-in)",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.signOut",
+        "title": "Sign out from Google",
+        "icon": "$(sign-out)",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.refreshCalendar",
+        "title": "Refresh Google Calendar",
+        "icon": "$(refresh)",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.openMeetingNotes",
+        "title": "Open Google Meeting Notes",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.openInBrowser",
+        "title": "Open Google in Browser",
+        "icon": "$(link-external)",
+        "category": "Nulab"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "backlog.refreshProjects",
+          "command": "nulab.refreshProjects",
           "when": "view == backlogProjects",
           "group": "navigation@1"
         },
         {
-          "command": "backlog.searchProjects",
+          "command": "nulab.searchProjects",
           "when": "view == backlogProjects",
           "group": "navigation@2"
         },
         {
-          "command": "backlog.clearProjectSearch",
+          "command": "nulab.clearProjectSearch",
           "when": "view == backlogProjects",
           "group": "navigation@3"
         },
         {
-          "command": "backlog.openSettings",
+          "command": "nulab.openSettings",
           "when": "view == backlogProjects",
           "group": "navigation@4"
         },
         {
-          "command": "backlog.refreshIssues",
+          "command": "nulab.refreshIssues",
           "when": "view == backlogIssues",
           "group": "navigation@1"
         },
         {
-          "command": "backlog.search",
+          "command": "nulab.search",
           "when": "view == backlogIssues",
           "group": "navigation@2"
         },
         {
-          "command": "backlog.filter",
+          "command": "nulab.filter",
           "when": "view == backlogIssues",
           "group": "navigation@3"
         },
         {
-          "command": "backlog.sort",
+          "command": "nulab.sort",
           "when": "view == backlogIssues",
           "group": "navigation@4"
         },
         {
-          "command": "backlog.clearFilters",
+          "command": "nulab.clearFilters",
           "when": "view == backlogIssues",
           "group": "navigation@5"
         },
         {
-          "command": "backlog.unfocusProject",
+          "command": "nulab.unfocusProject",
           "when": "view == backlogIssues",
           "group": "navigation@6"
         },
         {
-          "command": "backlog.refreshWiki",
+          "command": "nulab.refreshWiki",
           "when": "view == backlogWiki",
           "group": "navigation@1"
         },
         {
-          "command": "backlog.unfocusProject",
+          "command": "nulab.unfocusProject",
           "when": "view == backlogWiki",
           "group": "navigation@2"
         },
         {
-          "command": "backlog.refreshDocuments",
+          "command": "nulab.refreshDocuments",
           "when": "view == backlogDocuments",
           "group": "navigation@1"
         },
         {
-          "command": "backlog.unfocusProject",
+          "command": "nulab.filterModifiedDocuments",
           "when": "view == backlogDocuments",
           "group": "navigation@2"
+        },
+        {
+          "command": "nulab.unfocusProject",
+          "when": "view == backlogDocuments",
+          "group": "navigation@3"
+        },
+        {
+          "command": "cacoo.searchDiagrams",
+          "when": "view == cacooDiagrams",
+          "group": "navigation@0"
         },
         {
           "command": "cacoo.refreshDiagrams",
@@ -387,31 +750,91 @@
           "command": "cacoo.setApiKey",
           "when": "view == cacooDiagrams",
           "group": "navigation@3"
+        },
+        {
+          "command": "workspace.refreshMyTasks",
+          "when": "view == workspaceMyTasks",
+          "group": "navigation@1"
+        },
+        {
+          "command": "workspace.refreshNotifications",
+          "when": "view == workspaceNotifications",
+          "group": "navigation@1"
+        },
+        {
+          "command": "workspace.toggleNotificationFilter",
+          "when": "view == workspaceNotifications",
+          "group": "navigation@2"
+        },
+        {
+          "command": "workspace.markAllNotificationsRead",
+          "when": "view == workspaceNotifications",
+          "group": "navigation@3"
+        },
+        {
+          "command": "workspace.refreshSlack",
+          "when": "view == workspaceSlack",
+          "group": "navigation@1"
+        },
+        {
+          "command": "workspace.setSlackToken",
+          "when": "view == workspaceSlack",
+          "group": "navigation@2"
+        },
+        {
+          "command": "workspace.refreshSlackSearch",
+          "when": "view == workspaceSlackSearch",
+          "group": "navigation@1"
+        },
+        {
+          "command": "workspace.editSlackSearchKeywords",
+          "when": "view == workspaceSlackSearch",
+          "group": "navigation@2"
+        },
+        {
+          "command": "workspace.refreshDocumentFiles",
+          "when": "view == workspaceDocumentFiles",
+          "group": "navigation@1"
+        },
+        {
+          "command": "workspace.addTodo",
+          "when": "view == workspaceTodos",
+          "group": "navigation@1"
+        },
+        {
+          "command": "workspace.clearCompletedTodos",
+          "when": "view == workspaceTodos",
+          "group": "navigation@2"
+        },
+        {
+          "command": "nulab.google.refreshCalendar",
+          "when": "view == workspaceGoogleCalendar",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
-          "command": "backlog.toggleFavorite",
+          "command": "nulab.toggleFavorite",
           "when": "view == backlogProjects && viewItem =~ /^(project|favoriteProject)$/",
           "group": "favorites@1"
         },
         {
-          "command": "backlog.setDocumentSyncMapping",
+          "command": "nulab.setDocumentSyncMapping",
           "when": "view == backlogDocuments && viewItem =~ /^(documentFolder|documentWithChildren)$/",
           "group": "sync@1"
         },
         {
-          "command": "backlog.documentSync.pull",
+          "command": "nulab.documentSync.pull",
           "when": "view == backlogDocuments && viewItem =~ /^(documentFolder|documentWithChildren)$/",
           "group": "sync@2"
         },
         {
-          "command": "backlog.documentSync.diff",
+          "command": "nulab.documentSync.diff",
           "when": "view == backlogDocuments && viewItem == document",
           "group": "sync@3"
         },
         {
-          "command": "backlog.documentSync.copyAndOpen",
+          "command": "nulab.documentSync.copyAndOpen",
           "when": "view == backlogDocuments && viewItem == document",
           "group": "sync@4"
         },
@@ -429,40 +852,141 @@
           "command": "cacoo.setSyncMapping",
           "when": "view == cacooDiagrams && viewItem == cacooFolder",
           "group": "sync@1"
+        },
+        {
+          "command": "workspace.markNotificationRead",
+          "when": "view == workspaceNotifications && viewItem == notificationUnread",
+          "group": "notification@1"
+        },
+        {
+          "command": "workspace.notificationToTodo",
+          "when": "view == workspaceNotifications && viewItem =~ /^notification(Read|Unread)$/",
+          "group": "notification@2"
+        },
+        {
+          "command": "workspace.replyToSlack",
+          "when": "viewItem == slackMention",
+          "group": "slack@1"
+        },
+        {
+          "command": "workspace.openInSlack",
+          "when": "viewItem == slackMention",
+          "group": "slack@2"
+        },
+        {
+          "command": "workspace.addTodoFromSlack",
+          "when": "viewItem == slackMention",
+          "group": "slack@3"
+        },
+        {
+          "command": "workspace.openTodoDetail",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem/",
+          "group": "inline"
+        },
+        {
+          "command": "workspace.setTodoStatus",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem/",
+          "group": "status@1"
+        },
+        {
+          "command": "workspace.editTodoNotes",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem/",
+          "group": "status@2"
+        },
+        {
+          "command": "workspace.startClaudeSession",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem.*(backlog|slack)/",
+          "group": "action@0"
+        },
+        {
+          "command": "workspace.replyToTodoIssue",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem.*backlog/",
+          "group": "action@1"
+        },
+        {
+          "command": "workspace.replyToTodoSlack",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem.*slack/",
+          "group": "action@1"
+        },
+        {
+          "command": "workspace.openTodoSource",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem.*(backlog|slack)/",
+          "group": "action@2"
+        },
+        {
+          "command": "workspace.editTodo",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem/",
+          "group": "todo@1"
+        },
+        {
+          "command": "workspace.deleteTodo",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem/",
+          "group": "todo@2"
+        },
+        {
+          "command": "workspace.moveTodoUp",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem/",
+          "group": "todo@3"
+        },
+        {
+          "command": "workspace.moveTodoDown",
+          "when": "view == workspaceTodos && viewItem =~ /^todoItem/",
+          "group": "todo@4"
+        },
+        {
+          "command": "workspace.openDocumentFileFolder",
+          "when": "view == workspaceDocumentFiles && viewItem == docSyncMapping",
+          "group": "docFiles@1"
+        },
+        {
+          "command": "nulab.google.openInBrowser",
+          "when": "view == workspaceGoogleCalendar && viewItem == calendarEvent",
+          "group": "google@1"
+        },
+        {
+          "command": "nulab.google.openInBrowser",
+          "when": "view == workspaceGoogleCalendar && viewItem == calendarDocument",
+          "group": "google@1"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "backlog.openProjectByKey",
+        "command": "nulab.openProjectByKey",
         "key": "alt+shift+p",
         "mac": "ctrl+shift+p"
       },
       {
-        "command": "backlog.openIssueByKey",
+        "command": "nulab.openIssueByKey",
         "key": "alt+shift+i",
         "mac": "ctrl+shift+i"
+      },
+      {
+        "command": "workspace.deleteTodo",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "view == workspaceTodos && viewItem =~ /^todoItem/"
       }
     ],
     "configuration": {
-      "title": "Backlog",
+      "title": "Nulab",
       "properties": {
-        "backlog.domain": {
+        "nulab.backlog.domain": {
           "type": "string",
           "default": "",
           "description": "Backlog domain (e.g., yourspace.backlog.jp)"
         },
-        "backlog.autoRefresh": {
+        "nulab.backlog.autoRefresh": {
           "type": "boolean",
           "default": true,
           "description": "Auto refresh project data"
         },
-        "backlog.refreshInterval": {
+        "nulab.backlog.refreshInterval": {
           "type": "number",
           "default": 300,
           "description": "Auto refresh interval (seconds)"
         },
-        "backlog.favoriteProjects": {
+        "nulab.backlog.favoriteProjects": {
           "type": "array",
           "default": [],
           "description": "お気に入りプロジェクトの projectKey リスト",
@@ -470,46 +994,22 @@
             "type": "string"
           }
         },
-        "backlog.documentSync.mappings": {
-          "type": "array",
-          "default": [],
-          "description": "Backlog ドキュメントとローカルディレクトリのマッピング設定",
-          "items": {
-            "type": "object",
-            "required": ["localPath", "projectKey", "documentNodeId"],
-            "properties": {
-              "localPath": {
-                "type": "string",
-                "description": "ワークスペースからの相対パス (例: docs/design)"
-              },
-              "projectKey": {
-                "type": "string",
-                "description": "Backlog プロジェクトキー (例: BNN)"
-              },
-              "documentNodeId": {
-                "type": "string",
-                "description": "マッピング先の Backlog ドキュメントノード ID"
-              },
-              "documentNodeName": {
-                "type": "string",
-                "description": "ドキュメントノード名 (表示用、自動設定)"
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "backlog.cacoo.organizationKey": {
+        "nulab.cacoo.organizationKey": {
           "type": "string",
           "default": "",
           "description": "Cacoo Organization Key"
         },
-        "backlog.cacoo.syncMappings": {
+        "nulab.cacoo.syncMappings": {
           "type": "array",
           "default": [],
           "description": "Cacoo フォルダとローカルディレクトリのマッピング設定",
           "items": {
             "type": "object",
-            "required": ["localPath", "organizationKey", "folderId"],
+            "required": [
+              "localPath",
+              "organizationKey",
+              "folderId"
+            ],
             "properties": {
               "localPath": {
                 "type": "string",
@@ -531,24 +1031,91 @@
             "additionalProperties": false
           }
         },
-        "backlog.cacoo.pinnedSheets": {
+        "nulab.cacoo.pinnedSheets": {
           "type": "array",
           "default": [],
           "description": "ピン留めした Cacoo シート",
           "items": {
             "type": "object",
             "properties": {
-              "diagramId": { "type": "string" },
-              "sheetUid": { "type": "string" },
-              "label": { "type": "string" }
+              "diagramId": {
+                "type": "string"
+              },
+              "sheetUid": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
             }
           }
+        },
+        "nulab.ai.model": {
+          "type": "string",
+          "default": "claude-sonnet-4-20250514",
+          "description": "Anthropic model for AI reply drafts"
+        },
+        "nulab.backlog.notificationPollingInterval": {
+          "type": "number",
+          "default": 60,
+          "minimum": 15,
+          "description": "Backlog 通知のポーリング間隔 (秒)"
+        },
+        "nulab.slack.pollingInterval": {
+          "type": "number",
+          "default": 180,
+          "minimum": 60,
+          "description": "Slack のポーリング間隔 (秒)"
+        },
+        "nulab.backlog.autoTodoEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Backlog 通知から自動で TODO を作成する"
+        },
+        "nulab.backlog.autoTodoReasons": {
+          "type": "array",
+          "default": [1, 2, 9, 10],
+          "items": { "type": "number" },
+          "description": "自動 TODO 作成の対象 reason (1=assigned, 2=commented, 9=PR, 10=PR commented)"
+        },
+        "nulab.slack.autoTodoEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Slack メンションから自動で TODO を作成する"
+        },
+        "nulab.google.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Google OAuth Client ID"
+        },
+        "nulab.google.calendarId": {
+          "type": "string",
+          "default": "primary",
+          "description": "取得する Google Calendar ID"
+        },
+        "nulab.google.daysRange": {
+          "type": "number",
+          "default": 7,
+          "minimum": 1,
+          "maximum": 30,
+          "description": "表示する日数範囲 (前後)"
         }
       }
     },
+    "languages": [
+      {
+        "id": "bdoc",
+        "extensions": [".bdoc"],
+        "aliases": ["Backlog Document"],
+        "icon": {
+          "light": "media/backlog-icon-light.svg",
+          "dark": "media/backlog-icon.svg"
+        }
+      }
+    ],
     "customEditors": [
       {
-        "viewType": "backlog.bdocEditor",
+        "viewType": "nulab.bdocEditor",
         "displayName": "Backlog Document Editor",
         "selector": [
           {
@@ -569,7 +1136,7 @@
     "test": "node ./out/test/runTest.js",
     "format": "prettier --write \"src/**/*.ts\"",
     "package": "vsce package",
-    "install:local": "npm run compile && vsce package && code --install-extension backlog-vscode-0.0.1.vsix && echo 'Installed! Reload VSCode to apply.'"
+    "install:local": "npm run compile && vsce package && code --install-extension nulab-vscode-0.0.1.vsix && echo 'Installed! Reload VSCode to apply.'"
   },
   "devDependencies": {
     "@types/node": "16.x",
@@ -583,6 +1150,7 @@
     "vsce": "^2.15.0"
   },
   "dependencies": {
+    "@slack/web-api": "^7.14.1",
     "@types/marked": "^5.0.2",
     "backlog-js": "^0.15.0",
     "marked": "^17.0.0"

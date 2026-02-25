@@ -8,6 +8,7 @@ import { BacklogRemoteContentProvider } from '../providers/backlogRemoteContentP
 import { SyncFileDecorationProvider } from '../providers/syncFileDecorationProvider';
 import { DocumentSyncMapping, SyncManifest } from '../types/backlog';
 import { Entity } from 'backlog-js';
+import { proseMirrorToMarkdown } from '../utils/prosemirrorToMarkdown';
 
 export class DocumentSyncCommands {
   private syncService: SyncService;
@@ -24,7 +25,7 @@ export class DocumentSyncCommands {
 
   async pull(mapping?: DocumentSyncMapping): Promise<void> {
     if (this.isPulling) {
-      vscode.window.showWarningMessage('Pull is already in progress.');
+      vscode.window.showWarningMessage('[Nulab] Pull is already in progress.');
       return;
     }
 
@@ -60,15 +61,33 @@ export class DocumentSyncCommands {
           );
 
           const manifest = this.syncService.loadManifest(localDir);
-          const total = flatNodes.length;
           let pulled = 0;
           let unchanged = 0;
           let skipped = 0;
           let deleted = 0;
 
+          // Pull root node itself as index.bdoc
+          try {
+            await this.pullRootDocument(
+              resolved.documentNodeId,
+              localDir,
+              resolved.projectKey,
+              manifest
+            );
+            pulled++;
+          } catch (error) {
+            console.error(`[DocumentSync] FAILED root node: id=${resolved.documentNodeId}:`, error);
+            skipped++;
+          }
+
+          const total = flatNodes.length + 1; // +1 for root
+
           // Build lookup: manifest backlog_id → remote_updated_at
           // Also build reverse lookup: backlog_id → relativePath
-          const manifestByBacklogId = new Map<string, { updatedAt: string; relativePath: string }>();
+          const manifestByBacklogId = new Map<
+            string,
+            { updatedAt: string; relativePath: string }
+          >();
           for (const [relPath, entry] of Object.entries(manifest)) {
             manifestByBacklogId.set(String(entry.backlog_id), {
               updatedAt: entry.remote_updated_at,
@@ -78,6 +97,7 @@ export class DocumentSyncCommands {
 
           // Track which backlog_ids exist in the remote tree
           const remoteIds = new Set<string>();
+          remoteIds.add(resolved.documentNodeId); // root node
 
           for (const node of flatNodes) {
             if (token.isCancellationRequested) {
@@ -99,12 +119,7 @@ export class DocumentSyncCommands {
             }
 
             try {
-              await this.pullSingleDocument(
-                node,
-                localDir,
-                resolved.projectKey,
-                manifest
-              );
+              await this.pullSingleDocument(node, localDir, resolved.projectKey, manifest);
               pulled++;
             } catch (error) {
               console.error(`[DocumentSync] FAILED: id=${node.id}, name=${node.name}:`, error);
@@ -142,15 +157,34 @@ export class DocumentSyncCommands {
           this.decorationProvider?.refresh();
 
           const parts = [`${pulled} 件更新`];
-          if (unchanged > 0) { parts.push(`${unchanged} 件変更なし`); }
-          if (deleted > 0) { parts.push(`${deleted} 件削除`); }
-          if (skipped > 0) { parts.push(`${skipped} 件スキップ`); }
-          vscode.window.showInformationMessage(`Pull 完了: ${parts.join(', ')}`);
+          if (unchanged > 0) {
+            parts.push(`${unchanged} 件変更なし`);
+          }
+          if (deleted > 0) {
+            parts.push(`${deleted} 件削除`);
+          }
+          if (skipped > 0) {
+            parts.push(`${skipped} 件スキップ`);
+          }
+          vscode.window.showInformationMessage(`[Nulab] Pull 完了: ${parts.join(', ')}`);
         }
       );
     } finally {
       this.isPulling = false;
     }
+  }
+
+  /**
+   * Pull root (mapped) document as index.bdoc in localDir.
+   */
+  private async pullRootDocument(
+    documentNodeId: string,
+    localDir: string,
+    projectKey: string,
+    manifest: SyncManifest
+  ): Promise<void> {
+    const relativePath = 'index.bdoc';
+    await this.pullDocumentToPath(documentNodeId, relativePath, localDir, projectKey, manifest);
   }
 
   private async pullSingleDocument(
@@ -167,6 +201,19 @@ export class DocumentSyncCommands {
       localDir,
       this.syncService.resolveLocalPath(localDir, node._treePath, title, hasChildren)
     );
+
+    await this.pullDocumentToPath(node.id, relativePath, localDir, projectKey, manifest);
+  }
+
+  private async pullDocumentToPath(
+    documentId: string,
+    relativePath: string,
+    localDir: string,
+    projectKey: string,
+    manifest: SyncManifest
+  ): Promise<void> {
+    const doc = await this.backlogApi.getDocument(documentId);
+    const title = doc.title || documentId;
     const absolutePath = path.join(localDir, relativePath);
 
     // ローカル変更がある場合はスキップ
@@ -174,13 +221,63 @@ export class DocumentSyncCommands {
     if (existingEntry && fs.existsSync(absolutePath)) {
       const localHash = this.syncService.computeLocalFileHash(absolutePath);
       if (localHash !== existingEntry.content_hash) {
-        // ローカル変更あり → スキップ
         console.log(`Skipping ${relativePath}: local modifications detected`);
         return;
       }
     }
 
-    const content = doc.plain || '';
+    // ディレクトリ作成
+    const dir = path.dirname(absolutePath);
+    fs.mkdirSync(dir, { recursive: true });
+
+    // ProseMirror JSON → Markdown 変換（画像参照を含む）
+    let content = doc.plain || '';
+    const jsonContent = doc.json
+      ? typeof doc.json === 'string'
+        ? JSON.parse(doc.json)
+        : doc.json
+      : null;
+
+    if (jsonContent && jsonContent.type === 'doc') {
+      const imagesDir = path.join(dir, '.images');
+      const { markdown, images } = proseMirrorToMarkdown(jsonContent, (src) => {
+        const idMatch = src.match(/\/file\/(\d+)/);
+        if (idMatch) {
+          return `.images/${idMatch[1]}`;
+        }
+        return src;
+      });
+
+      // 画像をローカルにダウンロード
+      if (images.length > 0) {
+        fs.mkdirSync(imagesDir, { recursive: true });
+        await Promise.all(
+          images.map(async (img) => {
+            if (!img.attachmentId || !doc.id) {
+              return;
+            }
+            const localImagePath = path.join(imagesDir, String(img.attachmentId));
+            if (fs.existsSync(localImagePath)) {
+              return;
+            }
+            try {
+              const buffer = await this.backlogApi.downloadDocumentAttachment(
+                doc.id,
+                img.attachmentId
+              );
+              fs.writeFileSync(localImagePath, buffer);
+            } catch (e) {
+              console.error(`[DocumentSync] Failed to download image ${img.attachmentId}:`, e);
+            }
+          })
+        );
+      }
+
+      if (markdown.trim()) {
+        content = markdown;
+      }
+    }
+
     const now = new Date().toISOString();
     const frontmatter = this.syncService.buildFrontmatter({
       title,
@@ -190,18 +287,12 @@ export class DocumentSyncCommands {
       updated_at: doc.updated || now,
     });
 
-    // ディレクトリ作成
-    const dir = path.dirname(absolutePath);
-    fs.mkdirSync(dir, { recursive: true });
-
-    // ファイル書き込み
     fs.writeFileSync(absolutePath, frontmatter + content, 'utf-8');
 
-    // Manifest 更新
     const contentHash = this.syncService.computeHash(content);
     manifest[relativePath] = {
       backlog_id: doc.id,
-      backlog_path: [...node._treePath, title].join('/'),
+      backlog_path: title,
       project: projectKey,
       synced_at: now,
       remote_updated_at: doc.updated || now,
@@ -245,7 +336,9 @@ export class DocumentSyncCommands {
     const statuses = this.syncService.getAllStatuses(localDir, manifest, remoteUpdates);
 
     if (statuses.length === 0) {
-      vscode.window.showInformationMessage('同期済みファイルがありません。まず Pull を実行してください。');
+      vscode.window.showInformationMessage(
+        '[Nulab] 同期済みファイルがありません。まず Pull を実行してください。'
+      );
       return;
     }
 
@@ -276,7 +369,7 @@ export class DocumentSyncCommands {
       } else if (selected.entry.status === 'remote_modified') {
         // リモート変更ありの場合は pull を提案
         const action = await vscode.window.showInformationMessage(
-          `${selected.entry.relativePath} にリモート更新があります。Pull しますか？`,
+          `[Nulab] ${selected.entry.relativePath} にリモート更新があります。Pull しますか？`,
           'Pull'
         );
         if (action === 'Pull') {
@@ -289,12 +382,12 @@ export class DocumentSyncCommands {
   async diff(filePath?: string): Promise<void> {
     const targetPath = filePath || this.getActiveFilePath();
     if (!targetPath) {
-      vscode.window.showWarningMessage('差分を表示するファイルを選択してください。');
+      vscode.window.showWarningMessage('[Nulab] 差分を表示するファイルを選択してください。');
       return;
     }
 
     if (!fs.existsSync(targetPath)) {
-      vscode.window.showWarningMessage('ファイルが見つかりません。');
+      vscode.window.showWarningMessage('[Nulab] ファイルが見つかりません。');
       return;
     }
 
@@ -303,7 +396,7 @@ export class DocumentSyncCommands {
 
     if (!meta.backlog_id) {
       vscode.window.showWarningMessage(
-        'このファイルには backlog_id がありません。Pull 済みのファイルを選択してください。'
+        '[Nulab] このファイルには backlog_id がありません。Pull 済みのファイルを選択してください。'
       );
       return;
     }
@@ -314,24 +407,18 @@ export class DocumentSyncCommands {
     // Clear caches to ensure fresh content
     this.remoteContentProvider.invalidateCache(meta.backlog_id);
 
-    const remoteUri = BacklogRemoteContentProvider.buildUri(
-      projectKey,
-      meta.backlog_id,
-      title
-    );
+    const remoteUri = BacklogRemoteContentProvider.buildUri(projectKey, meta.backlog_id, title);
 
-    // Use backlog-local scheme with frontmatter-stripped body for clean diff
-    this.remoteContentProvider.setLocalBody(meta.backlog_id, body);
-    const localUri = BacklogRemoteContentProvider.buildUri(
-      projectKey,
-      meta.backlog_id,
-      title,
-      'backlog-local'
-    );
+    // Write body (frontmatter stripped) to a temp .md file so the diff is
+    // clean and editable (.bdoc custom editor would intercept .bdoc files).
+    const tmpDir = require('os').tmpdir();
+    const safeName = this.syncService.sanitizeFileName(title);
+    const tmpPath = path.join(tmpDir, `backlog-diff-${safeName}.md`);
+    fs.writeFileSync(tmpPath, body, 'utf-8');
+    const localUri = vscode.Uri.file(tmpPath);
 
     // Notify VSCode that virtual document content has changed (bust cache)
     this.remoteContentProvider.fireDidChange(remoteUri);
-    this.remoteContentProvider.fireDidChange(localUri);
 
     try {
       await vscode.commands.executeCommand(
@@ -340,9 +427,39 @@ export class DocumentSyncCommands {
         localUri,
         `Backlog (Remote) ↔ Local: ${title}`
       );
+
+      // Watch for saves on the temp file → write back to original .bdoc with frontmatter
+      const watcher = vscode.workspace.onDidSaveTextDocument((doc) => {
+        if (doc.uri.fsPath === tmpPath) {
+          const newBody = doc.getText();
+          const frontmatter = this.syncService.buildFrontmatter({
+            title: meta.title || title,
+            backlog_id: meta.backlog_id,
+            project: meta.project || projectKey,
+            synced_at: meta.synced_at || new Date().toISOString(),
+            updated_at: meta.updated_at || new Date().toISOString(),
+          });
+          fs.writeFileSync(targetPath, frontmatter + newBody, 'utf-8');
+        }
+      });
+
+      // Clean up watcher when diff editor closes
+      const closeWatcher = vscode.window.onDidChangeVisibleTextEditors((editors) => {
+        const stillOpen = editors.some((e) => e.document.uri.fsPath === tmpPath);
+        if (!stillOpen) {
+          watcher.dispose();
+          closeWatcher.dispose();
+          // Clean up temp file
+          try {
+            fs.unlinkSync(tmpPath);
+          } catch {
+            /* ignore */
+          }
+        }
+      });
     } catch (error) {
       vscode.window.showErrorMessage(
-        `Diff を開けませんでした: ${error instanceof Error ? error.message : error}`
+        `[Nulab] Diff を開けませんでした: ${error instanceof Error ? error.message : error}`
       );
     }
   }
@@ -350,7 +467,7 @@ export class DocumentSyncCommands {
   async copyAndOpen(filePath?: string): Promise<void> {
     const targetPath = filePath || this.getActiveFilePath();
     if (!targetPath) {
-      vscode.window.showWarningMessage('ファイルを選択してください。');
+      vscode.window.showWarningMessage('[Nulab] ファイルを選択してください。');
       return;
     }
 
@@ -359,7 +476,7 @@ export class DocumentSyncCommands {
 
     if (!meta.backlog_id) {
       vscode.window.showWarningMessage(
-        'このファイルには backlog_id がありません。新規ドキュメントには Push コマンドを使用してください。'
+        '[Nulab] このファイルには backlog_id がありません。新規ドキュメントには Push コマンドを使用してください。'
       );
       return;
     }
@@ -370,7 +487,7 @@ export class DocumentSyncCommands {
     // Backlog エディタ URL を構築して開く
     const domain = this.configService.getDomain();
     if (!domain) {
-      vscode.window.showWarningMessage('Backlog ドメインが設定されていません。');
+      vscode.window.showWarningMessage('[Nulab] Backlog ドメインが設定されていません。');
       return;
     }
 
@@ -380,14 +497,14 @@ export class DocumentSyncCommands {
     await vscode.env.openExternal(vscode.Uri.parse(url));
 
     vscode.window.showInformationMessage(
-      'コンテンツをクリップボードにコピーしました。ブラウザで Backlog エディタを開きます。'
+      '[Nulab] コンテンツをクリップボードにコピーしました。ブラウザで Backlog エディタを開きます。'
     );
   }
 
   async push(filePath?: string): Promise<void> {
     const targetPath = filePath || this.getActiveFilePath();
     if (!targetPath) {
-      vscode.window.showWarningMessage('Push するファイルを選択してください。');
+      vscode.window.showWarningMessage('[Nulab] Push するファイルを選択してください。');
       return;
     }
 
@@ -396,7 +513,7 @@ export class DocumentSyncCommands {
 
     if (meta.backlog_id) {
       vscode.window.showWarningMessage(
-        'このファイルは既に Backlog にリンクされています。更新には Copy & Open を使用してください。'
+        '[Nulab] このファイルは既に Backlog にリンクされています。更新には Copy & Open を使用してください。'
       );
       return;
     }
@@ -409,14 +526,14 @@ export class DocumentSyncCommands {
 
     const projectId = await this.resolveProjectId(resolved.projectKey);
     if (!projectId) {
-      vscode.window.showErrorMessage(`Project ${resolved.projectKey} not found`);
+      vscode.window.showErrorMessage(`[Nulab] Project ${resolved.projectKey} not found`);
       return;
     }
 
     const title = meta.title || path.basename(targetPath, '.bdoc');
 
     const confirm = await vscode.window.showInformationMessage(
-      `"${title}" を Backlog に新規作成しますか？`,
+      `[Nulab] "${title}" を Backlog に新規作成しますか？`,
       'Create'
     );
     if (confirm !== 'Create') {
@@ -465,10 +582,136 @@ export class DocumentSyncCommands {
       this.syncService.saveManifest(localDir, manifest);
       this.decorationProvider?.refresh();
 
-      vscode.window.showInformationMessage(`"${title}" を Backlog に作成しました。`);
+      vscode.window.showInformationMessage(`[Nulab] "${title}" を Backlog に作成しました。`);
     } catch (error) {
       vscode.window.showErrorMessage(
-        `Push に失敗しました: ${error instanceof Error ? error.message : error}`
+        `[Nulab] Push に失敗しました: ${error instanceof Error ? error.message : error}`
+      );
+    }
+  }
+
+  /**
+   * 1ファイルだけ Pull する。確認ダイアログ付き。
+   */
+  async pullFile(filePath?: string): Promise<void> {
+    const targetPath = filePath || this.getActiveFilePath();
+    if (!targetPath) {
+      vscode.window.showWarningMessage('[Nulab] Pull するファイルを開いてください。');
+      return;
+    }
+
+    if (!fs.existsSync(targetPath)) {
+      vscode.window.showWarningMessage('[Nulab] ファイルが見つかりません。');
+      return;
+    }
+
+    const text = fs.readFileSync(targetPath, 'utf-8');
+    const { meta } = this.syncService.parseFrontmatter(text);
+
+    if (!meta.backlog_id) {
+      vscode.window.showWarningMessage(
+        '[Nulab] このファイルには backlog_id がありません。Pull 済みのファイルを選択してください。'
+      );
+      return;
+    }
+
+    const title = meta.title || require('path').basename(targetPath, '.bdoc');
+
+    // 確認ダイアログ
+    const confirm = await vscode.window.showWarningMessage(
+      `[Nulab] "${title}" をリモートから上書きしますか？ローカルの変更は失われます。`,
+      { modal: true },
+      'Pull'
+    );
+    if (confirm !== 'Pull') {
+      return;
+    }
+
+    try {
+      const doc = await this.backlogApi.getDocument(meta.backlog_id);
+      const projectKey = meta.project || '';
+
+      // ProseMirror JSON → Markdown 変換（画像含む）
+      const dir = path.dirname(targetPath);
+      let content = doc.plain || '';
+      const jsonContent = doc.json
+        ? typeof doc.json === 'string'
+          ? JSON.parse(doc.json)
+          : doc.json
+        : null;
+
+      if (jsonContent && jsonContent.type === 'doc') {
+        const imagesDir = path.join(dir, '.images');
+        const { markdown, images } = proseMirrorToMarkdown(jsonContent, (src) => {
+          const idMatch = src.match(/\/file\/(\d+)/);
+          if (idMatch) {
+            return `.images/${idMatch[1]}`;
+          }
+          return src;
+        });
+
+        if (images.length > 0) {
+          fs.mkdirSync(imagesDir, { recursive: true });
+          await Promise.all(
+            images.map(async (img) => {
+              if (!img.attachmentId || !doc.id) {
+                return;
+              }
+              const localImagePath = path.join(imagesDir, String(img.attachmentId));
+              try {
+                const buffer = await this.backlogApi.downloadDocumentAttachment(
+                  doc.id,
+                  img.attachmentId
+                );
+                fs.writeFileSync(localImagePath, buffer);
+              } catch (e) {
+                console.error(`[DocumentSync] Failed to download image ${img.attachmentId}:`, e);
+              }
+            })
+          );
+        }
+
+        if (markdown.trim()) {
+          content = markdown;
+        }
+      }
+
+      const now = new Date().toISOString();
+      const frontmatter = this.syncService.buildFrontmatter({
+        title: doc.title || title,
+        backlog_id: doc.id,
+        project: projectKey,
+        synced_at: now,
+        updated_at: doc.updated || now,
+      });
+
+      fs.writeFileSync(targetPath, frontmatter + content, 'utf-8');
+
+      // Manifest 更新
+      const resolved = await this.resolveMapping();
+      if (resolved) {
+        const workspaceRoot = this.getWorkspaceRoot();
+        if (workspaceRoot) {
+          const localDir = path.join(workspaceRoot, resolved.localPath);
+          const manifest = this.syncService.loadManifest(localDir);
+          const relativePath = path.relative(localDir, targetPath);
+          manifest[relativePath] = {
+            backlog_id: doc.id,
+            backlog_path: meta.title || title,
+            project: projectKey,
+            synced_at: now,
+            remote_updated_at: doc.updated || now,
+            content_hash: this.syncService.computeHash(content),
+          };
+          this.syncService.saveManifest(localDir, manifest);
+          this.decorationProvider?.refresh();
+        }
+      }
+
+      vscode.window.showInformationMessage(`[Nulab] "${doc.title || title}" を Pull しました。`);
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `[Nulab] Pull に失敗しました: ${error instanceof Error ? error.message : error}`
       );
     }
   }
@@ -479,7 +722,7 @@ export class DocumentSyncCommands {
     const mappings = this.configService.getDocumentSyncMappings();
     if (mappings.length === 0) {
       vscode.window.showWarningMessage(
-        'Document Sync マッピングが設定されていません。Documents ビューからフォルダを右クリックして設定してください。'
+        '[Nulab] Document Sync マッピングが設定されていません。Documents ビューからフォルダを右クリックして設定してください。'
       );
       return undefined;
     }
@@ -502,16 +745,14 @@ export class DocumentSyncCommands {
 
   private async resolveProjectId(projectKey: string): Promise<number | undefined> {
     const projects = await this.backlogApi.getProjects();
-    const project = projects.find(
-      (p) => p.projectKey.toUpperCase() === projectKey.toUpperCase()
-    );
+    const project = projects.find((p) => p.projectKey.toUpperCase() === projectKey.toUpperCase());
     return project?.id;
   }
 
   private getWorkspaceRoot(): string | undefined {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
-      vscode.window.showWarningMessage('ワークスペースを開いてください。');
+      vscode.window.showWarningMessage('[Nulab] ワークスペースを開いてください。');
       return undefined;
     }
     return folders[0].uri.fsPath;

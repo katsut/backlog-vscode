@@ -1,4 +1,4 @@
-// Essential types for backlog-vscode extension
+// Essential types for nulab-vscode extension
 // Entity types are directly imported from backlog-js where needed
 
 import { Backlog } from 'backlog-js';

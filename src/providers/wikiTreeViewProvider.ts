@@ -58,7 +58,7 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
 
     if (!element) {
       // Root level
-      
+
       // Wiki機能が利用できない場合はメッセージを表示
       if (this.wikiNotAvailable) {
         const messageItem = new WikiTreeItem(
@@ -67,26 +67,26 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
             name: 'Wiki機能が利用できません',
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
-            createdUser: { 
-              id: 0, 
+            createdUser: {
+              id: 0,
               userId: 'system',
               name: 'System',
               roleType: 1,
               lang: 'ja',
               mailAddress: '',
-              lastLoginTime: new Date().toISOString()
+              lastLoginTime: new Date().toISOString(),
             },
-            updatedUser: { 
-              id: 0, 
+            updatedUser: {
+              id: 0,
               userId: 'system',
               name: 'System',
               roleType: 1,
               lang: 'ja',
               mailAddress: '',
-              lastLoginTime: new Date().toISOString()
+              lastLoginTime: new Date().toISOString(),
             },
             tags: [],
-            projectId: this.currentProjectId || 0
+            projectId: this.currentProjectId || 0,
           } as unknown as Entity.Wiki.WikiListItem,
           vscode.TreeItemCollapsibleState.None
         );
@@ -96,7 +96,7 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
         messageItem.tooltip = 'このプロジェクトではWiki機能が有効になっていません';
         return [messageItem];
       }
-      
+
       // show filtered wikis
       return this.filteredWikis.map((wiki) => new WikiTreeItem(wiki));
     }
@@ -164,23 +164,31 @@ export class BacklogWikiTreeViewProvider implements vscode.TreeDataProvider<Wiki
       this.applyFilters();
     } catch (error) {
       this.wikis = [];
-      
+
       // Improve error message for common cases
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      if (errorMessage.includes('Not Found') || errorMessage.includes('404') || errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+
+      if (
+        errorMessage.includes('Not Found') ||
+        errorMessage.includes('404') ||
+        errorMessage.includes('403') ||
+        errorMessage.includes('Forbidden')
+      ) {
         // Wiki機能が有効でない場合、またはアクセス権限がない場合
         this.wikiNotAvailable = true;
         this.errorMessage = errorMessage;
-        console.log('Wiki feature may not be enabled or accessible for this project:', this.currentProjectId);
+        console.log(
+          'Wiki feature may not be enabled or accessible for this project:',
+          this.currentProjectId
+        );
         // エラーメッセージは表示しない（Wiki機能が無効なプロジェクトやアクセス権限がない場合は正常）
       } else {
         // その他のエラーの場合のみ表示
         this.errorMessage = errorMessage;
         console.error('Error loading wikis:', error);
-        vscode.window.showErrorMessage(`Failed to load wikis: ${errorMessage}`);
+        vscode.window.showErrorMessage(`[Nulab] Failed to load wikis: ${errorMessage}`);
       }
-      
+
       this.applyFilters();
     }
   }
@@ -220,7 +228,7 @@ export class WikiTreeItem extends vscode.TreeItem {
 
     if (wiki.id && wiki.id > 0) {
       this.command = {
-        command: 'backlog.openWiki',
+        command: 'nulab.openWiki',
         title: 'Open Wiki',
         arguments: [this.wiki],
       };

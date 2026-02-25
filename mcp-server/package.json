@@ -1,0 +1,27 @@
+{
+  "name": "backlog-rag-mcp",
+  "version": "0.1.0",
+  "description": "Backlog RAG MCP Server - Semantic search and GraphRAG for Backlog",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "backlog-rag-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js",
+    "index": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@huggingface/transformers": "^3.3.3",
+    "vectra": "^0.9.0",
+    "backlog-js": "^0.15.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.7.0"
+  }
+}

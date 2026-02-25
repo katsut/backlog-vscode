@@ -1,0 +1,4 @@
+#!/bin/bash
+# Backlog RAG CLI - run from anywhere
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+node "$SCRIPT_DIR/dist/cli.js" "$@"

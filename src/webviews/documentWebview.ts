@@ -5,8 +5,6 @@ import { ConfigService } from '../services/configService';
 import { BacklogApiService } from '../services/backlogApi';
 import { Entity } from 'backlog-js';
 
-
-
 /**
  * Document webview content generator
  */
@@ -28,8 +26,15 @@ export class DocumentWebview {
     const baseUrl = configService.getBaseUrl();
 
     // Ensure baseUrl has https:// protocol
-    const fullBaseUrl = baseUrl ? (baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`) : null;
-    const docUrl = fullBaseUrl && document.id && projectKey ? `${fullBaseUrl}/document/${projectKey}/${document.id}` : '#';
+    const fullBaseUrl = baseUrl
+      ? baseUrl.startsWith('http')
+        ? baseUrl
+        : `https://${baseUrl}`
+      : null;
+    const docUrl =
+      fullBaseUrl && document.id && projectKey
+        ? `${fullBaseUrl}/document/${projectKey}/${document.id}`
+        : '#';
 
     // Get the display title, handling both tree nodes and document entities
     const displayTitle = document.title || 'Unnamed Document';
@@ -50,7 +55,7 @@ export class DocumentWebview {
           overflow-x: auto;
           font-size: var(--webview-font-size-sm);
         }
-        
+
         .content-type-indicator {
           display: inline-block;
           background: var(--vscode-button-secondaryBackground);
@@ -61,13 +66,82 @@ export class DocumentWebview {
           font-weight: 500;
           margin-left: var(--webview-space-sm);
         }
+
+        /* Mode toolbar */
+        .mode-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 0;
+          margin-bottom: 4px;
+          border-bottom: 1px solid var(--vscode-panel-border);
+          padding-bottom: 0;
+        }
+        .mode-tabs {
+          display: flex;
+          gap: 2px;
+          flex: 1;
+        }
+        .mode-tab {
+          padding: 5px 14px;
+          border: none;
+          background: transparent;
+          color: var(--vscode-foreground);
+          opacity: 0.6;
+          cursor: pointer;
+          font-size: 13px;
+          border-bottom: 2px solid transparent;
+          margin-bottom: -1px;
+          font-family: var(--vscode-font-family);
+        }
+        .mode-tab:hover {
+          opacity: 0.9;
+        }
+        .mode-tab.active {
+          opacity: 1;
+          border-bottom-color: var(--vscode-focusBorder);
+        }
+        .mode-actions {
+          display: flex;
+          gap: 4px;
+          padding: 0 4px 2px;
+        }
+        .mode-action-btn {
+          padding: 3px 10px;
+          border: none;
+          background: var(--vscode-button-secondaryBackground);
+          color: var(--vscode-button-secondaryForeground);
+          cursor: pointer;
+          font-size: 12px;
+          border-radius: 3px;
+          font-family: var(--vscode-font-family);
+        }
+        .mode-action-btn:hover {
+          background: var(--vscode-button-secondaryHoverBackground);
+        }
     `;
 
     return `<!DOCTYPE html>
       <html lang="en">
-      ${WebviewHelper.getHtmlHead(webview, extensionUri, `Document: ${displayTitle}`, additionalStyles, nonce)}
+      ${WebviewHelper.getHtmlHead(
+        webview,
+        extensionUri,
+        `Document: ${displayTitle}`,
+        additionalStyles,
+        nonce
+      )}
       <body>
         <div class="webview-header">
+          <div class="mode-toolbar">
+            <div class="mode-tabs">
+              <button class="mode-tab" id="modeEdit" title="Edit document">Edit</button>
+              <button class="mode-tab active" id="modePreview" title="Preview document">Preview</button>
+              <button class="mode-tab" id="modeDiff" title="Diff with remote">Diff</button>
+            </div>
+            <div class="mode-actions">
+              <button class="mode-action-btn" id="actionPull" title="Pull from Backlog">Pull</button>
+              <button class="mode-action-btn" id="actionCopyOpen" title="Copy to clipboard & open in Backlog">Copy&Open</button>
+            </div>
+          </div>
           <h1>
             ${WebviewHelper.escapeHtml(displayTitle)}
             <button class="refresh-button" id="refreshButton" title="Refresh document content">
@@ -75,25 +149,29 @@ export class DocumentWebview {
             </button>
           </h1>
           <div class="webview-meta">
-            ${document.created ? `<span class="meta-item">Created: ${new Date(document.created).toLocaleDateString()}</span>` : ''}
-            ${document.createdUser ? `<span class="meta-item">Creator: ${WebviewHelper.escapeHtml(document.createdUser.name)}</span>` : ''}
-            ${document.updated ? `<span class="meta-item">Updated: ${new Date(document.updated).toLocaleDateString()}</span>` : ''}
-            ${document.updatedUser ? `<span class="meta-item">Updated by: ${WebviewHelper.escapeHtml(document.updatedUser.name)}</span>` : ''}
-            ${fullBaseUrl && document.id ? `<a href="#" class="external-link" data-url="${docUrl}">🔗 Open in Backlog</a>` : ''}
+            ${
+              document.updated
+                ? `<span class="meta-item">Updated: ${new Date(
+                    document.updated
+                  ).toLocaleDateString()}</span>`
+                : ''
+            }
+            ${
+              document.updatedUser
+                ? `<span class="meta-item">by ${WebviewHelper.escapeHtml(
+                    document.updatedUser.name
+                  )}</span>`
+                : ''
+            }
+            ${
+              fullBaseUrl && document.id
+                ? `<a href="#" class="external-link" data-url="${docUrl}">Open in Backlog</a>`
+                : ''
+            }
           </div>
         </div>
 
-        <div class="info-card">
-          <h3>Document Information</h3>
-          <p><strong>Name:</strong> ${WebviewHelper.escapeHtml(displayTitle)}</p>
-          ${document.created ? `<p><strong>Created:</strong> ${new Date(document.created).toLocaleDateString()} ${new Date(document.created).toLocaleTimeString()}</p>` : ''}
-          ${document.createdUser ? `<p><strong>Creator:</strong> ${WebviewHelper.escapeHtml(document.createdUser.name)}</p>` : ''}
-          ${document.updated ? `<p><strong>Last Updated:</strong> ${new Date(document.updated).toLocaleDateString()} ${new Date(document.updated).toLocaleTimeString()}</p>` : ''}
-          ${document.updatedUser ? `<p><strong>Last Updated by:</strong> ${WebviewHelper.escapeHtml(document.updatedUser.name)}</p>` : ''}
-        </div>
-
         <div class="content-section">
-          <h3>Content</h3>
           <div class="content-body markdown-content">
             ${contentHtml}
           </div>
@@ -102,10 +180,33 @@ export class DocumentWebview {
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
           
+          // Mode tab clicks
+          document.getElementById('modeEdit').addEventListener('click', function() {
+            vscode.postMessage({ command: 'switchMode', mode: 'edit', documentId: '${
+              document.id || ''
+            }' });
+          });
+          document.getElementById('modeDiff').addEventListener('click', function() {
+            vscode.postMessage({ command: 'switchMode', mode: 'diff', documentId: '${
+              document.id || ''
+            }' });
+          });
+          // Action button clicks
+          document.getElementById('actionPull').addEventListener('click', function() {
+            vscode.postMessage({ command: 'switchMode', mode: 'pull', documentId: '${
+              document.id || ''
+            }' });
+          });
+          document.getElementById('actionCopyOpen').addEventListener('click', function() {
+            vscode.postMessage({ command: 'switchMode', mode: 'copyOpen', documentId: '${
+              document.id || ''
+            }' });
+          });
+
           // Handle all clicks
           document.addEventListener('click', function(event) {
             const target = event.target;
-            
+
             // Handle refresh button click
             if (target.closest('#refreshButton')) {
               event.preventDefault();
@@ -116,7 +217,7 @@ export class DocumentWebview {
               });
               return false;
             }
-            
+
             // Handle external link clicks
             const linkTarget = target.closest('a[data-url]');
             if (linkTarget) {
@@ -124,7 +225,6 @@ export class DocumentWebview {
               event.stopPropagation();
               const url = linkTarget.getAttribute('data-url');
               if (url) {
-                console.log('Opening external URL via VS Code:', url);
                 vscode.postMessage({
                   command: 'openExternal',
                   url: url
@@ -138,7 +238,6 @@ export class DocumentWebview {
       </html>`;
   }
 
-
   /**
    * Convert document content to HTML
    */
@@ -147,6 +246,25 @@ export class DocumentWebview {
     configService: ConfigService,
     backlogApi: BacklogApiService
   ): Promise<string> {
+    // Try ProseMirror JSON first (has proper image node references)
+    if (document.json) {
+      try {
+        const jsonContent =
+          typeof document.json === 'string' ? JSON.parse(document.json) : document.json;
+        if (jsonContent && jsonContent.type === 'doc') {
+          return await this.convertProseMirrorToHtml(
+            jsonContent,
+            configService,
+            backlogApi,
+            document
+          );
+        }
+      } catch (error) {
+        console.error('Failed to parse ProseMirror JSON, falling back to plain:', error);
+      }
+    }
+
+    // Fallback to plain text / markdown
     // Download all attachments and convert to data URLs
     const processedAttachments: Array<{ id: number; name: string; dataUrl: string }> = [];
 
@@ -161,11 +279,13 @@ export class DocumentWebview {
           processedAttachments.push({
             id: attachment.id,
             name: attachment.name,
-            dataUrl: dataUrl
+            dataUrl: dataUrl,
           });
         } catch (error) {
-          console.error(`Failed to download attachment ${attachment.id} (${attachment.name}):`, error);
-          // Continue with other attachments even if one fails
+          console.error(
+            `Failed to download attachment ${attachment.id} (${attachment.name}):`,
+            error
+          );
         }
       }
     }
@@ -387,7 +507,7 @@ export class DocumentWebview {
 
             if (attachmentId && !isNaN(attachmentId) && document.id) {
               // Find the attachment info in document.attachments
-              const attachment = document.attachments?.find(att => att.id === attachmentId);
+              const attachment = document.attachments?.find((att) => att.id === attachmentId);
 
               if (attachment) {
                 // Download and embed the attachment as base64 data URL
@@ -399,9 +519,13 @@ export class DocumentWebview {
                 );
 
                 if (base64Image) {
-                  html += `<img src="${base64Image}" alt="${WebviewHelper.escapeHtml(alt)}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
+                  html += `<img src="${base64Image}" alt="${WebviewHelper.escapeHtml(
+                    alt
+                  )}" title="${WebviewHelper.escapeHtml(title)}" class="embedded-image">`;
                 } else {
-                  html += `<div class="attachment-error">Failed to load image attachment: ${WebviewHelper.escapeHtml(attachment.name)}</div>`;
+                  html += `<div class="attachment-error">Failed to load image attachment: ${WebviewHelper.escapeHtml(
+                    attachment.name
+                  )}</div>`;
                 }
               } else {
                 html += `<div class="attachment-error">Image attachment not found in document attachments</div>`;
@@ -465,47 +589,46 @@ export class DocumentWebview {
 
     const mimeTypes: Record<string, string> = {
       // Images
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'bmp': 'image/bmp',
-      'webp': 'image/webp',
-      'svg': 'image/svg+xml',
-      'ico': 'image/x-icon',
-      'tiff': 'image/tiff',
-      'tif': 'image/tiff',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      bmp: 'image/bmp',
+      webp: 'image/webp',
+      svg: 'image/svg+xml',
+      ico: 'image/x-icon',
+      tiff: 'image/tiff',
+      tif: 'image/tiff',
 
       // Documents
-      'pdf': 'application/pdf',
-      'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'xls': 'application/vnd.ms-excel',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'ppt': 'application/vnd.ms-powerpoint',
-      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 
       // Text
-      'txt': 'text/plain',
-      'html': 'text/html',
-      'htm': 'text/html',
-      'css': 'text/css',
-      'js': 'text/javascript',
-      'json': 'application/json',
-      'xml': 'text/xml',
+      txt: 'text/plain',
+      html: 'text/html',
+      htm: 'text/html',
+      css: 'text/css',
+      js: 'text/javascript',
+      json: 'application/json',
+      xml: 'text/xml',
 
       // Archives
-      'zip': 'application/zip',
-      'rar': 'application/x-rar-compressed',
+      zip: 'application/zip',
+      rar: 'application/x-rar-compressed',
       '7z': 'application/x-7z-compressed',
-      'tar': 'application/x-tar',
-      'gz': 'application/gzip',
+      tar: 'application/x-tar',
+      gz: 'application/gzip',
 
       // Default
-      '': 'application/octet-stream'
+      '': 'application/octet-stream',
     };
 
     return mimeTypes[extension] || 'application/octet-stream';
   }
-
 }

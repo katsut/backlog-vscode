@@ -21,6 +21,7 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
   private documentNotAvailable: boolean = false;
   private errorMessage: string | null = null;
   private syncManifest: SyncManifest = {};
+  private filterModifiedOnly: boolean = false;
 
   constructor(
     private backlogApi: BacklogApiService,
@@ -61,6 +62,16 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
     }
   }
 
+  toggleFilterModified(): boolean {
+    this.filterModifiedOnly = !this.filterModifiedOnly;
+    this._onDidChangeTreeData.fire();
+    return this.filterModifiedOnly;
+  }
+
+  isFilterModifiedActive(): boolean {
+    return this.filterModifiedOnly;
+  }
+
   getTreeItem(element: DocumentTreeItem): vscode.TreeItem {
     return element;
   }
@@ -86,7 +97,7 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
             statusId: 0,
             updated: new Date().toISOString(),
             emoji: undefined,
-            children: []
+            children: [],
           } as Entity.Document.DocumentTreeNode,
           vscode.TreeItemCollapsibleState.None
         );
@@ -98,7 +109,11 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
       }
 
       // show activeTree's children directly
-      if (!this.documentTree || !this.documentTree.activeTree || !this.documentTree.activeTree.children) {
+      if (
+        !this.documentTree ||
+        !this.documentTree.activeTree ||
+        !this.documentTree.activeTree.children
+      ) {
         return [];
       }
 
@@ -115,7 +130,9 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
 
   // Tree構造からTreeItemを構築
   private buildTreeItems(nodes: Entity.Document.DocumentTreeNode[]): DocumentTreeItem[] {
-    return nodes.map((node) => {
+    const filtered = this.filterModifiedOnly ? this.filterModifiedNodes(nodes) : nodes;
+
+    return filtered.map((node) => {
       const hasChildren = node.children && Array.isArray(node.children) && node.children.length > 0;
       const collapsibleState = hasChildren
         ? vscode.TreeItemCollapsibleState.Collapsed
@@ -125,6 +142,28 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
       const syncEntry = this.findManifestEntryByDocId(node.id);
       return new DocumentTreeItem(node, collapsibleState, node.children, syncEntry?.status);
     });
+  }
+
+  // Modified フィルタ: 自身が local_modified または子孫に local_modified があるノードだけ残す
+  private filterModifiedNodes(
+    nodes: Entity.Document.DocumentTreeNode[]
+  ): Entity.Document.DocumentTreeNode[] {
+    const result: Entity.Document.DocumentTreeNode[] = [];
+    for (const node of nodes) {
+      const syncEntry = this.findManifestEntryByDocId(node.id);
+      const isSelfModified = syncEntry?.status === 'local_modified';
+
+      if (node.children && node.children.length > 0) {
+        const filteredChildren = this.filterModifiedNodes(node.children);
+        if (isSelfModified || filteredChildren.length > 0) {
+          // 子をフィルタ済みに差し替えたコピーを作る
+          result.push({ ...node, children: filteredChildren });
+        }
+      } else if (isSelfModified) {
+        result.push(node);
+      }
+    }
+    return result;
   }
 
   private findManifestEntryByDocId(
@@ -204,7 +243,12 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
       // Improve error message for common cases
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      if (errorMessage.includes('Not Found') || errorMessage.includes('404') || errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+      if (
+        errorMessage.includes('Not Found') ||
+        errorMessage.includes('404') ||
+        errorMessage.includes('403') ||
+        errorMessage.includes('Forbidden')
+      ) {
         // Document機能が有効でない場合、またはアクセス権限がない場合
         this.documentNotAvailable = true;
         this.errorMessage = errorMessage;
@@ -212,9 +256,7 @@ export class BacklogDocumentsTreeViewProvider implements vscode.TreeDataProvider
       } else {
         // その他のエラーの場合のみ表示
         this.errorMessage = errorMessage;
-        vscode.window.showErrorMessage(
-          `Failed to load documents: ${errorMessage}`
-        );
+        vscode.window.showErrorMessage(`[Nulab] Failed to load documents: ${errorMessage}`);
       }
     }
   }
@@ -250,29 +292,33 @@ export class DocumentTreeItem extends vscode.TreeItem {
     // childrenがある場合はフォルダとして扱うが、親ドキュメント自体もドキュメントとして機能する
     const hasChildren = children && children.length > 0;
     const isOnlyFolder =
-      ('type' in document && (document.type === 'folder' || document.type === 'directory')) &&
+      'type' in document &&
+      (document.type === 'folder' || document.type === 'directory') &&
       !hasChildren;
 
     if (isOnlyFolder) {
       // 純粋なフォルダ（子要素なし）
-      this.iconPath = new vscode.ThemeIcon('folder', new vscode.ThemeColor('backlog.brandColor'));
+      this.iconPath = new vscode.ThemeIcon('folder', new vscode.ThemeColor('nulab.brandColor'));
       this.contextValue = 'documentFolder';
     } else if (hasChildren) {
       // 子要素を持つドキュメント（親ドキュメント）
-      this.iconPath = new vscode.ThemeIcon('file-submodule', new vscode.ThemeColor('backlog.brandColor'));
+      this.iconPath = new vscode.ThemeIcon(
+        'file-submodule',
+        new vscode.ThemeColor('nulab.brandColor')
+      );
       this.contextValue = 'documentWithChildren';
       // 親ドキュメントもクリックでコンテンツを開けるようにコマンドを設定
       this.command = {
-        command: 'backlog.openDocument',
+        command: 'nulab.openDocument',
         title: 'Open Document',
         arguments: [this.document],
       };
     } else {
       // 通常のドキュメント（子要素なし）
-      this.iconPath = new vscode.ThemeIcon('file-text', new vscode.ThemeColor('backlog.brandColor'));
+      this.iconPath = new vscode.ThemeIcon('file-text', new vscode.ThemeColor('nulab.brandColor'));
       this.contextValue = 'document';
       this.command = {
-        command: 'backlog.openDocument',
+        command: 'nulab.openDocument',
         title: 'Open Document',
         arguments: [this.document],
       };

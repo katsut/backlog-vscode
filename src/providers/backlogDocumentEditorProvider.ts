@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { SyncService } from '../services/syncService';
 import { ConfigService } from '../services/configService';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
 import { DocumentEditorWebview } from '../webviews/documentEditorWebview';
-
 export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorProvider {
-  public static readonly viewType = 'backlog.bdocEditor';
+  public static readonly viewType = 'nulab.bdocEditor';
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -15,14 +15,46 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
     private readonly markdownRenderer: MarkdownRenderer
   ) {}
 
+  /**
+   * Resolve local .images/ references in markdown to webview URIs,
+   * and resolve any remaining Backlog URLs via API download.
+   */
+  private resolveLocalImages(content: string, webview: vscode.Webview, docDir: string): string {
+    // Replace .images/{id} references with webview URIs
+    return content.replace(/!\[([^\]]*)\]\((\.images\/[^)]+)\)/g, (_match, alt, relativePath) => {
+      const absolutePath = path.join(docDir, relativePath);
+      if (fs.existsSync(absolutePath)) {
+        const uri = webview.asWebviewUri(vscode.Uri.file(absolutePath));
+        return `![${alt}](${uri})`;
+      }
+      return _match;
+    });
+  }
+
+  /**
+   * Resolve local image paths in rendered HTML to webview URIs.
+   */
+  private resolveLocalImagesInHtml(html: string, webview: vscode.Webview, docDir: string): string {
+    return html.replace(/src="(\.images\/[^"]+)"/g, (_match, relativePath) => {
+      const absolutePath = path.join(docDir, relativePath);
+      if (fs.existsSync(absolutePath)) {
+        const uri = webview.asWebviewUri(vscode.Uri.file(absolutePath));
+        return `src="${uri}"`;
+      }
+      return _match;
+    });
+  }
+
   async resolveCustomTextEditor(
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    const docDir = path.dirname(document.uri.fsPath);
+
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this.context.extensionUri],
+      localResourceRoots: [this.context.extensionUri, vscode.Uri.file(docDir)],
     };
 
     const text = document.getText();
@@ -67,26 +99,22 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
             break;
           }
           case 'requestPreview': {
-            // 相対パスの画像/リンクを Backlog の絶対URLに変換
-            let processedContent = message.content;
-            const domain = this.configService.getDomain();
-            if (domain) {
-              const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
-              // ](/path...) → ](https://host/path...)
-              processedContent = processedContent.replace(
-                /(\]\()\/([^)]+)/g,
-                `$1https://${hostOnly}/$2`
-              );
-            }
-            const html = this.markdownRenderer.renderMarkdown(processedContent);
+            // Resolve local .images/ paths, then render markdown
+            const resolved = this.resolveLocalImages(message.content, webviewPanel.webview, docDir);
+            let html = this.markdownRenderer.renderMarkdown(resolved);
+            html = this.resolveLocalImagesInHtml(html, webviewPanel.webview, docDir);
             webviewPanel.webview.postMessage({ type: 'previewReady', html });
             break;
           }
-          case 'diff': {
+          case 'pull': {
             await vscode.commands.executeCommand(
-              'backlog.documentSync.diff',
+              'nulab.documentSync.pullFile',
               document.uri.fsPath
             );
+            break;
+          }
+          case 'diff': {
+            await vscode.commands.executeCommand('nulab.documentSync.diff', document.uri.fsPath);
             break;
           }
           case 'copyAndOpen': {
@@ -100,7 +128,7 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
               await vscode.env.openExternal(vscode.Uri.parse(url));
             }
             vscode.window.showInformationMessage(
-              'コンテンツをクリップボードにコピーしました。'
+              '[Nulab] コンテンツをクリップボードにコピーしました。'
             );
             break;
           }
@@ -110,17 +138,24 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
       this.context.subscriptions
     );
 
-    // Pre-render preview HTML so it's available immediately
-    let processedBody = body;
-    const domainForPreview = this.configService.getDomain();
-    if (domainForPreview) {
-      const hostOnly = domainForPreview.replace(/https?:\/\//, '').split('/')[0];
-      processedBody = processedBody.replace(
-        /(\]\()\/([^)]+)/g,
-        `$1https://${hostOnly}/$2`
-      );
-    }
-    const initialPreviewHtml = this.markdownRenderer.renderMarkdown(processedBody);
+    // Watch for external document changes (e.g., Claude Code editing the file)
+    const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
+      if (e.document.uri.toString() === document.uri.toString() && e.contentChanges.length > 0) {
+        const newText = e.document.getText();
+        const { body: newBody } = this.syncService.parseFrontmatter(newText);
+        webviewPanel.webview.postMessage({ type: 'externalUpdate', content: newBody });
+      }
+    });
+    webviewPanel.onDidDispose(() => changeSubscription.dispose());
+
+    // Pre-render preview HTML with local image resolution
+    const resolvedBody = this.resolveLocalImages(body, webviewPanel.webview, docDir);
+    let initialPreviewHtml = this.markdownRenderer.renderMarkdown(resolvedBody);
+    initialPreviewHtml = this.resolveLocalImagesInHtml(
+      initialPreviewHtml,
+      webviewPanel.webview,
+      docDir
+    );
 
     webviewPanel.webview.html = DocumentEditorWebview.getWebviewContent(
       webviewPanel.webview,

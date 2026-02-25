@@ -1,12 +1,7 @@
 import * as vscode from 'vscode';
 import { CacooApiService } from '../services/cacooApi';
 import { ConfigService } from '../services/configService';
-import {
-  CacooFolder,
-  CacooDiagram,
-  CacooSheet,
-  CacooPinnedSheet,
-} from '../types/cacoo';
+import { CacooFolder, CacooDiagram, CacooSheet, CacooPinnedSheet } from '../types/cacoo';
 
 // Tree item types
 type CacooTreeItem = CacooFolderItem | CacooDiagramItem | CacooSheetItem | CacooPinnedSectionItem;
@@ -18,18 +13,30 @@ export class CacooTreeViewProvider implements vscode.TreeDataProvider<CacooTreeI
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private folders: CacooFolder[] | null = null;
-  private diagramCache = new Map<number, CacooDiagram[]>();
+  private allDiagrams: CacooDiagram[] | null = null;
   private sheetCache = new Map<string, CacooSheet[]>();
+  private searchKeyword: string | null = null;
 
-  constructor(
-    private cacooApi: CacooApiService,
-    private configService: ConfigService
-  ) {}
+  constructor(private cacooApi: CacooApiService, private configService: ConfigService) {}
 
   refresh(): void {
     this.folders = null;
-    this.diagramCache.clear();
+    this.allDiagrams = null;
     this.sheetCache.clear();
+    this.searchKeyword = null;
+    this._onDidChangeTreeData.fire();
+  }
+
+  async search(): Promise<void> {
+    const keyword = await vscode.window.showInputBox({
+      prompt: 'フォルダ・図をフィルタ (空欄でクリア)',
+      placeHolder: 'キーワードを入力...',
+      value: this.searchKeyword || '',
+    });
+    if (keyword === undefined) {
+      return;
+    } // cancelled
+    this.searchKeyword = keyword || null;
     this._onDidChangeTreeData.fire();
   }
 
@@ -51,7 +58,7 @@ export class CacooTreeViewProvider implements vscode.TreeDataProvider<CacooTreeI
     }
 
     if (element instanceof CacooFolderItem) {
-      return this.getDiagramItems(element.folder.folderId);
+      return this.getDiagramItems(element.folder);
     }
 
     if (element instanceof CacooDiagramItem) {
@@ -63,11 +70,22 @@ export class CacooTreeViewProvider implements vscode.TreeDataProvider<CacooTreeI
 
   private async getRootChildren(): Promise<CacooTreeItem[]> {
     const items: CacooTreeItem[] = [];
+    const filter = this.searchKeyword?.toLowerCase();
+
+    // Filter header
+    if (filter) {
+      const header = new vscode.TreeItem(`Filter: "${this.searchKeyword}"`);
+      header.iconPath = new vscode.ThemeIcon('filter');
+      header.description = 'Refresh to clear';
+      items.push(header as CacooTreeItem);
+    }
 
     // Pinned sheets section
-    const pins = this.configService.getCacooPinnedSheets();
-    if (pins.length > 0) {
-      items.push(new CacooPinnedSectionItem(pins.length));
+    if (!filter) {
+      const pins = this.configService.getCacooPinnedSheets();
+      if (pins.length > 0) {
+        items.push(new CacooPinnedSectionItem(pins.length));
+      }
     }
 
     // Folders
@@ -76,46 +94,99 @@ export class CacooTreeViewProvider implements vscode.TreeDataProvider<CacooTreeI
         this.folders = await this.cacooApi.getFolders();
       }
       for (const folder of this.folders) {
-        items.push(new CacooFolderItem(folder));
+        if (!filter || folder.folderName.toLowerCase().includes(filter)) {
+          items.push(new CacooFolderItem(folder));
+        }
       }
     } catch (error) {
       console.error('[Cacoo] Failed to load folders:', error);
     }
 
+    // Personal diagrams (no folder) — preload diagrams so we can check
+    try {
+      const all = await this.ensureAllDiagrams();
+      const personal = all.filter((d) => !d.folderName);
+      if (personal.length > 0) {
+        const personalFolder: CacooFolder = {
+          folderId: -1,
+          folderName: '',
+          type: 'personal',
+          created: '',
+          updated: '',
+        };
+        const item = new CacooFolderItem(personalFolder);
+        item.label = `Personal (${personal.length})`;
+        item.iconPath = new vscode.ThemeIcon('account', CACOO_COLOR);
+        items.push(item);
+      }
+    } catch {
+      // Non-critical — folders are enough
+    }
+
     return items;
   }
 
-  private async getDiagramItems(folderId: number): Promise<CacooTreeItem[]> {
+  /**
+   * Fetch all diagrams once, then filter client-side by folderName.
+   * organizationKey is NOT sent to diagrams.json (causes 403), so
+   * folderIds differ between org-scoped folders and personal diagrams.
+   * We match by folderName instead.
+   */
+  private async ensureAllDiagrams(): Promise<CacooDiagram[]> {
+    if (this.allDiagrams) {
+      return this.allDiagrams;
+    }
+
+    const all: CacooDiagram[] = [];
+    let offset = 0;
+    const limit = 100;
+
+    while (true) {
+      const resp = await this.cacooApi.getDiagrams({ limit, offset });
+      all.push(...(resp.result || []));
+      if (all.length >= resp.count || (resp.result?.length || 0) < limit) {
+        break;
+      }
+      offset += limit;
+    }
+
+    this.allDiagrams = all;
+    return all;
+  }
+
+  private async getDiagramItems(folder: CacooFolder): Promise<CacooTreeItem[]> {
     try {
-      if (!this.diagramCache.has(folderId)) {
-        const all: CacooDiagram[] = [];
-        let offset = 0;
-        const limit = 50;
+      const all = await this.ensureAllDiagrams();
 
-        while (true) {
-          const resp = await this.cacooApi.getDiagrams({
-            folderId,
-            sortOn: 'updated',
-            sortType: 'desc',
-            limit,
-            offset,
-          });
-          all.push(...resp.result);
-          if (all.length >= resp.count || resp.result.length < limit) {
-            break;
-          }
-          offset += limit;
-        }
-
-        this.diagramCache.set(folderId, all);
+      // Personal folder (folderId=-1): show diagrams with no folder
+      // Org folders: match by folderName (org-scoped folders vs personal diagrams may have different folderIds)
+      let diagrams: CacooDiagram[];
+      if (folder.folderId === -1) {
+        diagrams = all.filter((d) => !d.folderName);
+      } else {
+        diagrams = all.filter((d) => d.folderName === folder.folderName);
       }
 
-      return (this.diagramCache.get(folderId) || []).map(
-        (d) => new CacooDiagramItem(d)
-      );
+      // Apply search keyword filter
+      if (this.searchKeyword) {
+        const filter = this.searchKeyword.toLowerCase();
+        diagrams = diagrams.filter((d) => d.title.toLowerCase().includes(filter));
+      }
+
+      if (diagrams.length === 0) {
+        const emptyItem = new vscode.TreeItem(
+          this.searchKeyword ? 'No matching diagrams' : 'No diagrams in this folder'
+        );
+        emptyItem.iconPath = new vscode.ThemeIcon('info');
+        return [emptyItem as CacooTreeItem];
+      }
+      return diagrams.map((d) => new CacooDiagramItem(d));
     } catch (error) {
-      console.error(`[Cacoo] Failed to load diagrams for folder ${folderId}:`, error);
-      return [];
+      console.error(`[Cacoo] Failed to load diagrams for folder ${folder.folderName}:`, error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorItem = new vscode.TreeItem(`Error: ${errorMsg}`);
+      errorItem.iconPath = new vscode.ThemeIcon('error');
+      return [errorItem as CacooTreeItem];
     }
   }
 
@@ -194,10 +265,7 @@ class CacooSheetItem extends vscode.TreeItem {
     isPinned: boolean
   ) {
     super(sheet.name || 'Sheet', vscode.TreeItemCollapsibleState.None);
-    this.iconPath = new vscode.ThemeIcon(
-      isPinned ? 'pinned' : 'file-media',
-      CACOO_COLOR
-    );
+    this.iconPath = new vscode.ThemeIcon(isPinned ? 'pinned' : 'file-media', CACOO_COLOR);
     this.contextValue = 'cacooSheet';
     this.description = isPinned ? 'pinned' : `${sheet.width}x${sheet.height}`;
     this.tooltip = `${diagram.title} / ${sheet.name}\n${sheet.width}x${sheet.height}`;

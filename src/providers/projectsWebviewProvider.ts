@@ -50,9 +50,9 @@ export class BacklogProjectsWebviewProvider implements vscode.WebviewViewProvide
 
   private async selectProject(projectId: number): Promise<void> {
     try {
-      await vscode.commands.executeCommand('backlog.focusProject', projectId);
+      await vscode.commands.executeCommand('nulab.focusProject', projectId);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to select project: ${error}`);
+      vscode.window.showErrorMessage(`[Nulab] Failed to select project: ${error}`);
     }
   }
 

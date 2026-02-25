@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Entity } from 'backlog-js';
 import { WebviewHelper } from './common';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
+import { BacklogApiService } from '../services/backlogApi';
 
 /**
  * Issue webview content generator
@@ -12,37 +13,62 @@ export class IssueWebview {
   /**
    * Generate issue webview content
    */
-  static getWebviewContent(
+  static async getWebviewContent(
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
     issue: Entity.Issue.Issue,
     comments: Entity.Issue.Comment[],
-    baseUrl?: string
-  ): string {
+    baseUrl?: string,
+    backlogApi?: BacklogApiService
+  ): Promise<string> {
     const nonce = WebviewHelper.getNonce();
 
     // Ensure baseUrl has https:// protocol
-    const fullBaseUrl = baseUrl ? (baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`) : null;
+    const fullBaseUrl = baseUrl
+      ? baseUrl.startsWith('http')
+        ? baseUrl
+        : `https://${baseUrl}`
+      : null;
     const issueUrl = fullBaseUrl && issue.issueKey ? `${fullBaseUrl}/view/${issue.issueKey}` : '#';
 
+    // Resolve Backlog image URLs in description
+    let description = issue.description || '';
+    if (description && backlogApi) {
+      try {
+        description = await backlogApi.resolveBacklogImages(description);
+      } catch {
+        /* use original */
+      }
+    }
+
     // Render description as markdown if present
-    const descriptionHtml = issue.description
-      ? this.markdownRenderer.renderMarkdown(issue.description)
-      : '';
+    const descriptionHtml = description ? this.markdownRenderer.renderMarkdown(description) : '';
 
     // Separate comments and change history
     const { regularComments, changeHistory } = this.categorizeComments(comments || []);
 
-    // Render regular comments as markdown
-    const commentsHtml = regularComments.map(comment => ({
-      ...comment,
-      contentHtml: this.markdownRenderer.renderMarkdown(this.normalizeCommentContent(comment.content))
-    }));
+    // Render regular comments as markdown (resolve images in comments too)
+    const commentsHtml = await Promise.all(
+      regularComments.map(async (comment) => {
+        let content = this.normalizeCommentContent(comment.content);
+        if (content && backlogApi) {
+          try {
+            content = await backlogApi.resolveBacklogImages(content);
+          } catch {
+            /* use original */
+          }
+        }
+        return {
+          ...comment,
+          contentHtml: this.markdownRenderer.renderMarkdown(content),
+        };
+      })
+    );
 
     // Process change history
     const changeHistoryHtml = changeHistory.map((comment: Entity.Issue.Comment) => ({
       ...comment,
-      changesHtml: this.formatChangeHistory(comment)
+      changesHtml: this.formatChangeHistory(comment),
     }));
 
     const additionalStyles = `
@@ -314,7 +340,13 @@ export class IssueWebview {
 
     return `<!DOCTYPE html>
       <html lang="en">
-      ${WebviewHelper.getHtmlHead(webview, extensionUri, `Issue ${issue.issueKey}`, additionalStyles, nonce)}
+      ${WebviewHelper.getHtmlHead(
+        webview,
+        extensionUri,
+        `Issue ${issue.issueKey}`,
+        additionalStyles,
+        nonce
+      )}
       <body>
         <div class="webview-header">
           <h1>
@@ -325,9 +357,18 @@ export class IssueWebview {
           </h1>
           <div class="webview-meta">
             <span class="key-badge">${WebviewHelper.escapeHtml(issue.issueKey)}</span>
-            <span class="status-badge ${this.getStatusClass(issue.status)}">${WebviewHelper.escapeHtml(issue.status.name)}</span>
-            <span class="priority-badge ${this.getPriorityClass(issue.priority)}">${WebviewHelper.escapeHtml(issue.priority.name)}</span>
-            ${fullBaseUrl && issue.id ? `<a href="#" class="external-link" data-url="${issueUrl}">🔗 Open in Backlog</a>` : ''}
+            <span class="status-badge ${this.getStatusClass(
+              issue.status
+            )}">${WebviewHelper.escapeHtml(issue.status.name)}</span>
+            <span class="priority-badge ${this.getPriorityClass(
+              issue.priority
+            )}">${WebviewHelper.escapeHtml(issue.priority.name)}</span>
+            ${
+              fullBaseUrl && issue.id
+                ? `<a href="#" class="external-link" data-url="${issueUrl}">🔗 Open in Backlog</a>`
+                : ''
+            }
+            <a href="#" class="external-link" id="addToTodoBtn">+ Add to TODO</a>
           </div>
         </div>
 
@@ -340,64 +381,100 @@ export class IssueWebview {
             <label>Priority:</label>
             <span>${WebviewHelper.escapeHtml(issue.priority.name)}</span>
           </div>
-          ${issue.assignee ? `
+          ${
+            issue.assignee
+              ? `
             <div class="details-field">
               <label>Assignee:</label>
               <span>${WebviewHelper.escapeHtml(issue.assignee.name)}</span>
             </div>
-          ` : ''}
-          ${issue.dueDate ? `
+          `
+              : ''
+          }
+          ${
+            issue.dueDate
+              ? `
             <div class="details-field">
               <label>Due Date:</label>
               <span>${new Date(issue.dueDate).toLocaleDateString()}</span>
             </div>
-          ` : ''}
+          `
+              : ''
+          }
         </div>
 
-        ${descriptionHtml ? `
+        ${
+          descriptionHtml
+            ? `
           <div class="content-section">
             <h3>Description</h3>
             <div class="content-body markdown-content">
               ${descriptionHtml}
             </div>
           </div>
-        ` : ''}
+        `
+            : ''
+        }
 
-        ${commentsHtml.length > 0 ? `
+        ${
+          commentsHtml.length > 0
+            ? `
           <div class="content-section">
             <h3>Comments (${commentsHtml.length})</h3>
-            ${commentsHtml.map(comment => `
+            ${commentsHtml
+              .map(
+                (comment) => `
               <div class="comment">
                 <div class="comment-header">
-                  <span class="comment-author">${WebviewHelper.escapeHtml(comment.createdUser.name)}</span>
-                  <span class="comment-date">${new Date(comment.created).toLocaleDateString()}</span>
+                  <span class="comment-author">${WebviewHelper.escapeHtml(
+                    comment.createdUser.name
+                  )}</span>
+                  <span class="comment-date">${new Date(
+                    comment.created
+                  ).toLocaleDateString()}</span>
                 </div>
                 <div class="comment-content markdown-content">
                   ${comment.contentHtml}
                 </div>
               </div>
-            `).join('')}
+            `
+              )
+              .join('')}
           </div>
-        ` : ''}
+        `
+            : ''
+        }
 
-        ${changeHistoryHtml.length > 0 ? `
+        ${
+          changeHistoryHtml.length > 0
+            ? `
           <div class="content-section">
             <h3>Change History (${changeHistoryHtml.length})</h3>
             <div class="change-history">
-              ${changeHistoryHtml.map(change => `
+              ${changeHistoryHtml
+                .map(
+                  (change) => `
                 <div class="change-entry">
                   <div class="change-header">
-                    <span class="change-author">${WebviewHelper.escapeHtml(change.createdUser.name)}</span>
-                    <span class="change-date">${new Date(change.created).toLocaleDateString()}</span>
+                    <span class="change-author">${WebviewHelper.escapeHtml(
+                      change.createdUser.name
+                    )}</span>
+                    <span class="change-date">${new Date(
+                      change.created
+                    ).toLocaleDateString()}</span>
                   </div>
                   <div class="change-content">
                     ${change.changesHtml}
                   </div>
                 </div>
-              `).join('')}
+              `
+                )
+                .join('')}
             </div>
           </div>
-        ` : ''}
+        `
+            : ''
+        }
 
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
@@ -417,6 +494,14 @@ export class IssueWebview {
               return false;
             }
             
+            // Handle add to TODO
+            if (target.closest('#addToTodoBtn')) {
+              event.preventDefault();
+              event.stopPropagation();
+              vscode.postMessage({ command: 'addToTodo' });
+              return false;
+            }
+
             // Handle external link clicks
             const linkTarget = target.closest('a[data-url]');
             if (linkTarget) {
@@ -527,10 +612,10 @@ export class IssueWebview {
       /assigned to/i,
       /status changed/i,
       /priority changed/i,
-      /due date changed/i
+      /due date changed/i,
     ];
 
-    return changePatterns.some(pattern => pattern.test(comment.content));
+    return changePatterns.some((pattern) => pattern.test(comment.content));
   }
 
   /**
@@ -560,30 +645,42 @@ export class IssueWebview {
     }
 
     if (changeData && changeData.length > 0) {
-      const changes = changeData.map((change: Entity.ChangeLog.IssueChangeLog) => {
-        return this.formatIndividualChange(change);
-      }).join('');
+      const changes = changeData
+        .map((change: Entity.ChangeLog.IssueChangeLog) => {
+          return this.formatIndividualChange(change);
+        })
+        .join('');
 
       return `<div class="change-details">${changes}</div>`;
     }
 
     // Check if there are notifications or other change indicators
     if (commentWithExtended.notifications && Array.isArray(commentWithExtended.notifications)) {
-      const notifications = commentWithExtended.notifications.map((notif: Entity.Notification.Notification) => {
-        return `<div class="change-item">
+      const notifications = commentWithExtended.notifications
+        .map((notif: Entity.Notification.Notification) => {
+          return `<div class="change-item">
           <span class="change-icon">🔔</span>
           <span class="change-text">${WebviewHelper.escapeHtml(String(notif))}</span>
         </div>`;
-      }).join('');
+        })
+        .join('');
       return `<div class="change-details">${notifications}</div>`;
     }
 
     // If no specific change data but has other properties, show them
-    const relevantProps: (keyof typeof commentWithExtended)[] = ['statusId', 'assigneeId', 'priorityId', 'summary', 'description'];
-    const foundProps = relevantProps.filter(prop => commentWithExtended[prop] !== undefined);
+    const relevantProps: (keyof typeof commentWithExtended)[] = [
+      'statusId',
+      'assigneeId',
+      'priorityId',
+      'summary',
+      'description',
+    ];
+    const foundProps = relevantProps.filter((prop) => commentWithExtended[prop] !== undefined);
 
     if (foundProps.length > 0) {
-      const propDetails = foundProps.map(prop => `${String(prop)}: ${commentWithExtended[prop]}`).join(', ');
+      const propDetails = foundProps
+        .map((prop) => `${String(prop)}: ${commentWithExtended[prop]}`)
+        .join(', ');
       return `<div class="change-item">
         <span class="change-icon">🔄</span>
         <span class="change-text">変更: ${WebviewHelper.escapeHtml(propDetails)}</span>
@@ -695,8 +792,10 @@ export class IssueWebview {
     }
 
     // Special handling for description and long text changes
-    if ((field.toLowerCase() === 'description' || field.toLowerCase() === '説明') &&
-      (fromText.length > 50 || toText.length > 50)) {
+    if (
+      (field.toLowerCase() === 'description' || field.toLowerCase() === '説明') &&
+      (fromText.length > 50 || toText.length > 50)
+    ) {
       return this.formatTextDiff(field, fromText, toText, icon, changeClass);
     }
 
@@ -706,14 +805,22 @@ export class IssueWebview {
       <div class="change-details-text">
         <div class="change-field">${WebviewHelper.escapeHtml(field)}</div>
         <div class="change-unified-diff">
-          ${fromText ? `<div class="diff-line diff-removed">
+          ${
+            fromText
+              ? `<div class="diff-line diff-removed">
             <span class="diff-indicator">-</span>
             <span class="diff-content">${WebviewHelper.escapeHtml(fromText)}</span>
-          </div>` : ''}
-          ${toText ? `<div class="diff-line diff-added">
+          </div>`
+              : ''
+          }
+          ${
+            toText
+              ? `<div class="diff-line diff-added">
             <span class="diff-indicator">+</span>
             <span class="diff-content">${WebviewHelper.escapeHtml(toText)}</span>
-          </div>` : ''}
+          </div>`
+              : ''
+          }
         </div>
       </div>
     </div>`;
@@ -722,27 +829,37 @@ export class IssueWebview {
   /**
    * Format text diff in unified style (like Backlog)
    */
-  private static formatTextDiff(field: string, fromText: string, toText: string, icon: string, changeClass: string): string {
+  private static formatTextDiff(
+    field: string,
+    fromText: string,
+    toText: string,
+    icon: string,
+    changeClass: string
+  ): string {
     // Clean up text - trim and normalize whitespace
     const cleanFromText = fromText.trim().replace(/\n{3,}/g, '\n\n');
     const cleanToText = toText.trim().replace(/\n{3,}/g, '\n\n');
 
     // For long text, create a simple line-based diff
-    const fromLines = cleanFromText.split('\n').filter(line => line.trim() !== '' || cleanFromText.includes('\n\n'));
-    const toLines = cleanToText.split('\n').filter(line => line.trim() !== '' || cleanToText.includes('\n\n'));
+    const fromLines = cleanFromText
+      .split('\n')
+      .filter((line) => line.trim() !== '' || cleanFromText.includes('\n\n'));
+    const toLines = cleanToText
+      .split('\n')
+      .filter((line) => line.trim() !== '' || cleanToText.includes('\n\n'));
 
     // Simple diff algorithm - mark lines as removed/added
-    const diffLines: Array<{ type: 'removed' | 'added' | 'context', content: string }> = [];
+    const diffLines: Array<{ type: 'removed' | 'added' | 'context'; content: string }> = [];
 
     // Add removed lines (excluding empty lines unless they're meaningful)
-    fromLines.forEach(line => {
+    fromLines.forEach((line) => {
       if (!toLines.includes(line) && (line.trim() !== '' || line.length > 0)) {
         diffLines.push({ type: 'removed', content: line });
       }
     });
 
     // Add added lines (excluding empty lines unless they're meaningful)
-    toLines.forEach(line => {
+    toLines.forEach((line) => {
       if (!fromLines.includes(line) && (line.trim() !== '' || line.length > 0)) {
         diffLines.push({ type: 'added', content: line });
       }
@@ -765,13 +882,24 @@ export class IssueWebview {
             <details class="change-diff-details">
               <summary>差分を表示</summary>
               <div class="change-unified-diff">
-                ${filteredDiffLines.slice(0, 20).map(line => `
+                ${filteredDiffLines
+                  .slice(0, 20)
+                  .map(
+                    (line) => `
                   <div class="diff-line diff-${line.type}">
                     <span class="diff-indicator">${line.type === 'removed' ? '-' : '+'}</span>
-                    <span class="diff-content">${WebviewHelper.escapeHtml(line.content.substring(0, 200))}</span>
+                    <span class="diff-content">${WebviewHelper.escapeHtml(
+                      line.content.substring(0, 200)
+                    )}</span>
                   </div>
-                `).join('')}
-                ${filteredDiffLines.length > 20 ? '<div class="diff-truncated">... (truncated)</div>' : ''}
+                `
+                  )
+                  .join('')}
+                ${
+                  filteredDiffLines.length > 20
+                    ? '<div class="diff-truncated">... (truncated)</div>'
+                    : ''
+                }
               </div>
             </details>
           </div>
@@ -797,12 +925,18 @@ export class IssueWebview {
       <div class="change-details-text">
         <div class="change-field">${WebviewHelper.escapeHtml(field)}</div>
         <div class="change-unified-diff">
-          ${filteredDiffLines.map(line => `
+          ${filteredDiffLines
+            .map(
+              (line) => `
             <div class="diff-line diff-${line.type}">
               <span class="diff-indicator">${line.type === 'removed' ? '-' : '+'}</span>
-              <span class="diff-content">${WebviewHelper.escapeHtml(line.content || '(空行)')}</span>
+              <span class="diff-content">${WebviewHelper.escapeHtml(
+                line.content || '(空行)'
+              )}</span>
             </div>
-          `).join('')}
+          `
+            )
+            .join('')}
         </div>
       </div>
     </div>`;
@@ -811,8 +945,10 @@ export class IssueWebview {
   /**
    * Filter consecutive empty lines to reduce noise in diff
    */
-  private static filterConsecutiveEmptyLines(diffLines: Array<{ type: 'removed' | 'added' | 'context', content: string }>): Array<{ type: 'removed' | 'added' | 'context', content: string }> {
-    const filtered: Array<{ type: 'removed' | 'added' | 'context', content: string }> = [];
+  private static filterConsecutiveEmptyLines(
+    diffLines: Array<{ type: 'removed' | 'added' | 'context'; content: string }>
+  ): Array<{ type: 'removed' | 'added' | 'context'; content: string }> {
+    const filtered: Array<{ type: 'removed' | 'added' | 'context'; content: string }> = [];
     let consecutiveEmptyCount = 0;
 
     for (let i = 0; i < diffLines.length; i++) {
@@ -828,7 +964,7 @@ export class IssueWebview {
           // Add a summary line for multiple empty lines
           filtered.push({
             type: line.type,
-            content: `... (${consecutiveEmptyCount - 2} more empty lines)`
+            content: `... (${consecutiveEmptyCount - 2} more empty lines)`,
           });
         }
         // Skip additional consecutive empty lines

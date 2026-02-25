@@ -50,13 +50,11 @@ export class MarkdownRenderer {
 
     // Table rendering with VS Code styling
     renderer.table = (token): string => {
-      const header = token.header.map(cell =>
-        `<th>${cell.text}</th>`
-      ).join('');
+      const header = token.header.map((cell) => `<th>${cell.text}</th>`).join('');
 
-      const body = token.rows.map(row =>
-        `<tr>${row.map(cell => `<td>${cell.text}</td>`).join('')}</tr>`
-      ).join('');
+      const body = token.rows
+        .map((row) => `<tr>${row.map((cell) => `<td>${cell.text}</td>`).join('')}</tr>`)
+        .join('');
 
       return `<table class="markdown-table">
         <thead><tr>${header}</tr></thead>
@@ -70,7 +68,10 @@ export class MarkdownRenderer {
   /**
    * Render markdown content to HTML
    */
-  public renderMarkdown(content: string, attachments?: Array<{ id: number; name: string; dataUrl: string }>): string {
+  public renderMarkdown(
+    content: string,
+    attachments?: Array<{ id: number; name: string; dataUrl: string }>
+  ): string {
     if (!content) {
       return '<p class="no-content">No content available.</p>';
     }
@@ -100,11 +101,14 @@ export class MarkdownRenderer {
   /**
    * Replace attachment references in markdown content with data URLs
    */
-  private replaceAttachmentReferences(content: string, attachments: Array<{ id: number; name: string; dataUrl: string }>): string {
+  private replaceAttachmentReferences(
+    content: string,
+    attachments: Array<{ id: number; name: string; dataUrl: string }>
+  ): string {
     let processed = content;
 
     // Replace Backlog attachment reference patterns
-    attachments.forEach(attachment => {
+    attachments.forEach((attachment) => {
       // Pattern: ![alt text](/document/.../file/123) - Backlog画像参照
       const imagePattern = new RegExp(`!\\[([^\\]]*)\\]\\([^)]*\\/file\\/${attachment.id}\\)`, 'g');
       processed = processed.replace(imagePattern, `![$1](${attachment.dataUrl})`);
@@ -150,7 +154,7 @@ export class MarkdownRenderer {
       '(heart)': '❤️',
       '(star)': '⭐',
       '(thumbsup)': '👍',
-      '(thumbsdown)': '👎'
+      '(thumbsdown)': '👎',
     };
 
     Object.entries(emoticons).forEach(([emoticon, emoji]) => {
@@ -170,7 +174,7 @@ export class MarkdownRenderer {
       '<': '&lt;',
       '>': '&gt;',
       '"': '&quot;',
-      "'": '&#039;'
+      "'": '&#039;',
     };
     return text.replace(/[&<>"']/g, (m) => map[m]);
   }
