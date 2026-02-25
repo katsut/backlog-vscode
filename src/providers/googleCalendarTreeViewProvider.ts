@@ -87,15 +87,22 @@ export class EventItem extends vscode.TreeItem {
 }
 
 export class DocumentItem extends vscode.TreeItem {
-  constructor(public readonly file: GoogleDriveFile, public readonly event: GoogleCalendarEvent) {
+  constructor(
+    public readonly file: GoogleDriveFile,
+    public readonly event: GoogleCalendarEvent,
+    extensionUri?: vscode.Uri
+  ) {
     super(file.name, vscode.TreeItemCollapsibleState.None);
 
     this.contextValue = 'calendarDocument';
     this.tooltip = `${file.name}\n${file.mimeType}`;
 
     // Icon based on mime type
-    if (file.mimeType === 'application/vnd.google-apps.document') {
-      this.iconPath = new vscode.ThemeIcon('note');
+    if (extensionUri && file.mimeType === 'application/vnd.google-apps.document') {
+      this.iconPath = {
+        light: vscode.Uri.joinPath(extensionUri, 'media', 'google-docs-icon.svg'),
+        dark: vscode.Uri.joinPath(extensionUri, 'media', 'google-docs-icon.svg'),
+      };
     } else if (file.mimeType === 'application/vnd.google-apps.spreadsheet') {
       this.iconPath = new vscode.ThemeIcon('table');
     } else if (file.mimeType === 'application/vnd.google-apps.presentation') {
@@ -104,11 +111,10 @@ export class DocumentItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon('file');
     }
 
-    // Click to open in webview
     this.command = {
-      command: 'nulab.google.openMeetingNotes',
+      command: 'nulab.treeItemClicked',
       title: 'Open Meeting Notes',
-      arguments: [file, event],
+      arguments: ['nulab.google.openMeetingNotes', file, event],
     };
   }
 }
@@ -129,7 +135,7 @@ export class GoogleCalendarTreeViewProvider
   private documentCache: Map<string, GoogleDriveFile[]> = new Map();
   private daysRange: number;
 
-  constructor(private googleApi: GoogleApiService) {
+  constructor(private googleApi: GoogleApiService, private extensionUri: vscode.Uri) {
     this.daysRange =
       vscode.workspace.getConfiguration('nulab').get<number>('google.daysRange') || 7;
   }
@@ -263,7 +269,7 @@ export class GoogleCalendarTreeViewProvider
     }
 
     const docs = this.documentCache.get(event.id) || [];
-    return docs.map((doc) => new DocumentItem(doc, event));
+    return docs.map((doc) => new DocumentItem(doc, event, this.extensionUri));
   }
 }
 

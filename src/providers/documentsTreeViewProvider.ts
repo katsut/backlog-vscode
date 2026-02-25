@@ -307,22 +307,17 @@ export class DocumentTreeItem extends vscode.TreeItem {
         new vscode.ThemeColor('nulab.brandColor')
       );
       this.contextValue = 'documentWithChildren';
-      // 親ドキュメントもクリックでコンテンツを開けるようにコマンドを設定
-      this.command = {
-        command: 'nulab.openDocument',
-        title: 'Open Document',
-        arguments: [this.document],
-      };
     } else {
       // 通常のドキュメント（子要素なし）
       this.iconPath = new vscode.ThemeIcon('file-text', new vscode.ThemeColor('nulab.brandColor'));
       this.contextValue = 'document';
-      this.command = {
-        command: 'nulab.openDocument',
-        title: 'Open Document',
-        arguments: [this.document],
-      };
     }
+
+    this.command = {
+      command: 'nulab.treeItemClicked',
+      title: 'Open Document',
+      arguments: ['nulab.openDocument', this.document],
+    };
 
     // Sync ステータスデコレーション
     if (syncStatus === 'local_modified') {

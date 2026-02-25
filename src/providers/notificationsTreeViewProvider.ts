@@ -169,12 +169,11 @@ export class NotificationTreeItem extends vscode.TreeItem {
     // Store summary for TODO conversion
     this.todoSummary = NotificationsTreeViewProvider.getNotificationSummary(notification);
 
-    // Click → open related issue
     if (notification.issue) {
       this.command = {
-        command: 'nulab.openIssue',
+        command: 'nulab.treeItemClicked',
         title: 'Open Issue',
-        arguments: [notification.issue],
+        arguments: ['nulab.openIssue', notification.issue],
       };
     }
   }

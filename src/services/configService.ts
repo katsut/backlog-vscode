@@ -3,8 +3,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DocumentSyncMapping } from '../types/backlog';
 import { CacooSyncMapping, CacooPinnedSheet } from '../types/cacoo';
-import { WorkspaceTodoItem } from '../types/workspace';
-
 export class ConfigService {
   private readonly configSection = 'nulab';
   private readonly secretStorage: vscode.SecretStorage;
@@ -12,7 +10,6 @@ export class ConfigService {
 
   /** File names under .nulab/ for workspace-local data */
   private static readonly FILE_DOC_SYNC_MAPPINGS = 'document-sync-mappings.json';
-  private static readonly FILE_TODOS = 'todos.json';
   private static readonly FILE_SLACK_SEARCH_KEYWORDS = 'slack-search-keywords.json';
 
   constructor(secretStorage: vscode.SecretStorage, globalState: vscode.Memento) {
@@ -309,26 +306,6 @@ export class ConfigService {
     await this.setSecret('nulab.slack.token', token);
   }
 
-  // ---- Anthropic ----
-
-  async getAnthropicApiKey(): Promise<string | undefined> {
-    return await this.getSecret('nulab.anthropic.apiKey');
-  }
-
-  async setAnthropicApiKey(apiKey: string): Promise<void> {
-    await this.setSecret('nulab.anthropic.apiKey', apiKey);
-  }
-
-  // ---- Workspace TODO ----
-
-  getWorkspaceTodos(): WorkspaceTodoItem[] {
-    return this.readJsonFile<WorkspaceTodoItem[]>(ConfigService.FILE_TODOS, []);
-  }
-
-  setWorkspaceTodos(todos: WorkspaceTodoItem[]): void {
-    this.writeJsonFile(ConfigService.FILE_TODOS, todos);
-  }
-
   // ---- Workspace Polling ----
 
   getNotificationPollingInterval(): number {
@@ -348,7 +325,7 @@ export class ConfigService {
   isBacklogAutoTodoEnabled(): boolean {
     return vscode.workspace
       .getConfiguration(this.configSection)
-      .get<boolean>('backlog.autoTodoEnabled', true);
+      .get<boolean>('backlog.autoTodoEnabled', false);
   }
 
   getAutoTodoReasons(): number[] {
@@ -357,10 +334,22 @@ export class ConfigService {
       .get<number[]>('backlog.autoTodoReasons', [1, 2, 9, 10]);
   }
 
+  isSlackIncludeDMs(): boolean {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<boolean>('slack.includeDMs', true);
+  }
+
   isSlackAutoTodoEnabled(): boolean {
     return vscode.workspace
       .getConfiguration(this.configSection)
-      .get<boolean>('slack.autoTodoEnabled', true);
+      .get<boolean>('slack.autoTodoEnabled', false);
+  }
+
+  isSlackAutoTodoDMs(): boolean {
+    return vscode.workspace
+      .getConfiguration(this.configSection)
+      .get<boolean>('slack.autoTodoDMs', false);
   }
 
   getSlackSearchKeywords(): string[] {

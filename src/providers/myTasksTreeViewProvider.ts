@@ -72,10 +72,11 @@ class MyTaskTreeItem extends vscode.TreeItem {
       .join('\n');
 
     this.contextValue = 'myTask';
+
     this.command = {
-      command: 'nulab.openIssue',
+      command: 'nulab.treeItemClicked',
       title: 'Open Issue',
-      arguments: [issue],
+      arguments: ['nulab.openIssue', issue],
     };
   }
 }

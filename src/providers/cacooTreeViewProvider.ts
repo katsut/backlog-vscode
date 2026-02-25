@@ -269,10 +269,16 @@ class CacooSheetItem extends vscode.TreeItem {
     this.contextValue = 'cacooSheet';
     this.description = isPinned ? 'pinned' : `${sheet.width}x${sheet.height}`;
     this.tooltip = `${diagram.title} / ${sheet.name}\n${sheet.width}x${sheet.height}`;
+
     this.command = {
-      command: 'cacoo.previewSheet',
+      command: 'nulab.treeItemClicked',
       title: 'Preview Sheet',
-      arguments: [diagram.diagramId, sheet.uid, `${diagram.title} / ${sheet.name}`],
+      arguments: [
+        'cacoo.previewSheet',
+        diagram.diagramId,
+        sheet.uid,
+        `${diagram.title} / ${sheet.name}`,
+      ],
     };
   }
 }

@@ -22,8 +22,8 @@ export class SessionCodeLensProvider implements vscode.CodeLensProvider {
       return [];
     }
 
-    // Don't show CodeLens if already posted or still generating
-    if (parsed.meta.status === 'posted' || parsed.meta.status === 'generating') {
+    // Don't show CodeLens if already posted or no action
+    if (parsed.meta.sessionStatus === 'posted' || parsed.meta.action === 'none') {
       return [];
     }
 

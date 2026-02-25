@@ -38,7 +38,7 @@ import {
   MappingItem,
 } from './providers/documentFilesTreeViewProvider';
 import { SlackThreadWebview } from './webviews/slackThreadWebview';
-import { TodoWebview } from './webviews/todoWebview';
+import { TodoEditorProvider } from './providers/todoEditorProvider';
 import { PollingService } from './services/pollingService';
 import { GoogleApiService } from './services/googleApi';
 import {
@@ -46,12 +46,10 @@ import {
   DocumentItem,
   EventItem,
 } from './providers/googleCalendarTreeViewProvider';
-import { MeetingNotesWebview } from './webviews/meetingNotesWebview';
 import { GoogleDriveFile, GoogleCalendarEvent } from './types/google';
 import * as fs from 'fs';
 import * as path from 'path';
 import { NOTIFICATION_REASONS, SlackMessage, TodoContext, TodoStatus } from './types/workspace';
-import { AnthropicService } from './services/anthropicService';
 import { SessionService } from './services/sessionService';
 import { SessionCodeLensProvider } from './providers/sessionCodeLensProvider';
 
@@ -71,7 +69,18 @@ const openDocumentWebviews: Map<string, vscode.WebviewPanel> = new Map();
 // 開いているCacoo Sheet Webviewを追跡
 const openCacooSheetPanels: Map<string, vscode.WebviewPanel> = new Map();
 
+// Output channel for logging
+let outputChannel: vscode.OutputChannel;
+
+function log(message: string): void {
+  const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  outputChannel?.appendLine(`[${timestamp}] ${message}`);
+}
+
 export function activate(context: vscode.ExtensionContext) {
+  outputChannel = vscode.window.createOutputChannel('Nulab Workspace');
+  context.subscriptions.push(outputChannel);
+  log('Backlog extension activating...');
   console.log('Backlog extension activating...');
   let configService: ConfigService;
   let backlogApi: BacklogApiService;
@@ -1565,13 +1574,29 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // ---- Workspace Integration ----
+  const nulabDirPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    ? path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, '.nulab')
+    : undefined;
+  const sessionService = new SessionService(null, null, nulabDirPath);
+  sessionService.migrateFromTodosJson();
+  sessionService.migrateMdToTodomd();
+
   const pollingService = new PollingService();
-  const todoProvider = new TodoTreeViewProvider(configService);
+  const todoProvider = new TodoTreeViewProvider(sessionService);
   const myTasksProvider = new MyTasksTreeViewProvider(backlogApi);
   const notificationsProvider = new NotificationsTreeViewProvider(backlogApi);
 
   const todosTreeView = vscode.window.createTreeView('workspaceTodos', {
     treeDataProvider: todoProvider,
+  });
+
+  // Track focused TODO item (selection follows arrow keys)
+  let lastFocusedTodoItem: TodoTreeItem | undefined;
+  todosTreeView.onDidChangeSelection((e) => {
+    const item = e.selection[0];
+    if (item instanceof TodoTreeItem) {
+      lastFocusedTodoItem = item;
+    }
   });
 
   const myTasksTreeView = vscode.window.createTreeView('workspaceMyTasks', {
@@ -1683,7 +1708,8 @@ export function activate(context: vscode.ExtensionContext) {
       placeHolder: 'タスクの内容',
     });
     if (text) {
-      todoProvider.addTodo(text);
+      const newTodo = todoProvider.addTodo(text);
+      vscode.commands.executeCommand('workspace.openTodoDetail', newTodo.id);
     }
   });
 
@@ -1712,11 +1738,29 @@ export function activate(context: vscode.ExtensionContext) {
 
   const wsDeleteTodoCommand = vscode.commands.registerCommand(
     'workspace.deleteTodo',
-    (item: TodoTreeItem) => {
-      if (!(item instanceof TodoTreeItem)) {
-        return;
+    async (item?: TodoTreeItem) => {
+      // Resolve item: context menu arg > selection > last focused
+      if (!item || !(item instanceof TodoTreeItem)) {
+        const selected = todosTreeView.selection[0];
+        if (selected instanceof TodoTreeItem) {
+          item = selected;
+        } else if (lastFocusedTodoItem) {
+          item = lastFocusedTodoItem;
+        } else {
+          return;
+        }
       }
-      todoProvider.deleteTodo(item.todo.id);
+      const label =
+        item.todo.text.length > 40 ? item.todo.text.substring(0, 40) + '...' : item.todo.text;
+      const answer = await vscode.window.showWarningMessage(
+        `TODO「${label}」を削除しますか？`,
+        { modal: true },
+        'Delete'
+      );
+      if (answer === 'Delete') {
+        todoProvider.deleteTodo(item.todo.id);
+        lastFocusedTodoItem = undefined;
+      }
     }
   );
 
@@ -1747,30 +1791,10 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  const openTodoPanels = new Map<string, vscode.WebviewPanel>();
-
-  function renderTodoPanel(panel: vscode.WebviewPanel, todoId: string): void {
-    const todo = todoProvider.findTodoById(todoId);
-    if (!todo) {
-      panel.webview.html = '<html><body><p>TODO が見つかりません</p></body></html>';
-      return;
-    }
-    panel.webview.html = TodoWebview.getWebviewContent(
-      panel.webview,
-      context.extensionUri,
-      todo,
-      configService.getBaseUrl()
-    );
-  }
-
   const wsCycleTodoStatusCommand = vscode.commands.registerCommand(
     'workspace.cycleTodoStatus',
     (id: string) => {
       todoProvider.cycleStatus(id);
-      const panel = openTodoPanels.get(id);
-      if (panel) {
-        renderTodoPanel(panel, id);
-      }
     }
   );
 
@@ -1781,7 +1805,6 @@ export function activate(context: vscode.ExtensionContext) {
       if (!todo) {
         return;
       }
-      // Open the TODO detail panel
       vscode.commands.executeCommand('workspace.openTodoDetail', todoId);
     }
   );
@@ -1793,72 +1816,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (!todoId) {
         return;
       }
-      const todo = todoProvider.findTodoById(todoId);
-      if (!todo) {
-        return;
-      }
-
-      const existing = openTodoPanels.get(todoId);
-      if (existing) {
-        existing.reveal(vscode.ViewColumn.One);
-        renderTodoPanel(existing, todoId);
-        return;
-      }
-
-      const panel = vscode.window.createWebviewPanel(
-        'todoDetail',
-        `TODO: ${todo.text.substring(0, 40)}`,
-        vscode.ViewColumn.One,
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true,
-          localResourceRoots: [context.extensionUri],
-        }
-      );
-
-      openTodoPanels.set(todoId, panel);
-      panel.onDidDispose(() => openTodoPanels.delete(todoId));
-
-      renderTodoPanel(panel, todoId);
-
-      panel.webview.onDidReceiveMessage(
-        async (message) => {
-          if (message.command === 'setStatus') {
-            todoProvider.setStatus(todoId, message.status);
-            renderTodoPanel(panel, todoId);
-          }
-          if (message.command === 'markReplied') {
-            todoProvider.markReplied(todoId);
-            renderTodoPanel(panel, todoId);
-          }
-          if (message.command === 'saveNotes') {
-            todoProvider.editNotes(todoId, message.notes);
-            vscode.window.showInformationMessage('[Nulab] Notes を保存しました');
-          }
-          if (message.command === 'delete') {
-            todoProvider.deleteTodo(todoId);
-            panel.dispose();
-          }
-          if (message.command === 'openExternal' && message.url) {
-            vscode.env.openExternal(vscode.Uri.parse(message.url));
-          }
-          if (message.command === 'openSlackThread') {
-            const ctx = todo.context;
-            if (ctx?.slackChannel) {
-              const ts = ctx.slackThreadTs || ctx.slackMessageTs || '';
-              const sender = ctx.slackUserName || 'Thread';
-              vscode.commands.executeCommand(
-                'workspace.openSlackThread',
-                ctx.slackChannel,
-                ts,
-                `Thread: ${sender}`
-              );
-            }
-          }
-        },
-        undefined,
-        context.subscriptions
-      );
+      const fileUri = vscode.Uri.file(sessionService.getSessionFilePath(todoId));
+      await vscode.commands.executeCommand('vscode.openWith', fileUri, 'nulab.todoEditor');
     }
   );
 
@@ -1879,10 +1838,6 @@ export function activate(context: vscode.ExtensionContext) {
       );
       if (pick) {
         todoProvider.setStatus(item.todo.id, pick.status);
-        const panel = openTodoPanels.get(item.todo.id);
-        if (panel) {
-          renderTodoPanel(panel, item.todo.id);
-        }
       }
     }
   );
@@ -2044,84 +1999,95 @@ export function activate(context: vscode.ExtensionContext) {
     searchKeywords.length > 0
   );
 
-  // ---- AI Session (Anthropic API) ----
-  const anthropicService = new AnthropicService(configService);
-  const nulabDirPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-    ? path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, '.nulab')
-    : undefined;
-  const sessionService = new SessionService(backlogApi, slackApi, anthropicService, nulabDirPath);
+  // ---- Session (Claude Code 連携) ----
+  sessionService.setApis(backlogApi, slackApi);
   const sessionCodeLensProvider = new SessionCodeLensProvider(sessionService);
 
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
-      { pattern: '**/.nulab/sessions/todo-*.md' },
+      { pattern: '**/.nulab/todos/todo-*.todomd' },
       sessionCodeLensProvider
     )
   );
 
-  // Cleanup old posted sessions on startup
-  sessionService.cleanupSessions();
+  const todoEditorProvider = new TodoEditorProvider(
+    context.extensionUri,
+    sessionService,
+    todoProvider,
+    configService,
+    slackApi,
+    sessionCodeLensProvider
+  );
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(TodoEditorProvider.viewType, todoEditorProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
+  );
 
   const startClaudeSessionCommand = vscode.commands.registerCommand(
     'workspace.startClaudeSession',
-    async (item: TodoTreeItem) => {
-      if (!(item instanceof TodoTreeItem)) {
+    async (itemOrTodoId: TodoTreeItem | string) => {
+      // Resolve todo: from TreeItem (context menu) or todoId string (Webview)
+      let resolved: import('./types/workspace').WorkspaceTodoItem | undefined;
+      if (itemOrTodoId instanceof TodoTreeItem) {
+        resolved = itemOrTodoId.todo;
+      } else if (typeof itemOrTodoId === 'string') {
+        resolved = todoProvider.findTodoById(itemOrTodoId);
+      }
+      if (!resolved) {
         return;
       }
-      const todo = item.todo;
-      const ctx = todo.context;
-      if (!ctx) {
-        vscode.window.showWarningMessage('[Nulab] この TODO にはコンテキスト情報がありません');
-        return;
-      }
-
-      const apiKey = await anthropicService.ensureApiKey();
-      if (!apiKey) {
-        return;
-      }
+      const todo = resolved;
 
       try {
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: '[Nulab] AI で返信ドラフトを生成中...',
-            cancellable: true,
-          },
-          async (progress, token) => {
-            if (ctx.source === 'backlog-notification' && ctx.issueKey && ctx.issueId) {
-              await sessionService.startBacklogSession(
-                todo,
-                () => {
-                  progress.report({ increment: 1 });
-                },
-                token
-              );
-            } else if (
-              (ctx.source === 'slack-mention' || ctx.source === 'slack-search') &&
-              ctx.slackChannel
-            ) {
-              await sessionService.startSlackSession(
-                todo,
-                () => {
-                  progress.report({ increment: 1 });
-                },
-                token
-              );
-            } else {
-              vscode.window.showWarningMessage('[Nulab] 対応するソースが見つかりません');
-              return;
-            }
+        // Ensure session file exists (should already exist since addTodo creates it)
+        if (!sessionService.hasSession(todo.id)) {
+          sessionService.createSessionFromTodo(todo);
+        }
 
-            // Update TODO status to in_progress
-            todoProvider.setStatus(todo.id, 'in_progress');
-            sessionCodeLensProvider.refresh();
-          }
+        // Mark as active session so Claude Code knows which file to read
+        sessionService.setActiveSession(todo.id);
+
+        // Update TODO status to in_progress
+        todoProvider.setStatus(todo.id, 'in_progress');
+        sessionCodeLensProvider.refresh();
+
+        // Open .todomd as a text editor so Claude Code sees it via ide_opened_file
+        const fileUri = vscode.Uri.file(sessionService.getSessionFilePath(todo.id));
+        const doc = await vscode.workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(doc, {
+          preview: false,
+          viewColumn: vscode.ViewColumn.One,
+        });
+
+        // Open Claude Code in the editor area
+        try {
+          await vscode.commands.executeCommand('claude-vscode.editor.open');
+        } catch {
+          // Claude Code extension not installed
+        }
+
+        // Close the text editor tab (Claude Code has already picked up the file)
+        const tabGroup = vscode.window.tabGroups.all.find((g) =>
+          g.tabs.some(
+            (t) =>
+              t.input instanceof vscode.TabInputText &&
+              t.input.uri.toString() === fileUri.toString()
+          )
         );
+        if (tabGroup) {
+          const tab = tabGroup.tabs.find(
+            (t) =>
+              t.input instanceof vscode.TabInputText &&
+              t.input.uri.toString() === fileUri.toString()
+          );
+          if (tab) {
+            await vscode.window.tabGroups.close(tab);
+          }
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg !== 'Cancelled') {
-          vscode.window.showErrorMessage(`[Nulab] セッション開始に失敗: ${msg}`);
-        }
+        vscode.window.showErrorMessage(`[Nulab] セッション開始に失敗: ${msg}`);
       }
     }
   );
@@ -2154,8 +2120,8 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         // Mark TODO as replied
-        if (parsed.meta.todoId) {
-          todoProvider.markReplied(parsed.meta.todoId);
+        if (parsed.meta.id) {
+          todoProvider.markReplied(parsed.meta.id);
         }
 
         sessionCodeLensProvider.refresh();
@@ -2194,7 +2160,10 @@ export function activate(context: vscode.ExtensionContext) {
           await vscode.window.showTextDocument(draftEditor.document);
           await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
         }
-        fs.unlinkSync(filePath);
+        // Extract todoId from filename pattern: todo-{id}.md
+        const basename = path.basename(filePath, '.todomd');
+        const todoId = basename.replace(/^todo-/, '');
+        sessionService.clearDraft(todoId);
         vscode.window.showInformationMessage('[Nulab] ドラフトを破棄しました');
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -2203,26 +2172,10 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  const setAnthropicApiKeyCommand = vscode.commands.registerCommand(
-    'nulab.setAnthropicApiKey',
-    async () => {
-      const key = await vscode.window.showInputBox({
-        prompt: 'Anthropic API Key を入力してください (Team Plan)',
-        password: true,
-        placeHolder: 'sk-ant-...',
-      });
-      if (key) {
-        await anthropicService.setApiKey(key);
-        vscode.window.showInformationMessage('[Nulab] Anthropic API Key を保存しました');
-      }
-    }
-  );
-
   context.subscriptions.push(
     startClaudeSessionCommand,
     postSessionReplyCommand,
-    discardSessionCommand,
-    setAnthropicApiKeyCommand
+    discardSessionCommand
   );
 
   // Auto-refresh search view when keywords file changes
@@ -2260,15 +2213,20 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       // Fetch mentions + search results
+      const includeDMs = configService.isSlackIncludeDMs();
       const [mentionCount, , slackMentions] = await Promise.all([
-        slackProvider.fetchAndRefresh(),
+        slackProvider.fetchAndRefresh({ includeDMs }),
         slackSearchProvider.fetchAndRefresh(),
-        slackApi.isConfigured().then((ok) => (ok ? slackApi.getMentions() : [])),
+        slackApi.isConfigured().then((ok) => (ok ? slackApi.getMentions({ includeDMs }) : [])),
       ]);
 
       // Auto-TODO from Slack mentions
       if (configService.isSlackAutoTodoEnabled() && slackMentions.length > 0) {
+        const autoTodoDMs = configService.isSlackAutoTodoDMs();
         for (const m of slackMentions) {
+          if (m.is_dm && !autoTodoDMs) {
+            continue;
+          }
           todoProvider.addFromSlackMention({
             channel: m.channel,
             threadTs: m.thread_ts || m.ts,
@@ -2635,129 +2593,21 @@ export function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  // ---- Export Context for Claude Code ----
-  const wsExportContextCommand = vscode.commands.registerCommand(
-    'workspace.exportContext',
-    async () => {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders) {
-        vscode.window.showWarningMessage('[Nulab] ワークスペースを開いてください。');
-        return;
-      }
-
-      const rootPath = workspaceFolders[0].uri.fsPath;
-      const outDir = path.join(rootPath, '.nulab');
-      fs.mkdirSync(outDir, { recursive: true });
-
-      const ctx: Record<string, unknown> = {
-        exportedAt: new Date().toISOString(),
-        backlog: {
-          notifications: [] as unknown[],
-          myTasks: [] as unknown[],
-          todos: [] as unknown[],
-        },
-        slack: {
-          channels: [] as unknown[],
-          mentions: [] as unknown[],
-          searchResults: {} as Record<string, unknown[]>,
-        },
-      };
-
-      const bl = ctx.backlog as Record<string, unknown[]>;
-      const sl = ctx.slack as Record<string, unknown>;
-
-      // Backlog notifications
-      try {
-        const notifications = await backlogApi.getNotifications({ count: 30, order: 'desc' });
-        bl.notifications = notifications.map((n: Record<string, unknown>) => ({
-          id: n.id,
-          sender: (n.sender as Record<string, unknown>)?.name || 'Unknown',
-          reason: NOTIFICATION_REASONS[n.reason as number] || `reason:${n.reason}`,
-          issueKey: (n.issue as Record<string, unknown>)?.issueKey,
-          issueSummary: (n.issue as Record<string, unknown>)?.summary,
-          comment: ((n.comment as Record<string, unknown>)?.content as string)?.substring(0, 200),
-          alreadyRead: n.alreadyRead,
-          created: n.created,
-        }));
-      } catch {
-        /* skip */
-      }
-
-      // My tasks
-      try {
-        const issues = await backlogApi.getMyIssuesAcrossProjects();
-        bl.myTasks = issues.map((i) => ({
-          issueKey: i.issueKey,
-          summary: i.summary,
-          status: i.status?.name || '',
-          priority: i.priority?.name || '',
-          dueDate: i.dueDate,
-        }));
-      } catch {
-        /* skip */
-      }
-
-      // TODOs
-      bl.todos = configService.getWorkspaceTodos();
-
-      // Slack
-      if (await slackApi.isConfigured()) {
-        try {
-          const channels = await slackApi.getChannels();
-          (sl.channels as unknown[]) = channels
-            .filter((ch) => ch.unread_count > 0)
-            .map((ch) => ({
-              id: ch.id,
-              name: ch.name,
-              unread_count: ch.unread_count,
-            }));
-        } catch {
-          /* skip */
-        }
-
-        try {
-          const mentions = await slackApi.getMentions();
-          (sl.mentions as unknown[]) = mentions.map((m) => ({
-            userName: m.userName || m.user,
-            text: m.text,
-            channel: m.channel,
-            ts: m.ts,
-          }));
-        } catch {
-          /* skip */
-        }
-
-        const keywords = configService.getSlackSearchKeywords();
-        const searchResults: Record<string, unknown[]> = {};
-        for (const kw of keywords) {
-          try {
-            const results = await slackApi.searchMessages(kw);
-            searchResults[kw] = results.map((m) => ({
-              userName: m.userName || m.user,
-              text: m.text,
-              channel: m.channel,
-              ts: m.ts,
-            }));
-          } catch {
-            /* skip */
-          }
-        }
-        sl.searchResults = searchResults;
-      }
-
-      const outPath = path.join(outDir, 'workspace-context.json');
-      fs.writeFileSync(outPath, JSON.stringify(ctx, null, 2), 'utf-8');
-      vscode.window.showInformationMessage(
-        `[Nulab] コンテキストをエクスポートしました: .nulab/workspace-context.json`
-      );
-    }
-  );
-
   // Register webview provider
   const webviewProvider = vscode.window.registerWebviewViewProvider(
     'backlogIssueDetail',
     backlogWebviewProvider
   );
+
+  let googleCalendar: { disposables: vscode.Disposable[]; treeView: vscode.TreeView<any> } | null =
+    null;
+  try {
+    googleCalendar = registerGoogleCalendar(context, configService);
+    log('Google Calendar registered successfully');
+  } catch (error) {
+    log(`Failed to register Google Calendar: ${error}`);
+    console.error('Failed to register Google Calendar:', error);
+  }
 
   // Add disposables to context
   context.subscriptions.push(
@@ -2845,13 +2695,176 @@ export function activate(context: vscode.ExtensionContext) {
     wsAddTodoFromSlackCommand,
     backlogStatusBar,
     slackStatusBar,
-    wsExportContextCommand,
     wsEditSlackSearchKeywordsCommand,
     documentFilesTreeView,
     wsRefreshDocumentFilesCommand,
     wsOpenDocumentFileFolderCommand,
-    ...registerGoogleCalendar(context, configService)
+    ...(googleCalendar?.disposables ?? [])
   );
+
+  // Click guard: first click selects, second click (on already-selected item) opens
+  {
+    let clickGuardActive = false;
+    const allTreeViews: vscode.TreeView<any>[] = [
+      projectsTreeView,
+      issuesTreeView,
+      wikiTreeView,
+      documentsTreeView,
+      todosTreeView,
+      myTasksTreeView,
+      notificationsTreeView,
+      cacooTreeView,
+      documentFilesTreeView,
+      slackTreeView,
+      slackSearchTreeView,
+      ...(googleCalendar ? [googleCalendar.treeView] : []),
+    ];
+    for (const tv of allTreeViews) {
+      tv.onDidChangeSelection(() => {
+        clickGuardActive = true;
+        setTimeout(() => {
+          clickGuardActive = false;
+        }, 100);
+      });
+    }
+
+    // TreeItem click: only open if item was already selected
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        'nulab.treeItemClicked',
+        (targetCommand: string, ...args: any[]) => {
+          if (!clickGuardActive) {
+            vscode.commands.executeCommand(targetCommand, ...args);
+          }
+        }
+      )
+    );
+
+    // Enter key: always open selected item immediately
+    context.subscriptions.push(
+      vscode.commands.registerCommand('nulab.openSelectedTreeItem', () => {
+        const treeViews: { view: vscode.TreeView<any>; handler: (item: any) => void }[] = [
+          {
+            view: todosTreeView,
+            handler: (item) =>
+              item.todo && vscode.commands.executeCommand('workspace.openTodoDetail', item.todo.id),
+          },
+          {
+            view: myTasksTreeView,
+            handler: (item) =>
+              item.issue && vscode.commands.executeCommand('nulab.openIssue', item.issue),
+          },
+          {
+            view: notificationsTreeView,
+            handler: (item) =>
+              item.notification?.issue &&
+              vscode.commands.executeCommand('nulab.openIssue', item.notification.issue),
+          },
+          {
+            view: issuesTreeView,
+            handler: (item) =>
+              item.issue && vscode.commands.executeCommand('nulab.openIssue', item.issue),
+          },
+          {
+            view: wikiTreeView,
+            handler: (item) =>
+              item.wiki && vscode.commands.executeCommand('nulab.openWiki', item.wiki),
+          },
+          {
+            view: documentsTreeView,
+            handler: (item) => {
+              if (item.document) {
+                vscode.commands.executeCommand('nulab.openDocument', item.document);
+              } else if (item.node) {
+                vscode.commands.executeCommand(
+                  'nulab.openDocumentFromNode',
+                  item.node.id,
+                  item.projectId
+                );
+              }
+            },
+          },
+          {
+            view: projectsTreeView,
+            handler: (item) => {
+              if (item.project) {
+                vscode.commands.executeCommand('nulab.focusProject', item.project.id);
+              } else if (item.issue) {
+                vscode.commands.executeCommand('nulab.openIssue', item.issue);
+              } else if (item.wiki) {
+                vscode.commands.executeCommand('nulab.openWiki', item.wiki);
+              } else if (item.document) {
+                vscode.commands.executeCommand('nulab.openDocument', item.document);
+              } else if (item.node) {
+                vscode.commands.executeCommand(
+                  'nulab.openDocumentFromNode',
+                  item.node.id,
+                  item.projectId
+                );
+              }
+            },
+          },
+          {
+            view: cacooTreeView,
+            handler: (item) =>
+              item.sheet &&
+              item.diagram &&
+              vscode.commands.executeCommand(
+                'cacoo.previewSheet',
+                item.diagram.diagramId,
+                item.sheet.uid,
+                `${item.diagram.title} / ${item.sheet.name}`
+              ),
+          },
+          {
+            view: documentFilesTreeView,
+            handler: (item) =>
+              item.resourceUri &&
+              vscode.commands.executeCommand(
+                'vscode.openWith',
+                item.resourceUri,
+                'nulab.bdocEditor'
+              ),
+          },
+          {
+            view: slackTreeView,
+            handler: (item) => {
+              if (item.message) {
+                const m = item.message;
+                vscode.commands.executeCommand(
+                  'workspace.openSlackThread',
+                  m.channel,
+                  m.thread_ts || m.ts,
+                  `Thread: ${m.userName || m.user}`
+                );
+              }
+            },
+          },
+          {
+            view: slackSearchTreeView,
+            handler: (item) => {
+              if (item.message) {
+                const m = item.message;
+                vscode.commands.executeCommand(
+                  'workspace.openSlackThread',
+                  m.channel,
+                  m.thread_ts || m.ts,
+                  `Thread: ${m.userName || m.user}`
+                );
+              }
+            },
+          },
+        ];
+        for (const { view, handler } of treeViews) {
+          const selected = view.selection[0];
+          if (selected && view.visible) {
+            handler(selected);
+            return;
+          }
+        }
+      })
+    );
+  }
 
   // Auto-refresh if enabled
   if (configService.isAutoRefreshEnabled()) {
@@ -2867,22 +2880,22 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   checkConfiguration(configService);
+  log('Extension activated successfully');
 }
 
 export function deactivate() {
+  log('Extension deactivated');
   console.log('Backlog extension is now deactivated');
 }
 
 // ---- Google Calendar ----
 
-const openMeetingNotePanels: Map<string, vscode.WebviewPanel> = new Map();
-
 function registerGoogleCalendar(
   context: vscode.ExtensionContext,
   configService: ConfigService
-): vscode.Disposable[] {
+): { disposables: vscode.Disposable[]; treeView: vscode.TreeView<any> } {
   const googleApi = new GoogleApiService(configService);
-  const calendarProvider = new GoogleCalendarTreeViewProvider(googleApi);
+  const calendarProvider = new GoogleCalendarTreeViewProvider(googleApi, context.extensionUri);
 
   const calendarTreeView = vscode.window.createTreeView('workspaceGoogleCalendar', {
     treeDataProvider: calendarProvider,
@@ -2930,61 +2943,43 @@ function registerGoogleCalendar(
   const openMeetingNotesCmd = vscode.commands.registerCommand(
     'nulab.google.openMeetingNotes',
     async (file: GoogleDriveFile, event: GoogleCalendarEvent) => {
-      const panelKey = file.id;
-
-      // Reuse existing panel if open
-      const existing = openMeetingNotePanels.get(panelKey);
-      if (existing) {
-        existing.reveal();
+      log(`openMeetingNotes: file=${file?.name} (${file?.id}), event=${event?.summary}`);
+      if (!file || !event) {
+        log('openMeetingNotes: missing file or event argument');
         return;
       }
 
-      const panel = vscode.window.createWebviewPanel(
-        'meetingNotes',
-        file.name,
-        vscode.ViewColumn.One,
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true,
-          localResourceRoots: [context.extensionUri],
-        }
-      );
-
-      openMeetingNotePanels.set(panelKey, panel);
-      panel.onDidDispose(() => openMeetingNotePanels.delete(panelKey));
-
-      // Show loading
-      panel.webview.html = WebviewHelper.getLoadingWebviewContent('議事録を読み込み中...');
+      const wsFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!wsFolder) {
+        log('openMeetingNotes: no workspace folder');
+        vscode.window.showErrorMessage('ワークスペースが開かれていません。');
+        return;
+      }
 
       try {
-        const htmlContent = await googleApi.getFileContent(file.id);
-        panel.webview.html = MeetingNotesWebview.getWebviewContent(
-          panel.webview,
-          context.extensionUri,
-          event,
-          file,
-          htmlContent
-        );
+        const nulabDir = vscode.Uri.joinPath(wsFolder.uri, '.nulab', 'meeting-notes');
+        await vscode.workspace.fs.createDirectory(nulabDir);
 
-        // Auto-export to .nulab/meeting-notes/ for Claude Code
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (workspaceFolder) {
-          const nulabDir = vscode.Uri.joinPath(workspaceFolder.uri, '.nulab', 'meeting-notes');
-          await vscode.workspace.fs.createDirectory(nulabDir);
+        const eventDate = (event.start.dateTime || event.start.date || '').split('T')[0];
+        const safeName = (event.summary || 'meeting')
+          .replace(/[/\\:*?"<>|]/g, '_')
+          .substring(0, 60);
+        const fileName = `${eventDate}_${safeName}.gdoc`;
+        const fileUri = vscode.Uri.joinPath(nulabDir, fileName);
 
-          const eventDate = (event.start.dateTime || event.start.date || '').split('T')[0];
-          const safeName = (event.summary || 'meeting')
-            .replace(/[/\\:*?"<>|]/g, '_')
-            .substring(0, 60);
-          const fileName = `${eventDate}_${safeName}.md`;
-          const fileUri = vscode.Uri.joinPath(nulabDir, fileName);
+        // Check if file already exists
+        let fileExists = false;
+        try {
+          await vscode.workspace.fs.stat(fileUri);
+          fileExists = true;
+        } catch {
+          // File does not exist
+        }
 
-          const attendees = (event.attendees || [])
-            .filter((a) => !a.self)
-            .map((a) => a.displayName || a.email);
-
-          // Extract plain text from the sanitized HTML
-          const plainText = htmlContent
+        if (!fileExists) {
+          log(`openMeetingNotes: fetching content for file ${file.id}`);
+          const html = await googleApi.getFileContent(file.id);
+          const plainText = html
             .replace(/<style[\s\S]*?<\/style>/gi, '')
             .replace(/<[^>]+>/g, '\n')
             .replace(/&nbsp;/g, ' ')
@@ -2993,6 +2988,10 @@ function registerGoogleCalendar(
             .replace(/&gt;/g, '>')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
+
+          const attendees = (event.attendees || [])
+            .filter((a) => !a.self)
+            .map((a) => a.displayName || a.email);
 
           let timeStr = '';
           if (event.start.dateTime && event.end.dateTime) {
@@ -3018,93 +3017,28 @@ function registerGoogleCalendar(
             .filter(Boolean)
             .join('\n');
 
+          log(`openMeetingNotes: writing gdoc file ${fileUri.fsPath}`);
           await vscode.workspace.fs.writeFile(
             fileUri,
             Buffer.from(`${fm}\n\n${plainText}`, 'utf-8')
           );
+          log(`openMeetingNotes: gdoc file created`);
+        } else {
+          log(`openMeetingNotes: gdoc file already exists, reusing`);
         }
+
+        // Open the .gdoc file in the editor
+        const doc = await vscode.workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(doc, {
+          preview: false,
+          viewColumn: vscode.ViewColumn.One,
+        });
       } catch (error) {
-        panel.webview.html = WebviewHelper.getErrorWebviewContent(
+        log(`openMeetingNotes: error - ${error}`);
+        vscode.window.showErrorMessage(
           `議事録の取得に失敗しました: ${error instanceof Error ? error.message : error}`
         );
       }
-
-      // Handle messages from webview
-      panel.webview.onDidReceiveMessage(async (message) => {
-        switch (message.command) {
-          case 'createBacklogIssue': {
-            const summary = message.eventSummary || '';
-            const content = (message.content || '').substring(0, 5000);
-            // Open an issue creation quick-pick: let user type the issue key/project
-            const issueTitle = await vscode.window.showInputBox({
-              prompt: '課題タイトルを入力してください',
-              value: summary,
-              ignoreFocusOut: true,
-            });
-            if (issueTitle) {
-              // Copy the content for now; user can paste into the issue
-              await vscode.env.clipboard.writeText(
-                `## ${issueTitle}\n\n### 会議メモ\n\n${content}`
-              );
-              vscode.window.showInformationMessage(
-                '課題内容をクリップボードにコピーしました。Backlog で課題を作成してください。'
-              );
-            }
-            break;
-          }
-          case 'copyToClipboard': {
-            await vscode.env.clipboard.writeText(message.content || '');
-            vscode.window.showInformationMessage('クリップボードにコピーしました。');
-            break;
-          }
-          case 'openExternal': {
-            if (message.url) {
-              vscode.env.openExternal(vscode.Uri.parse(message.url));
-            }
-            break;
-          }
-          case 'exportForClaude': {
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-            if (!workspaceFolder) {
-              vscode.window.showErrorMessage('ワークスペースが開かれていません。');
-              break;
-            }
-            const nulabDir = vscode.Uri.joinPath(workspaceFolder.uri, '.nulab', 'meeting-notes');
-            await vscode.workspace.fs.createDirectory(nulabDir);
-
-            const eventDate = message.eventDate || 'unknown';
-            const safeName = (message.eventSummary || 'meeting')
-              .replace(/[/\\:*?"<>|]/g, '_')
-              .substring(0, 60);
-            const fileName = `${eventDate}_${safeName}.md`;
-            const fileUri = vscode.Uri.joinPath(nulabDir, fileName);
-
-            const attendeeList = (message.attendees || [])
-              .map((a: string) => `  - ${a}`)
-              .join('\n');
-
-            const frontmatter = [
-              '---',
-              `event: "${(message.eventSummary || '').replace(/"/g, '\\"')}"`,
-              `date: "${message.eventDateTime || eventDate}"`,
-              `attendees:`,
-              attendeeList || '  []',
-              message.sourceUrl ? `source: "${message.sourceUrl}"` : '',
-              message.meetLink ? `meet: "${message.meetLink}"` : '',
-              '---',
-            ]
-              .filter(Boolean)
-              .join('\n');
-
-            const mdContent = `${frontmatter}\n\n${message.content || ''}`;
-            await vscode.workspace.fs.writeFile(fileUri, Buffer.from(mdContent, 'utf-8'));
-            vscode.window.showInformationMessage(
-              `議事録をエクスポートしました: .nulab/meeting-notes/${fileName}`
-            );
-            break;
-          }
-        }
-      });
     }
   );
 
@@ -3119,15 +3053,34 @@ function registerGoogleCalendar(
     }
   );
 
-  return [
-    calendarTreeView,
-    setClientSecretCmd,
-    authenticateCmd,
-    signOutCmd,
-    refreshCmd,
-    openMeetingNotesCmd,
-    openInBrowserCmd,
-  ];
+  // Enter key: open selected calendar item
+  const openSelectedCalendarItemCmd = vscode.commands.registerCommand(
+    'nulab.google.openSelectedCalendarItem',
+    () => {
+      const selected = calendarTreeView.selection[0];
+      if (selected instanceof DocumentItem && selected.file && selected.event) {
+        vscode.commands.executeCommand(
+          'nulab.google.openMeetingNotes',
+          selected.file,
+          selected.event
+        );
+      }
+    }
+  );
+
+  return {
+    treeView: calendarTreeView,
+    disposables: [
+      calendarTreeView,
+      setClientSecretCmd,
+      authenticateCmd,
+      signOutCmd,
+      refreshCmd,
+      openMeetingNotesCmd,
+      openInBrowserCmd,
+      openSelectedCalendarItemCmd,
+    ],
+  };
 }
 
 async function checkConfiguration(configService: ConfigService) {

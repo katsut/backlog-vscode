@@ -64,17 +64,12 @@ cd mcp-server && npm run build
 
 VSCode 拡張と Claude Code を連携して、Backlog 通知や TODO への対応を支援する仕組み。
 
-### 1. コンテキストのエクスポート
+### 1. セッション開始
 
-VSCode コマンドパレットで `Workspace: Export Context for Claude Code` を実行すると、
-`.nulab/workspace-context.json` に以下の情報が出力される:
+TODO カスタムエディタから「Claude セッション開始」を実行すると:
 
-- Backlog 通知（送信者、理由、課題キー、コメント、既読/未読）
-- My Tasks（自分に割り当てられた課題一覧）
-- TODO リスト
-- Slack 未読チャンネル、メンション、キーワード検索結果
-
-Claude Code は `Read` ツールでこのファイルを読めば現在の状態を把握できる。
+- `.todomd` ファイルがテキストエディタで開かれる（Claude Code が `ide_opened_file` で自動認識）
+- Claude Code サイドバーが開き、新しい会話が始まる
 
 ### 2. 深掘り調査
 
@@ -96,9 +91,8 @@ node $CLI slack-thread C01ABCDEF 1234567890.123456
 
 ### 3. 対応フロー
 
-1. ユーザーが `Export Context` を実行
-2. Claude Code が `.nulab/workspace-context.json` を読む
-3. 未読通知や TODO から対応が必要な項目を特定
-4. Backlog RAG CLI で課題の前後関係を調査
-5. 必要に応じて Slack CLI で関連会話を検索
-6. 回答のドラフトを作成
+1. TODO カスタムエディタから「Claude セッション開始」を実行
+2. Claude Code が `.todomd` ファイルをコンテキストとして認識
+3. Backlog RAG CLI で課題の前後関係を調査
+4. 必要に応じて Slack CLI で関連会話を検索
+5. 回答のドラフトを作成

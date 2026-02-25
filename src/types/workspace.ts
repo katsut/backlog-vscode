@@ -53,6 +53,7 @@ export interface SlackMessage {
   thread_ts?: string;
   channel: string;
   userName?: string;
+  is_dm?: boolean;
 }
 
 export interface SlackMention {

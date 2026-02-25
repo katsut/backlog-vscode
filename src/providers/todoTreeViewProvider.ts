@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import { ConfigService } from '../services/configService';
+import { SessionService } from '../services/sessionService';
 import { WorkspaceTodoItem, TodoContext, TodoStatus } from '../types/workspace';
 
 type TodoTreeNode = TodoSectionItem | TodoTreeItem;
@@ -11,17 +11,31 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
 
   private todos: WorkspaceTodoItem[] = [];
 
-  constructor(private configService: ConfigService) {
-    this.todos = this.loadAndMigrate();
+  constructor(private sessionService: SessionService) {
+    this.todos = this.sessionService.loadAllTodos();
   }
 
   refresh(): void {
-    this.todos = this.loadAndMigrate();
+    this.todos = this.sessionService.loadAllTodos();
     this._onDidChangeTreeData.fire();
   }
 
   getTreeItem(element: TodoTreeNode): vscode.TreeItem {
     return element;
+  }
+
+  getParent(element: TodoTreeNode): TodoTreeNode | undefined {
+    if (element instanceof TodoTreeItem) {
+      const children = this.getRootChildren();
+      for (const child of children) {
+        if (child instanceof TodoSectionItem) {
+          if (child.items.some((t) => t.id === element.todo.id)) {
+            return child;
+          }
+        }
+      }
+    }
+    return undefined;
   }
 
   async getChildren(element?: TodoTreeNode): Promise<TodoTreeNode[]> {
@@ -89,7 +103,7 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
 
   // ---- CRUD ----
 
-  addTodo(text: string, context?: TodoContext): void {
+  addTodo(text: string, context?: TodoContext): WorkspaceTodoItem {
     const maxOrder = this.todos.reduce((max, t) => Math.max(max, t.order), 0);
     const item: WorkspaceTodoItem = {
       id: crypto.randomUUID(),
@@ -102,11 +116,14 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
       item.context = context;
     }
     this.todos.push(item);
-    this.save();
+    this.sessionService.createSessionFromTodo(item);
+    this._onDidChangeTreeData.fire();
+    return item;
   }
 
   /**
-   * Auto-create TODO from Backlog notification. Returns false if dedup match found.
+   * Auto-create TODO from Backlog notification.
+   * Returns the created/updated item, or null if dedup match updated an existing item.
    */
   addFromBacklogNotification(notification: {
     id: number;
@@ -117,7 +134,7 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
     sender: string;
     commentId?: number;
     commentContent?: string;
-  }): boolean {
+  }): WorkspaceTodoItem | null {
     // Dedup: find existing non-done TODO for the same issueKey
     const existing = this.todos.find(
       (t) =>
@@ -133,11 +150,18 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
       existing.context.reason = notification.reason;
       existing.context.comment = notification.commentContent;
       existing.replied = false; // new comment → needs reply again
-      this.save();
-      return false;
+      this.sessionService.updateFrontmatter(existing.id, {
+        notificationId: notification.id,
+        sender: notification.sender,
+        reason: notification.reason,
+        comment: notification.commentContent,
+        replied: false,
+      });
+      this._onDidChangeTreeData.fire();
+      return null;
     }
 
-    this.addTodo(`[${notification.issueKey}] ${notification.issueSummary}`, {
+    return this.addTodo(`[${notification.issueKey}] ${notification.issueSummary}`, {
       source: 'backlog-notification',
       issueKey: notification.issueKey,
       issueId: notification.issueId,
@@ -147,11 +171,11 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
       sender: notification.sender,
       comment: notification.commentContent,
     });
-    return true;
   }
 
   /**
-   * Auto-create TODO from Slack mention. Returns false if dedup match found.
+   * Auto-create TODO from Slack mention.
+   * Returns the created item, or null if dedup match found.
    */
   addFromSlackMention(mention: {
     channel: string;
@@ -160,7 +184,7 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
     senderName: string;
     messagePreview: string;
     channelName?: string;
-  }): boolean {
+  }): WorkspaceTodoItem | null {
     // Dedup: same channel + messageTs
     const existing = this.todos.find(
       (t) =>
@@ -169,11 +193,11 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
         t.context?.slackMessageTs === mention.messageTs
     );
     if (existing) {
-      return false;
+      return null;
     }
 
     const channelDisplay = mention.channelName || mention.channel;
-    this.addTodo(
+    return this.addTodo(
       `@${mention.senderName} in #${channelDisplay}: ${mention.messagePreview.substring(0, 80)}`,
       {
         source: 'slack-mention',
@@ -184,7 +208,6 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
         slackText: mention.messagePreview,
       }
     );
-    return true;
   }
 
   setStatus(id: string, status: TodoStatus): void {
@@ -193,12 +216,16 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
       return;
     }
     todo.status = status;
+    const updates: Record<string, unknown> = { status };
     if (status === 'done') {
       todo.completedAt = new Date().toISOString();
+      updates.completedAt = todo.completedAt;
     } else {
       todo.completedAt = undefined;
+      updates.completedAt = undefined;
     }
-    this.save();
+    this.sessionService.updateFrontmatter(id, updates);
+    this._onDidChangeTreeData.fire();
   }
 
   cycleStatus(id: string): void {
@@ -209,12 +236,16 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
     const cycle: TodoStatus[] = ['open', 'in_progress', 'done'];
     const idx = cycle.indexOf(todo.status);
     todo.status = cycle[(idx + 1) % cycle.length];
+    const updates: Record<string, unknown> = { status: todo.status };
     if (todo.status === 'done') {
       todo.completedAt = new Date().toISOString();
+      updates.completedAt = todo.completedAt;
     } else {
       todo.completedAt = undefined;
+      updates.completedAt = undefined;
     }
-    this.save();
+    this.sessionService.updateFrontmatter(id, updates);
+    this._onDidChangeTreeData.fire();
   }
 
   editNotes(id: string, notes: string): void {
@@ -223,7 +254,8 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
       return;
     }
     todo.notes = notes || undefined;
-    this.save();
+    this.sessionService.updateFrontmatter(id, { notes: todo.notes });
+    this._onDidChangeTreeData.fire();
   }
 
   markReplied(id: string): void {
@@ -233,7 +265,8 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
     }
     todo.replied = true;
     todo.repliedAt = new Date().toISOString();
-    this.save();
+    this.sessionService.updateFrontmatter(id, { replied: true, repliedAt: todo.repliedAt });
+    this._onDidChangeTreeData.fire();
   }
 
   /**
@@ -249,7 +282,8 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
     if (todo) {
       todo.replied = true;
       todo.repliedAt = new Date().toISOString();
-      this.save();
+      this.sessionService.updateFrontmatter(todo.id, { replied: true, repliedAt: todo.repliedAt });
+      this._onDidChangeTreeData.fire();
     }
   }
 
@@ -264,17 +298,23 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
       return;
     }
     todo.text = newText;
-    this.save();
+    this.sessionService.updateFrontmatter(id, { text: newText });
+    this._onDidChangeTreeData.fire();
   }
 
   deleteTodo(id: string): void {
     this.todos = this.todos.filter((t) => t.id !== id);
-    this.save();
+    this.sessionService.deleteTodoFile(id);
+    this._onDidChangeTreeData.fire();
   }
 
   clearCompleted(): void {
+    const done = this.todos.filter((t) => t.status === 'done');
+    for (const todo of done) {
+      this.sessionService.deleteTodoFile(todo.id);
+    }
     this.todos = this.todos.filter((t) => t.status !== 'done');
-    this.save();
+    this._onDidChangeTreeData.fire();
   }
 
   reorder(id: string, direction: 'up' | 'down'): void {
@@ -290,7 +330,9 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
     const tmpOrder = sorted[idx].order;
     sorted[idx].order = sorted[swapIdx].order;
     sorted[swapIdx].order = tmpOrder;
-    this.save();
+    this.sessionService.updateFrontmatter(sorted[idx].id, { order: sorted[idx].order });
+    this.sessionService.updateFrontmatter(sorted[swapIdx].id, { order: sorted[swapIdx].order });
+    this._onDidChangeTreeData.fire();
   }
 
   getTodos(): WorkspaceTodoItem[] {
@@ -299,30 +341,6 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
 
   findTodoById(id: string): WorkspaceTodoItem | undefined {
     return this.todos.find((t) => t.id === id);
-  }
-
-  // ---- Persistence ----
-
-  private save(): void {
-    this.configService.setWorkspaceTodos(this.todos);
-    this._onDidChangeTreeData.fire();
-  }
-
-  /**
-   * Load from config and migrate legacy items (completed → status).
-   */
-  private loadAndMigrate(): WorkspaceTodoItem[] {
-    const raw = this.configService.getWorkspaceTodos();
-    return raw.map((item: any) => {
-      if (!item.status) {
-        // Legacy migration
-        return {
-          ...item,
-          status: item.completed ? 'done' : 'open',
-        };
-      }
-      return item;
-    });
   }
 }
 
@@ -426,11 +444,10 @@ export class TodoTreeItem extends vscode.TreeItem {
     }
     this.contextValue = parts.join('_');
 
-    // Click command
     this.command = {
-      command: 'workspace.openTodoDetail',
+      command: 'nulab.treeItemClicked',
       title: 'Open Detail',
-      arguments: [todo.id],
+      arguments: ['workspace.openTodoDetail', todo.id],
     };
   }
 

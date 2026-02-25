@@ -314,10 +314,11 @@ export class IssueTreeItem extends vscode.TreeItem {
     }\nAssignee: ${issue.assignee?.name || 'Unassigned'}`;
     this.iconPath = new vscode.ThemeIcon(statusIcon, priorityColor);
     this.contextValue = 'issue';
+
     this.command = {
-      command: 'nulab.openIssue',
+      command: 'nulab.treeItemClicked',
       title: 'Open Issue',
-      arguments: [this.issue],
+      arguments: ['nulab.openIssue', this.issue],
     };
   }
 

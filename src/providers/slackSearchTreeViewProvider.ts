@@ -135,10 +135,16 @@ class SearchResultItem extends vscode.TreeItem {
     this.description = formatSlackTime(message.ts);
     this.tooltip = `${sender}\n${message.text}`;
     this.contextValue = 'slackMention';
+
     this.command = {
-      command: 'workspace.openSlackThread',
+      command: 'nulab.treeItemClicked',
       title: 'Open Thread',
-      arguments: [message.channel, message.thread_ts || message.ts, `Thread: ${sender}`],
+      arguments: [
+        'workspace.openSlackThread',
+        message.channel,
+        message.thread_ts || message.ts,
+        `Thread: ${sender}`,
+      ],
     };
   }
 }

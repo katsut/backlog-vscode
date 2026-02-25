@@ -168,11 +168,12 @@ export class SlackApiService {
   }
 
   /**
-   * Get recent notifications (DMs + @mentions in all channels).
+   * Get recent notifications (@mentions in channels, optionally DMs).
    * Requires user token (xoxp-) with search:read scope.
    * Returns empty array for bot tokens (search.messages is not supported).
    */
-  async getMentions(count: number = 20): Promise<SlackMessage[]> {
+  async getMentions(options?: { count?: number; includeDMs?: boolean }): Promise<SlackMessage[]> {
+    const { count = 20, includeDMs = false } = options || {};
     await this.ensureInitialized();
     if (!this.client) {
       return [];
@@ -186,24 +187,50 @@ export class SlackApiService {
 
     try {
       const selfId = await this.getSelfUserId();
-      // to:me captures DMs; <@USER_ID> captures @mentions in public/private channels
-      const query = selfId ? `to:me OR <@${selfId}>` : 'to:me';
 
-      const resp = await this.client.search.messages({
-        query,
+      // Fetch channel mentions
+      const mentionQuery = selfId ? `<@${selfId}>` : 'to:me';
+      const mentionResp = await this.client.search.messages({
+        query: mentionQuery,
         sort: 'timestamp',
         sort_dir: 'desc',
         count,
       });
+      const mentionMatches = mentionResp.messages?.matches || [];
+      console.log(`[Slack] search.messages "${mentionQuery}": ${mentionMatches.length} matches`);
 
-      const matches = resp.messages?.matches || [];
-      console.log(`[Slack] search.messages "${query}": ${matches.length} matches`);
+      // Fetch DMs separately if enabled
+      let dmMatches: typeof mentionMatches = [];
+      if (includeDMs) {
+        const dmCount = Math.max(10, Math.floor(count / 2));
+        const dmResp = await this.client.search.messages({
+          query: 'is:dm',
+          sort: 'timestamp',
+          sort_dir: 'desc',
+          count: dmCount,
+        });
+        dmMatches = dmResp.messages?.matches || [];
+        console.log(`[Slack] search.messages "is:dm": ${dmMatches.length} matches`);
 
-      // Deduplicate by ts+channel (OR query may return overlapping results)
+        // Also fetch group DMs
+        const mpimResp = await this.client.search.messages({
+          query: 'is:mpim',
+          sort: 'timestamp',
+          sort_dir: 'desc',
+          count: dmCount,
+        });
+        const mpimMatches = mpimResp.messages?.matches || [];
+        console.log(`[Slack] search.messages "is:mpim": ${mpimMatches.length} matches`);
+        dmMatches = [...dmMatches, ...mpimMatches];
+      }
+
+      // Merge and deduplicate
+      const allMatches = [...mentionMatches, ...dmMatches];
       const seen = new Set<string>();
       const messages: SlackMessage[] = [];
-      for (const match of matches) {
-        const channelId = ((match.channel as Record<string, unknown>)?.id as string) || '';
+      for (const match of allMatches) {
+        const chObj = match.channel as Record<string, unknown> | undefined;
+        const channelId = (chObj?.id as string) || '';
         const key = `${channelId}:${match.ts}`;
         if (seen.has(key)) {
           continue;
@@ -215,6 +242,7 @@ export class SlackApiService {
           continue;
         }
 
+        const isDm = !!chObj?.is_im || !!chObj?.is_mpim;
         const userName = await this.resolveUserName(match.user || '');
         messages.push({
           ts: match.ts || '',
@@ -223,8 +251,11 @@ export class SlackApiService {
           thread_ts: (match as Record<string, unknown>).thread_ts as string | undefined,
           channel: channelId,
           userName,
+          is_dm: isDm,
         });
       }
+      // Sort by timestamp descending (newest first)
+      messages.sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts));
       return messages;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);

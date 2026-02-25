@@ -3,7 +3,7 @@
   "displayName": "Nulab Workspace Extension",
   "description": "Backlog, Cacoo, and Slack integration for VS Code",
   "version": "0.0.1",
-  "publisher": "nulab-vscode",
+  "publisher": "katsut",
   "license": "MIT",
   "engines": {
     "vscode": "^1.74.0"
@@ -178,6 +178,21 @@
       }
     ],
     "commands": [
+      {
+        "command": "nulab.treeItemClicked",
+        "title": "Open Item (Click)",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "title": "Open Selected Item",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.openSelectedCalendarItem",
+        "title": "Open Selected Calendar Item",
+        "category": "Nulab"
+      },
       {
         "command": "nulab.refreshProjects",
         "title": "Refresh Projects",
@@ -585,12 +600,6 @@
         "category": "Workspace"
       },
       {
-        "command": "workspace.exportContext",
-        "title": "Export Context for Claude Code",
-        "icon": "$(export)",
-        "category": "Workspace"
-      },
-      {
         "command": "workspace.editSlackSearchKeywords",
         "title": "Edit Slack Search Keywords",
         "icon": "$(edit)",
@@ -610,12 +619,6 @@
       {
         "command": "nulab.discardSession",
         "title": "セッションを破棄",
-        "category": "Nulab"
-      },
-      {
-        "command": "nulab.setAnthropicApiKey",
-        "title": "Set Anthropic API Key",
-        "icon": "$(key)",
         "category": "Nulab"
       },
       {
@@ -965,7 +968,91 @@
         "command": "workspace.deleteTodo",
         "key": "delete",
         "mac": "cmd+backspace",
-        "when": "view == workspaceTodos && viewItem =~ /^todoItem/"
+        "when": "focusedView == 'workspaceTodos'"
+      },
+      {
+        "command": "workspace.moveTodoUp",
+        "key": "alt+up",
+        "mac": "alt+up",
+        "when": "focusedView == 'workspaceTodos'"
+      },
+      {
+        "command": "workspace.moveTodoDown",
+        "key": "alt+down",
+        "mac": "alt+down",
+        "when": "focusedView == 'workspaceTodos'"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == backlogProjects && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == backlogIssues && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == backlogWiki && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == backlogDocuments && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == workspaceTodos && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == workspaceMyTasks && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == workspaceNotifications && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == cacooDiagrams && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == workspaceDocumentFiles && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == workspaceSlack && listFocus"
+      },
+      {
+        "command": "nulab.openSelectedTreeItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == workspaceSlackSearch && listFocus"
+      },
+      {
+        "command": "nulab.google.openSelectedCalendarItem",
+        "key": "enter",
+        "mac": "enter",
+        "when": "view == workspaceGoogleCalendar && listFocus"
       }
     ],
     "configuration": {
@@ -1069,7 +1156,7 @@
         },
         "nulab.backlog.autoTodoEnabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Backlog 通知から自動で TODO を作成する"
         },
         "nulab.backlog.autoTodoReasons": {
@@ -1080,8 +1167,18 @@
         },
         "nulab.slack.autoTodoEnabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Slack メンションから自動で TODO を作成する"
+        },
+        "nulab.slack.includeDMs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Slack 通知に DM を含める"
+        },
+        "nulab.slack.autoTodoDMs": {
+          "type": "boolean",
+          "default": false,
+          "description": "DM から自動で TODO を作成する (includeDMs が有効な場合のみ)"
         },
         "nulab.google.clientId": {
           "type": "string",
@@ -1120,6 +1217,16 @@
         "selector": [
           {
             "filenamePattern": "*.bdoc"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "nulab.todoEditor",
+        "displayName": "TODO",
+        "selector": [
+          {
+            "filenamePattern": "*.todomd"
           }
         ],
         "priority": "default"

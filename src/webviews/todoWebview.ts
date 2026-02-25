@@ -1,13 +1,22 @@
 import * as vscode from 'vscode';
-import { WorkspaceTodoItem, TodoStatus } from '../types/workspace';
+import { WorkspaceTodoItem, TodoStatus, SlackMessage } from '../types/workspace';
 import { WebviewHelper } from './common';
+
+export interface DraftInfo {
+  content: string;
+  action: string;
+  status: string;
+}
 
 export class TodoWebview {
   static getWebviewContent(
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
     todo: WorkspaceTodoItem,
-    baseUrl?: string
+    baseUrl?: string,
+    slackContextBefore: SlackMessage[] = [],
+    slackContextAfter: SlackMessage[] = [],
+    draft?: DraftInfo | null
   ): string {
     const nonce = WebviewHelper.getNonce();
     const head = WebviewHelper.getHtmlHead(
@@ -86,20 +95,79 @@ export class TodoWebview {
           )}</span></div>`
         );
       }
-      if (ctx.slackText) {
-        fields.push(
-          `<div class="details-field"><label>Message:</label></div><div class="context-comment">${esc(
-            ctx.slackText
-          )}</div>`
-        );
-      }
-      if (fields.length > 0) {
+
+      // Surrounding messages (before)
+      const beforeHtml = slackContextBefore
+        .map((msg) => buildSlackContextMessageHtml(msg))
+        .join('');
+      const separatorBefore =
+        slackContextBefore.length > 0
+          ? '<div class="thread-separator"><span>▼ このメッセージ</span></div>'
+          : '';
+
+      // The main message
+      const mainMsgHtml = ctx.slackText
+        ? `<div class="context-comment slack-main-message">${esc(ctx.slackText)}</div>`
+        : '';
+
+      // Surrounding messages (after)
+      const separatorAfter =
+        slackContextAfter.length > 0
+          ? '<div class="thread-separator"><span>▼ 続き</span></div>'
+          : '';
+      const afterHtml = slackContextAfter.map((msg) => buildSlackContextMessageHtml(msg)).join('');
+
+      const hasContext = slackContextBefore.length > 0 || slackContextAfter.length > 0;
+
+      if (fields.length > 0 || hasContext) {
         contextHtml = `
           <div class="content-section">
             <h3>Slack メッセージ</h3>
-            <div class="details-section">${fields.join('')}</div>
+            <div class="details-section">
+              ${fields.join('')}
+              ${beforeHtml}
+              ${separatorBefore}
+              ${mainMsgHtml}
+              ${separatorAfter}
+              ${afterHtml}
+            </div>
           </div>`;
       }
+    }
+
+    // Draft section
+    let draftHtml = '';
+    if (draft) {
+      const postLabel = draft.action === 'slack-reply' ? 'Slack に返信' : 'Backlog にコメント投稿';
+      const isPosted = draft.status === 'posted';
+      const draftContent = draft.content.trim()
+        ? esc(draft.content)
+        : '<span class="draft-placeholder">Claude Code がドラフトを書き込み中...</span>';
+      const postedBadge = isPosted ? '<span class="status-badge done">投稿済</span>' : '';
+
+      draftHtml = `
+        <div class="content-section draft-section">
+          <div class="draft-header">
+            <h3>返信ドラフト</h3>
+            ${postedBadge}
+            ${
+              !isPosted
+                ? '<button class="action-btn secondary small" data-action="refreshDraft">↻ 更新</button>'
+                : ''
+            }
+          </div>
+          <div class="draft-content" id="draftContent">${draftContent}</div>
+          ${
+            !isPosted
+              ? `<div class="draft-actions">
+                  <button class="action-btn post-btn" data-action="postDraft">${esc(
+                    postLabel
+                  )}</button>
+                  <button class="action-btn danger-btn small" data-action="discardDraft">破棄</button>
+                </div>`
+              : ''
+          }
+        </div>`;
     }
 
     // Notes section
@@ -144,6 +212,15 @@ export class TodoWebview {
     <span class="status-actions-label">Status:</span>
     ${buildStatusButtons(todo.status)}
     ${
+      ctx &&
+      (ctx.source === 'backlog-notification' ||
+        ctx.source === 'slack-mention' ||
+        ctx.source === 'slack-search') &&
+      !draft
+        ? '<button class="action-btn claude-btn" data-action="startClaudeSession">✦ Claude で対応</button>'
+        : ''
+    }
+    ${
       !todo.replied &&
       ctx &&
       (ctx.source === 'backlog-notification' || ctx.source === 'slack-mention')
@@ -154,6 +231,7 @@ export class TodoWebview {
   </div>
 
   ${contextHtml}
+  ${draftHtml}
   ${notesHtml}
   ${timestampsHtml}
 
@@ -171,14 +249,37 @@ export class TodoWebview {
     document.querySelectorAll('[data-action]').forEach(btn => {
       btn.addEventListener('click', () => {
         const action = btn.dataset.action;
-        if (action === 'markReplied') {
+        if (action === 'startClaudeSession') {
+          vscode.postMessage({ command: 'startClaudeSession' });
+        } else if (action === 'markReplied') {
           vscode.postMessage({ command: 'markReplied' });
         } else if (action === 'delete') {
           vscode.postMessage({ command: 'delete' });
         } else if (action === 'openSlackThread') {
           vscode.postMessage({ command: 'openSlackThread' });
+        } else if (action === 'postDraft') {
+          vscode.postMessage({ command: 'postDraft' });
+        } else if (action === 'discardDraft') {
+          vscode.postMessage({ command: 'discardDraft' });
+        } else if (action === 'refreshDraft') {
+          vscode.postMessage({ command: 'refreshDraft' });
         }
       });
+    });
+
+    // Listen for draft updates from the extension
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (msg.command === 'updateDraft') {
+        const el = document.getElementById('draftContent');
+        if (el) {
+          if (msg.draft && msg.draft.trim()) {
+            el.textContent = msg.draft;
+          } else {
+            el.innerHTML = '<span class="draft-placeholder">Claude Code がドラフトを書き込み中...</span>';
+          }
+        }
+      }
     });
 
     // External links
@@ -244,6 +345,17 @@ function buildStatusButtons(current: TodoStatus): string {
         }">${s.icon} ${s.label}</button>`
     )
     .join('');
+}
+
+function buildSlackContextMessageHtml(msg: SlackMessage): string {
+  const time = new Date(parseFloat(msg.ts) * 1000).toLocaleTimeString();
+  const sender = msg.userName || msg.user || 'Unknown';
+  return `
+    <div class="slack-context-msg">
+      <span class="slack-context-sender">${esc(sender)}</span>
+      <span class="slack-context-time">${time}</span>
+      <div class="slack-context-text">${esc(msg.text)}</div>
+    </div>`;
 }
 
 function esc(text: string): string {
@@ -320,11 +432,17 @@ const additionalStyles = `
   .action-btn.secondary:hover {
     background: var(--vscode-button-secondaryHoverBackground);
   }
+  .action-btn.claude-btn {
+    background: #D97706;
+    color: white;
+    border: none;
+    margin-left: auto;
+  }
+  .action-btn.claude-btn:hover { opacity: 0.9; }
   .action-btn.replied-btn {
     background: #26A69A;
     color: white;
     border: none;
-    margin-left: auto;
   }
   .action-btn.replied-btn:hover { opacity: 0.9; }
   .action-btn.danger-btn {
@@ -336,6 +454,52 @@ const additionalStyles = `
     background: var(--vscode-errorForeground);
     color: white;
   }
+  .action-btn.small {
+    padding: 2px var(--webview-space-sm);
+    font-size: var(--webview-font-size-xs);
+  }
+  .action-btn.post-btn {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    font-weight: 600;
+  }
+  .action-btn.post-btn:hover {
+    background: var(--vscode-button-hoverBackground);
+  }
+  .draft-section {
+    border: 1px solid var(--vscode-textLink-foreground);
+    border-radius: var(--webview-radius-md);
+    padding: var(--webview-space-md);
+  }
+  .draft-header {
+    display: flex;
+    align-items: center;
+    gap: var(--webview-space-sm);
+    margin-bottom: var(--webview-space-sm);
+  }
+  .draft-header h3 { margin: 0; }
+  .draft-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    padding: var(--webview-space-md);
+    background: var(--vscode-textCodeBlock-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: var(--webview-radius-sm);
+    font-size: var(--webview-font-size-sm);
+    line-height: 1.6;
+    min-height: 60px;
+  }
+  .draft-placeholder {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+  }
+  .draft-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--webview-space-sm);
+    margin-top: var(--webview-space-md);
+  }
   .context-comment {
     white-space: pre-wrap;
     word-break: break-word;
@@ -346,6 +510,42 @@ const additionalStyles = `
     margin-top: var(--webview-space-xs);
     font-size: var(--webview-font-size-sm);
     line-height: 1.6;
+  }
+  .slack-context-msg {
+    padding: var(--webview-space-sm) var(--webview-space-md);
+    opacity: 0.55;
+    font-size: var(--webview-font-size-sm);
+  }
+  .slack-context-sender {
+    font-weight: 500;
+    margin-right: var(--webview-space-sm);
+  }
+  .slack-context-time {
+    color: var(--vscode-descriptionForeground);
+    font-size: var(--webview-font-size-xs);
+  }
+  .slack-context-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+    margin-top: 2px;
+  }
+  .slack-main-message {
+    border-left: 3px solid var(--vscode-textLink-foreground);
+  }
+  .thread-separator {
+    display: flex;
+    align-items: center;
+    gap: var(--webview-space-sm);
+    margin: var(--webview-space-md) 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: var(--webview-font-size-xs);
+  }
+  .thread-separator::before,
+  .thread-separator::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--vscode-panel-border);
   }
   #notesArea {
     width: 100%;

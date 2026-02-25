@@ -228,9 +228,9 @@ export class WikiTreeItem extends vscode.TreeItem {
 
     if (wiki.id && wiki.id > 0) {
       this.command = {
-        command: 'nulab.openWiki',
+        command: 'nulab.treeItemClicked',
         title: 'Open Wiki',
-        arguments: [this.wiki],
+        arguments: ['nulab.openWiki', this.wiki],
       };
     }
   }

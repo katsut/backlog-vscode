@@ -180,11 +180,10 @@ class FileItem extends vscode.TreeItem {
     this.resourceUri = vscode.Uri.file(absolutePath);
     this.contextValue = 'docSyncFile';
 
-    // Open the .bdoc file with the custom editor on click
     this.command = {
-      command: 'vscode.openWith',
+      command: 'nulab.treeItemClicked',
       title: 'Open Document',
-      arguments: [vscode.Uri.file(absolutePath), 'nulab.bdocEditor'],
+      arguments: ['vscode.openWith', vscode.Uri.file(absolutePath), 'nulab.bdocEditor'],
     };
 
     // Sync status decoration

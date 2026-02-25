@@ -24,7 +24,7 @@ export class SlackTreeViewProvider implements vscode.TreeDataProvider<SlackTreeI
   }
 
   /** Fetch mentions, then update tree. Returns mention count. */
-  async fetchAndRefresh(): Promise<number> {
+  async fetchAndRefresh(options?: { includeDMs?: boolean }): Promise<number> {
     this.configured = await this.slackApi.isConfigured();
     if (!this.configured) {
       this.loaded = true;
@@ -35,7 +35,7 @@ export class SlackTreeViewProvider implements vscode.TreeDataProvider<SlackTreeI
     this.mentionsError = null;
 
     try {
-      this.mentions = await this.slackApi.getMentions();
+      this.mentions = await this.slackApi.getMentions({ includeDMs: options?.includeDMs });
     } catch (error) {
       this.mentionsError = error instanceof Error ? error.message : String(error);
       this.mentions = [];
@@ -108,10 +108,16 @@ export class SlackMentionItem extends vscode.TreeItem {
     this.description = formatSlackTime(message.ts);
     this.tooltip = `${sender}\n${message.text}`;
     this.contextValue = 'slackMention';
+
     this.command = {
-      command: 'workspace.openSlackThread',
+      command: 'nulab.treeItemClicked',
       title: 'Open Thread',
-      arguments: [message.channel, message.thread_ts || message.ts, `Thread: ${sender}`],
+      arguments: [
+        'workspace.openSlackThread',
+        message.channel,
+        message.thread_ts || message.ts,
+        `Thread: ${sender}`,
+      ],
     };
   }
 }

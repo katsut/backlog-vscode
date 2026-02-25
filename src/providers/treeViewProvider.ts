@@ -385,11 +385,10 @@ export class ProjectTreeItem extends TreeItem {
     );
     this.contextValue = isFavorite ? 'favoriteProject' : 'project';
 
-    // クリックでプロジェクトにフォーカス
     this.command = {
-      command: 'nulab.focusProject',
+      command: 'nulab.treeItemClicked',
       title: 'Focus Project',
-      arguments: [this.project.id],
+      arguments: ['nulab.focusProject', this.project.id],
     };
   }
 }
@@ -440,10 +439,11 @@ export class IssueTreeItem extends TreeItem {
     );
 
     this.contextValue = 'issue';
+
     this.command = {
-      command: 'nulab.openIssue',
+      command: 'nulab.treeItemClicked',
       title: 'Open Issue',
-      arguments: [this.issue],
+      arguments: ['nulab.openIssue', this.issue],
     };
   }
 
@@ -503,10 +503,11 @@ export class WikiTreeItem extends TreeItem {
     );
 
     this.contextValue = 'wiki';
+
     this.command = {
-      command: 'nulab.openWiki',
+      command: 'nulab.treeItemClicked',
       title: 'Open Wiki',
-      arguments: [this.wiki],
+      arguments: ['nulab.openWiki', this.wiki],
     };
   }
 }
@@ -521,10 +522,11 @@ export class DocumentTreeItem extends TreeItem {
     );
 
     this.contextValue = 'document';
+
     this.command = {
-      command: 'nulab.openDocument',
+      command: 'nulab.treeItemClicked',
       title: 'Open Document',
-      arguments: [this.document],
+      arguments: ['nulab.openDocument', this.document],
     };
   }
 }
@@ -542,12 +544,11 @@ export class DocumentTreeNodeItem extends TreeItem {
     this.contextValue =
       node.children && node.children.length > 0 ? 'documentFolder' : 'documentFile';
 
-    // ドキュメントファイルの場合、クリックで開く
     if (!(node.children && node.children.length > 0)) {
       this.command = {
-        command: 'nulab.openDocumentFromNode',
+        command: 'nulab.treeItemClicked',
         title: 'Open Document',
-        arguments: [this.node.id, this.projectId],
+        arguments: ['nulab.openDocumentFromNode', this.node.id, this.projectId],
       };
     }
   }

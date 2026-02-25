@@ -176,4 +176,7 @@ storybook-static/
 # cline
 .clinerules
 .clineignore
-.claude/settings.local.json
+.claude
+
+docs/
+.vscode/

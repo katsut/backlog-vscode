@@ -134,6 +134,7 @@ ${head}
 
   <div class="actions">
     <button class="action-btn primary" onclick="createIssue()">Backlog 課題を作成</button>
+    <button class="action-btn primary" onclick="sendToClaudeCode()">Claude Code で扱う</button>
     <button class="action-btn secondary" onclick="copyContent()">Markdown をコピー</button>
     <button class="action-btn secondary" onclick="openExternal()">ブラウザで開く</button>
   </div>
@@ -162,6 +163,12 @@ ${head}
       vscode.postMessage({
         command: 'openExternal',
         url: ${JSON.stringify(file.webViewLink || '')}
+      });
+    }
+
+    function sendToClaudeCode() {
+      vscode.postMessage({
+        command: 'sendToClaudeCode'
       });
     }
   </script>
