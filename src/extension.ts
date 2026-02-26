@@ -28,6 +28,7 @@ import { NotificationsTreeViewProvider } from './providers/notificationsTreeView
 import { SlackApiService } from './services/slackApi';
 import { SlackTreeViewProvider } from './providers/slackTreeViewProvider';
 import { SlackSearchTreeViewProvider } from './providers/slackSearchTreeViewProvider';
+import { SlackPostWebviewProvider } from './providers/slackPostWebviewProvider';
 import { DocumentFilesTreeViewProvider } from './providers/documentFilesTreeViewProvider';
 import { TodoEditorProvider } from './providers/todoEditorProvider';
 import { PollingService } from './services/pollingService';
@@ -115,6 +116,11 @@ export function activate(context: vscode.ExtensionContext) {
   const notificationsProvider = new NotificationsTreeViewProvider(backlogApi);
   const slackProvider = new SlackTreeViewProvider(slackApi);
   const slackSearchProvider = new SlackSearchTreeViewProvider(slackApi, slackConfig);
+  const slackPostProvider = new SlackPostWebviewProvider(
+    context.extensionUri,
+    slackApi,
+    slackConfig
+  );
   const cacooTreeProvider = new CacooTreeViewProvider(cacooApi, cacooConfig);
   const cacooCommands = new CacooCommands(cacooApi, cacooConfig, cacooSyncService);
   const documentFilesProvider = new DocumentFilesTreeViewProvider(fileStore, syncService);
@@ -163,6 +169,7 @@ export function activate(context: vscode.ExtensionContext) {
     notificationsProvider,
     slackProvider,
     slackSearchProvider,
+    slackPostProvider,
     cacooTreeProvider,
     documentFilesProvider,
     sessionCodeLensProvider,
@@ -224,6 +231,10 @@ export function activate(context: vscode.ExtensionContext) {
     treeDataProvider: documentFilesProvider,
     showCollapseAll: true,
   });
+  const slackPostViewDisposable = vscode.window.registerWebviewViewProvider(
+    SlackPostWebviewProvider.viewType,
+    slackPostProvider
+  );
 
   vscode.commands.executeCommand('setContext', 'nulabExplorer.enabled', true);
   vscode.commands.executeCommand('setContext', 'nulabProjectFocused', false);
@@ -694,6 +705,7 @@ export function activate(context: vscode.ExtensionContext) {
     slackTreeView,
     slackSearchTreeView,
     documentFilesTreeView,
+    slackPostViewDisposable,
     // Content providers
     remoteProviderDisposable,
     localProviderDisposable,

@@ -23,6 +23,7 @@ import { MyTasksTreeViewProvider } from './providers/myTasksTreeViewProvider';
 import { NotificationsTreeViewProvider } from './providers/notificationsTreeViewProvider';
 import { SlackTreeViewProvider } from './providers/slackTreeViewProvider';
 import { SlackSearchTreeViewProvider } from './providers/slackSearchTreeViewProvider';
+import { SlackPostWebviewProvider } from './providers/slackPostWebviewProvider';
 import { CacooTreeViewProvider } from './providers/cacooTreeViewProvider';
 import { DocumentFilesTreeViewProvider } from './providers/documentFilesTreeViewProvider';
 import { SessionCodeLensProvider } from './providers/sessionCodeLensProvider';
@@ -67,6 +68,7 @@ export interface ServiceContainer {
   notificationsProvider: NotificationsTreeViewProvider;
   slackProvider: SlackTreeViewProvider;
   slackSearchProvider: SlackSearchTreeViewProvider;
+  slackPostProvider: SlackPostWebviewProvider;
   cacooTreeProvider: CacooTreeViewProvider;
   documentFilesProvider: DocumentFilesTreeViewProvider;
   sessionCodeLensProvider: SessionCodeLensProvider;

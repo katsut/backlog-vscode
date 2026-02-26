@@ -285,45 +285,6 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
       }
     }),
 
-    vscode.commands.registerCommand('workspace.postToSlack', async () => {
-      const favorites = c.slackConfig.getFavoriteChannels();
-      if (favorites.length === 0) {
-        const setup = await vscode.window.showInformationMessage(
-          '[Nulab] お気に入りチャンネルが未登録です。先に登録しますか？',
-          '登録する'
-        );
-        if (setup) {
-          await vscode.commands.executeCommand('workspace.editSlackFavoriteChannels');
-        }
-        return;
-      }
-
-      const selected = await vscode.window.showQuickPick(
-        favorites.map((ch) => ({ label: `#${ch.name}`, channelId: ch.id })),
-        { placeHolder: '投稿先チャンネルを選択' }
-      );
-      if (!selected) {
-        return;
-      }
-
-      const text = await vscode.window.showInputBox({
-        prompt: `#${selected.label} に投稿`,
-        placeHolder: 'メッセージを入力',
-      });
-      if (!text) {
-        return;
-      }
-
-      try {
-        await c.slackApi.postMessage(selected.channelId, text);
-        vscode.window.showInformationMessage(`[Nulab] ${selected.label} に投稿しました。`);
-      } catch (error) {
-        vscode.window.showErrorMessage(
-          `[Nulab] 投稿に失敗しました: ${error instanceof Error ? error.message : error}`
-        );
-      }
-    }),
-
     vscode.commands.registerCommand('workspace.editSlackFavoriteChannels', async () => {
       const current = c.slackConfig.getFavoriteChannels();
       const action = await vscode.window.showQuickPick(
@@ -368,6 +329,7 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
 
         const updated = [...current, ...picked.map((p) => p.channel)];
         c.slackConfig.setFavoriteChannels(updated);
+        c.slackPostProvider.sendChannels();
         vscode.window.showInformationMessage(
           `[Nulab] ${picked.length}件のチャンネルを追加しました。`
         );
@@ -382,6 +344,7 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
         const removeIds = new Set(toRemove.map((item) => item.id));
         const updated = current.filter((ch) => !removeIds.has(ch.id));
         c.slackConfig.setFavoriteChannels(updated);
+        c.slackPostProvider.sendChannels();
         vscode.window.showInformationMessage(
           `[Nulab] ${toRemove.length}件のチャンネルを削除しました。`
         );

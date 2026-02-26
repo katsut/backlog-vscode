@@ -68,7 +68,7 @@
       "workspaceContainer": [
         {
           "id": "workspaceMyTasks",
-          "name": "My Tasks"
+          "name": "Backlog: My Tasks"
         },
         {
           "id": "workspaceTodos",
@@ -76,11 +76,11 @@
         },
         {
           "id": "workspaceDocumentFiles",
-          "name": "Documents"
+          "name": "Backlog: Documents"
         },
         {
           "id": "backlogProjects",
-          "name": "Projects",
+          "name": "Backlog: Projects",
           "when": "nulabExplorer.enabled"
         },
         {
@@ -91,7 +91,7 @@
       "notificationsContainer": [
         {
           "id": "workspaceGoogleCalendar",
-          "name": "Google Calendar"
+          "name": "Google: Calendar"
         },
         {
           "id": "workspaceNotifications",
@@ -104,6 +104,11 @@
         {
           "id": "workspaceSlackSearch",
           "name": "Slack: Search"
+        },
+        {
+          "id": "workspaceSlackPost",
+          "name": "Slack: Post",
+          "type": "webview"
         }
       ]
     },
@@ -503,12 +508,6 @@
         "category": "Slack"
       },
       {
-        "command": "workspace.postToSlack",
-        "title": "Post to Slack",
-        "icon": "$(send)",
-        "category": "Slack"
-      },
-      {
         "command": "workspace.editSlackFavoriteChannels",
         "title": "Edit Favorite Channels",
         "icon": "$(star)",
@@ -793,6 +792,11 @@
           "command": "workspace.setSlackToken",
           "when": "view == workspaceSlack",
           "group": "navigation@2"
+        },
+        {
+          "command": "workspace.editSlackFavoriteChannels",
+          "when": "view == workspaceSlackPost",
+          "group": "navigation@1"
         },
         {
           "command": "workspace.refreshSlackSearch",
