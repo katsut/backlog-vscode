@@ -3,6 +3,7 @@ import { SlackMentionItem } from '../../providers/slackTreeViewProvider';
 import { SlackMessage, TodoContext } from '../../types/workspace';
 import { SlackThreadWebview } from '../../webviews/slackThreadWebview';
 import { ServiceContainer } from '../../container';
+import { openUrl } from '../../utils/openUrl';
 
 export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] {
   return [
@@ -142,7 +143,7 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
                 }
               }
               if (message.command === 'openExternal' && message.url) {
-                vscode.env.openExternal(vscode.Uri.parse(message.url));
+                openUrl(message.url);
               }
               if (message.command === 'addToTodo') {
                 const parentMsg = messages[0];
@@ -192,7 +193,7 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
       } catch {
         /* use fallback */
       }
-      await vscode.env.openExternal(vscode.Uri.parse(url));
+      openUrl(url);
     }),
 
     vscode.commands.registerCommand('workspace.addTodoFromSlack', async (item: unknown) => {

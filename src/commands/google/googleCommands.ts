@@ -8,6 +8,7 @@ import {
 } from '../../providers/googleCalendarTreeViewProvider';
 import { GoogleDriveFile, GoogleCalendarEvent } from '../../types/google';
 import { CalendarEventWebview } from '../../webviews/calendarEventWebview';
+import { openUrl } from '../../utils/openUrl';
 
 export function registerGoogleCalendar(
   context: vscode.ExtensionContext,
@@ -164,9 +165,9 @@ export function registerGoogleCalendar(
     'nulab.google.openInBrowser',
     (item: EventItem | DocumentItem) => {
       if (item instanceof DocumentItem && item.file.webViewLink) {
-        vscode.env.openExternal(vscode.Uri.parse(item.file.webViewLink));
+        openUrl(item.file.webViewLink);
       } else if (item instanceof EventItem && item.event.htmlLink) {
-        vscode.env.openExternal(vscode.Uri.parse(item.event.htmlLink));
+        openUrl(item.event.htmlLink);
       }
     }
   );
@@ -203,7 +204,7 @@ export function registerGoogleCalendar(
       panel.webview.onDidReceiveMessage(
         (msg) => {
           if (msg.command === 'openExternal' && msg.url) {
-            vscode.env.openExternal(vscode.Uri.parse(msg.url));
+            openUrl(msg.url);
           }
         },
         undefined,

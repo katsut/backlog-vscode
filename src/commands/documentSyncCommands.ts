@@ -6,6 +6,7 @@ import { WorkspaceFileStore } from '../config/workspaceFileStore';
 import { BacklogConfig } from '../config/backlogConfig';
 import { SyncService } from '../services/syncService';
 import { BacklogRemoteContentProvider } from '../providers/backlogRemoteContentProvider';
+import { openUrl } from '../utils/openUrl';
 import { SyncFileDecorationProvider } from '../providers/syncFileDecorationProvider';
 import { DocumentSyncMapping, SyncManifest } from '../types/backlog';
 import { Entity } from 'backlog-js';
@@ -496,7 +497,7 @@ export class DocumentSyncCommands {
     const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
     const projectKey = meta.project || 'UNKNOWN';
     const url = `https://${hostOnly}/document/${projectKey}/${meta.backlog_id}`;
-    await vscode.env.openExternal(vscode.Uri.parse(url));
+    openUrl(url);
 
     vscode.window.showInformationMessage(
       '[Nulab] コンテンツをクリップボードにコピーしました。ブラウザで Backlog エディタを開きます。'

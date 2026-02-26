@@ -6,6 +6,7 @@ import { CacooConfig } from '../config/cacooConfig';
 import { CacooSyncService } from '../services/cacooSyncService';
 import { CacooSheetWebview } from '../webviews/cacooSheetWebview';
 import { CacooSyncMapping, CacooPinnedSheet } from '../types/cacoo';
+import { openUrl } from '../utils/openUrl';
 import {
   CacooFolderItem,
   CacooDiagramItem,
@@ -111,7 +112,7 @@ export class CacooCommands {
     panel.webview.onDidReceiveMessage(
       async (message) => {
         if (message.command === 'openExternal' && message.url) {
-          await vscode.env.openExternal(vscode.Uri.parse(message.url));
+          openUrl(message.url);
         }
       },
       undefined,
@@ -151,7 +152,7 @@ export class CacooCommands {
       return;
     }
     const url = `https://cacoo.com/diagrams/${diagramId}`;
-    await vscode.env.openExternal(vscode.Uri.parse(url));
+    openUrl(url);
   }
 
   // ---- Pin/Unpin ----

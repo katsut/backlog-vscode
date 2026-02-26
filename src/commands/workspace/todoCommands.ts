@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { TodoTreeItem } from '../../providers/todoTreeViewProvider';
 import { ServiceContainer } from '../../container';
+import { openUrl } from '../../utils/openUrl';
 
 export function registerTodoCommands(
   c: ServiceContainer,
@@ -151,7 +152,7 @@ export function registerTodoCommands(
         const baseUrl = c.backlogConfig.getBaseUrl();
         if (baseUrl) {
           const url = `${baseUrl}/view/${ctx.issueKey}#comment`;
-          await vscode.env.openExternal(vscode.Uri.parse(url));
+          openUrl(url);
           c.todoProvider.markReplied(item.todo.id);
         }
       }

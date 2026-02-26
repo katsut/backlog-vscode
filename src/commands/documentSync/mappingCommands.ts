@@ -4,6 +4,7 @@ import { ServiceContainer } from '../../container';
 import { SyncMappingEditorWebview } from '../../webviews/syncMappingEditorWebview';
 import { DocumentEditorWebview } from '../../webviews/documentEditorWebview';
 import { WebviewHelper } from '../../webviews/common';
+import { openUrl } from '../../utils/openUrl';
 
 export function registerMappingCommands(c: ServiceContainer): vscode.Disposable[] {
   return [
@@ -342,7 +343,7 @@ export function registerMappingCommands(c: ServiceContainer): vscode.Disposable[
                 const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
                 const projectKey = meta.project || '';
                 const url = `https://${hostOnly}/document/${projectKey}/${meta.backlog_id}`;
-                await vscode.env.openExternal(vscode.Uri.parse(url));
+                openUrl(url);
               }
               vscode.window.showInformationMessage(
                 '[Nulab] コンテンツをクリップボードにコピーしました。'

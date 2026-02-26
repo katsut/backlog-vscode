@@ -3,6 +3,7 @@ import { Entity } from 'backlog-js';
 import { ServiceContainer } from '../../container';
 import { WikiWebview } from '../../webviews/wikiWebview';
 import { WebviewHelper } from '../../webviews/common';
+import { openUrl } from '../../utils/openUrl';
 
 export function registerOpenWikiCommand(c: ServiceContainer): vscode.Disposable[] {
   return [
@@ -36,7 +37,7 @@ export function registerOpenWikiCommand(c: ServiceContainer): vscode.Disposable[
           async (message) => {
             switch (message.command) {
               case 'openExternal':
-                vscode.env.openExternal(vscode.Uri.parse(message.url));
+                openUrl(message.url);
                 break;
               case 'refreshWiki':
                 try {
