@@ -109,6 +109,7 @@ Slack 連携には **User OAuth Token (`xoxp-`)** が必要です。Bot Token (`
 | `search:read` | メッセージ検索（メンション・キーワード） |
 | `chat:write` | メッセージ返信の送信 |
 | `users:read` | ユーザー名の解決 |
+| `usergroups:read` | ユーザーグループ（メンション対象）の取得 |
 
 次の手順でインストール:
 
