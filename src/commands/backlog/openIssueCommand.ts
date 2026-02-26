@@ -3,7 +3,6 @@ import { Entity } from 'backlog-js';
 import { ServiceContainer } from '../../container';
 import { IssueWebview } from '../../webviews/issueWebview';
 import { WebviewHelper } from '../../webviews/common';
-import { openUrl } from '../../utils/openUrl';
 
 export function registerOpenIssueCommands(c: ServiceContainer): vscode.Disposable[] {
   const setupIssueMessageHandler = (
@@ -14,7 +13,7 @@ export function registerOpenIssueCommands(c: ServiceContainer): vscode.Disposabl
       async (message) => {
         switch (message.command) {
           case 'openExternal':
-            openUrl(message.url);
+            vscode.env.openExternal(vscode.Uri.parse(message.url));
             break;
           case 'addToTodo': {
             const defaultText = `[${issue.issueKey}] ${issue.summary}`;

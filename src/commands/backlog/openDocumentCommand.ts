@@ -3,7 +3,6 @@ import { Entity } from 'backlog-js';
 import { ServiceContainer } from '../../container';
 import { DocumentWebview } from '../../webviews/documentWebview';
 import { WebviewHelper } from '../../webviews/common';
-import { openUrl } from '../../utils/openUrl';
 
 /** Find a locally synced .bdoc file by Backlog document ID */
 function findSyncedFile(c: ServiceContainer, documentId: string): string | null {
@@ -94,7 +93,7 @@ export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposa
             async (message) => {
               switch (message.command) {
                 case 'openExternal':
-                  openUrl(message.url);
+                  vscode.env.openExternal(vscode.Uri.parse(message.url));
                   break;
                 case 'refreshDocument':
                   try {

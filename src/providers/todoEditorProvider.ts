@@ -6,7 +6,6 @@ import { BacklogConfig } from '../config/backlogConfig';
 import { SlackApiService } from '../services/slackApi';
 import { TodoWebview } from '../webviews/todoWebview';
 import { SlackMessage } from '../types/workspace';
-import { openUrl } from '../utils/openUrl';
 import { TodoTreeViewProvider } from './todoTreeViewProvider';
 import { SessionCodeLensProvider } from './sessionCodeLensProvider';
 
@@ -76,7 +75,7 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         webviewPanel.dispose();
       }
       if (message.command === 'openExternal' && message.url) {
-        openUrl(message.url);
+        vscode.env.openExternal(vscode.Uri.parse(message.url));
       }
       if (message.command === 'openSlackThread') {
         const todo = this.todoProvider.findTodoById(todoId);

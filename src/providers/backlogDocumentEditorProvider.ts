@@ -5,7 +5,6 @@ import { SyncService } from '../services/syncService';
 import { BacklogConfig } from '../config/backlogConfig';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
 import { DocumentEditorWebview } from '../webviews/documentEditorWebview';
-import { openUrl } from '../utils/openUrl';
 export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'nulab.bdocEditor';
 
@@ -126,7 +125,7 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
               const hostOnly = domain.replace(/https?:\/\//, '').split('/')[0];
               const projectKey = currentMeta.project || '';
               const url = `https://${hostOnly}/document/${projectKey}/${currentMeta.backlog_id}`;
-              openUrl(url);
+              await vscode.env.openExternal(vscode.Uri.parse(url));
             }
             vscode.window.showInformationMessage(
               '[Nulab] コンテンツをクリップボードにコピーしました。'
