@@ -205,6 +205,7 @@ export class GoogleApiService {
       singleEvents: 'true',
       orderBy: 'startTime',
       maxResults: '250',
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
 
     const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(

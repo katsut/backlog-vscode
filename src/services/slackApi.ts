@@ -16,8 +16,18 @@ export class SlackApiService {
   private userCache = new Map<string, string>();
   private tokenType: SlackTokenType = 'unknown';
   private selfUserId: string | null = null;
+  /** Cached set of channel IDs the user is a member of */
+  private memberChannelIds: Set<string> | null = null;
+  private memberChannelsCacheTime = 0;
+  /** Cached user group IDs the user belongs to */
+  private myGroupIds: string[] | null = null;
+  private myGroupsCacheTime = 0;
 
-  constructor(private configService: SlackConfig) {}
+  private log: (msg: string) => void;
+
+  constructor(private configService: SlackConfig, log?: (msg: string) => void) {
+    this.log = log || (() => {});
+  }
 
   getTokenType(): SlackTokenType {
     return this.tokenType;
@@ -67,7 +77,106 @@ export class SlackApiService {
     this.tokenType = 'unknown';
     this.selfUserId = null;
     this.userCache.clear();
+    this.memberChannelIds = null;
+    this.myGroupIds = null;
     await this.ensureInitialized();
+  }
+
+  /** Pre-warm caches (selfId, memberChannels, userGroups) so first poll is fast. */
+  async warmUpCaches(): Promise<void> {
+    await this.ensureInitialized();
+    if (!this.client || this.tokenType === 'bot') {
+      return;
+    }
+    await Promise.all([this.getSelfUserId(), this.getMemberChannelIds(), this.getMyUserGroupIds()]);
+  }
+
+  /** Get the set of channel IDs the user is a member of (cached 5 min) */
+  private async getMemberChannelIds(): Promise<Set<string>> {
+    const CACHE_TTL = 5 * 60 * 1000;
+    if (this.memberChannelIds && Date.now() - this.memberChannelsCacheTime < CACHE_TTL) {
+      return this.memberChannelIds;
+    }
+    await this.ensureInitialized();
+    if (!this.client) {
+      return new Set();
+    }
+    const ids = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const resp = await this.client.users.conversations({
+        types: 'public_channel,private_channel,mpim,im',
+        limit: 200,
+        cursor,
+      });
+      for (const ch of resp.channels || []) {
+        if (ch.id) {
+          ids.add(ch.id);
+        }
+      }
+      cursor = resp.response_metadata?.next_cursor || undefined;
+    } while (cursor);
+    this.memberChannelIds = ids;
+    this.memberChannelsCacheTime = Date.now();
+    console.log(`[Slack] getMemberChannelIds: ${ids.size} channels`);
+    return ids;
+  }
+
+  /**
+   * Get user group IDs the current user belongs to.
+   * Uses disk-persisted cache for instant startup, refreshes from API in background.
+   */
+  private async getMyUserGroupIds(): Promise<string[]> {
+    const CACHE_TTL = 30 * 60 * 1000;
+    if (this.myGroupIds && Date.now() - this.myGroupsCacheTime < CACHE_TTL) {
+      return this.myGroupIds;
+    }
+
+    // Load from disk cache immediately (no API call)
+    const persisted = this.configService.getMyGroupIds();
+    if (persisted.length > 0 && !this.myGroupIds) {
+      this.myGroupIds = persisted;
+      this.myGroupsCacheTime = Date.now();
+      this.log(`[Slack] usergroups: loaded ${persisted.length} from disk`);
+      // Refresh from API in background (non-blocking)
+      this.refreshUserGroupIds().catch(() => {});
+      return persisted;
+    }
+
+    // No disk cache — must fetch from API (first-ever run)
+    return this.refreshUserGroupIds();
+  }
+
+  /** Fetch user group IDs from Slack API and persist to disk. */
+  private async refreshUserGroupIds(): Promise<string[]> {
+    await this.ensureInitialized();
+    if (!this.client) {
+      return this.myGroupIds || [];
+    }
+    try {
+      const selfId = await this.getSelfUserId();
+      if (!selfId) {
+        this.log('[Slack] getMyUserGroupIds: no selfId');
+        return this.myGroupIds || [];
+      }
+      const resp = await this.client.usergroups.list({ include_users: true });
+      const allGroups = resp.usergroups || [];
+      // Filter out disabled/deleted groups
+      const groups = allGroups.filter((g) => !g.date_delete || g.date_delete === 0);
+      const myGroups = groups.filter((g) => g.users?.includes(selfId));
+      const myGroupIds = myGroups.map((g) => g.id!).filter(Boolean);
+      this.myGroupIds = myGroupIds;
+      this.myGroupsCacheTime = Date.now();
+      this.configService.setMyGroupIds(myGroupIds);
+      const handles = myGroups.map((g) => `@${g.handle}`).join(', ');
+      this.log(
+        `[Slack] usergroups: ${myGroupIds.length}/${groups.length} active mine [${handles}]`
+      );
+      return myGroupIds;
+    } catch (error) {
+      this.log(`[Slack] usergroups.list failed: ${error}`);
+      return this.myGroupIds || [];
+    }
   }
 
   /**
@@ -172,8 +281,12 @@ export class SlackApiService {
    * Requires user token (xoxp-) with search:read scope.
    * Returns empty array for bot tokens (search.messages is not supported).
    */
-  async getMentions(options?: { count?: number; includeDMs?: boolean }): Promise<SlackMessage[]> {
-    const { count = 20, includeDMs = false } = options || {};
+  async getMentions(options?: {
+    count?: number;
+    includeDMs?: boolean;
+    onProgress?: (messages: SlackMessage[]) => void;
+  }): Promise<SlackMessage[]> {
+    const { count = 20, includeDMs = false, onProgress } = options || {};
     await this.ensureInitialized();
     if (!this.client) {
       return [];
@@ -186,76 +299,118 @@ export class SlackApiService {
     }
 
     try {
-      const selfId = await this.getSelfUserId();
+      const [selfId, memberChannels, myGroupIds] = await Promise.all([
+        this.getSelfUserId(),
+        this.getMemberChannelIds(),
+        this.getMyUserGroupIds(),
+      ]);
 
-      // Fetch channel mentions
-      const mentionQuery = selfId ? `<@${selfId}>` : 'to:me';
-      const mentionResp = await this.client.search.messages({
-        query: mentionQuery,
-        sort: 'timestamp',
-        sort_dir: 'desc',
-        count,
-      });
-      const mentionMatches = mentionResp.messages?.matches || [];
-      console.log(`[Slack] search.messages "${mentionQuery}": ${mentionMatches.length} matches`);
+      // Date filter: only search last 2 weeks
+      const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      const afterDate = twoWeeksAgo.toISOString().slice(0, 10); // YYYY-MM-DD
+      const after = ` after:${afterDate}`;
 
-      // Fetch DMs separately if enabled
-      let dmMatches: typeof mentionMatches = [];
+      // Priority: direct mentions > DMs > @channel/@here > subteam groups (last)
+      const directQuery = selfId ? `<@${selfId}>` : 'to:me';
+      const queries: { q: string; c: number }[] = [];
+      queries.push({ q: directQuery + after, c: count });
       if (includeDMs) {
         const dmCount = Math.max(10, Math.floor(count / 2));
-        const dmResp = await this.client.search.messages({
-          query: 'is:dm',
-          sort: 'timestamp',
-          sort_dir: 'desc',
-          count: dmCount,
-        });
-        dmMatches = dmResp.messages?.matches || [];
-        console.log(`[Slack] search.messages "is:dm": ${dmMatches.length} matches`);
-
-        // Also fetch group DMs
-        const mpimResp = await this.client.search.messages({
-          query: 'is:mpim',
-          sort: 'timestamp',
-          sort_dir: 'desc',
-          count: dmCount,
-        });
-        const mpimMatches = mpimResp.messages?.matches || [];
-        console.log(`[Slack] search.messages "is:mpim": ${mpimMatches.length} matches`);
-        dmMatches = [...dmMatches, ...mpimMatches];
+        queries.push({ q: 'is:dm' + after, c: dmCount }, { q: 'is:mpim' + after, c: dmCount });
+      }
+      queries.push(
+        { q: '<!channel>' + after, c: Math.max(10, Math.floor(count / 2)) },
+        { q: '<!here>' + after, c: Math.max(10, Math.floor(count / 2)) }
+      );
+      for (const gid of myGroupIds) {
+        queries.push({ q: `<!subteam^${gid}>${after}`, c: Math.max(10, Math.floor(count / 2)) });
       }
 
-      // Merge and deduplicate
-      const allMatches = [...mentionMatches, ...dmMatches];
+      // Run searches with concurrency limit, emitting partial results after each batch
+      const CONCURRENCY = 3;
       const seen = new Set<string>();
       const messages: SlackMessage[] = [];
-      for (const match of allMatches) {
-        const chObj = match.channel as Record<string, unknown> | undefined;
-        const channelId = (chObj?.id as string) || '';
-        const key = `${channelId}:${match.ts}`;
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
 
-        // Skip own messages
-        if (selfId && match.user === selfId) {
-          continue;
+      // Helper: merge raw matches into messages, deduplicate, filter
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mergeMatches = (matches: any[], queryLabel: string) => {
+        let skipSelf = 0;
+        let skipNonMember = 0;
+        let added = 0;
+        for (const match of matches) {
+          const chObj = match.channel as Record<string, unknown> | undefined;
+          const channelId = (chObj?.id as string) || '';
+          const key = `${channelId}:${match.ts}`;
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          if (selfId && match.user === selfId) {
+            skipSelf++;
+            continue;
+          }
+          const isDm = !!chObj?.is_im || !!chObj?.is_mpim;
+          if (!isDm && channelId && memberChannels.size > 0 && !memberChannels.has(channelId)) {
+            skipNonMember++;
+            continue;
+          }
+          added++;
+          messages.push({
+            ts: match.ts || '',
+            user: match.user || '',
+            text: convertSlackEmoji(match.text || ''),
+            thread_ts: (match as Record<string, unknown>).thread_ts as string | undefined,
+            channel: channelId,
+            userName: match.user || '',
+            is_dm: isDm,
+          });
+        }
+        if (skipSelf > 0 || skipNonMember > 0) {
+          this.log(
+            `[Slack] merge "${queryLabel}": +${added}, skipSelf=${skipSelf}, skipNonMember=${skipNonMember}`
+          );
+        }
+      };
+
+      for (let i = 0; i < queries.length; i += CONCURRENCY) {
+        const batch = queries.slice(i, i + CONCURRENCY);
+        const batchResults = await Promise.all(
+          batch.map(async ({ q, c }) => {
+            const resp = await this.client!.search.messages({
+              query: q,
+              sort: 'timestamp',
+              sort_dir: 'desc',
+              count: c,
+            });
+            const matches = resp.messages?.matches || [];
+            this.log(`[Slack] search.messages "${q}": ${matches.length} matches`);
+            return matches;
+          })
+        );
+
+        // Merge batch results
+        for (let j = 0; j < batchResults.length; j++) {
+          const label = batch[j].q;
+          mergeMatches(batchResults[j], label);
         }
 
-        const isDm = !!chObj?.is_im || !!chObj?.is_mpim;
-        const userName = await this.resolveUserName(match.user || '');
-        messages.push({
-          ts: match.ts || '',
-          user: match.user || '',
-          text: convertSlackEmoji(match.text || ''),
-          thread_ts: (match as Record<string, unknown>).thread_ts as string | undefined,
-          channel: channelId,
-          userName,
-          is_dm: isDm,
-        });
+        // Resolve new user names and emit progress
+        const unresolvedIds = messages
+          .filter((m) => m.userName === m.user && m.user)
+          .map((m) => m.user);
+        const uniqueNew = [...new Set(unresolvedIds)].filter((id) => !this.userCache.has(id));
+        if (uniqueNew.length > 0) {
+          await Promise.all(uniqueNew.map((uid) => this.resolveUserName(uid)));
+        }
+        for (const m of messages) {
+          m.userName = this.userCache.get(m.user) || m.user;
+        }
+
+        // Sort and emit partial results
+        messages.sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts));
+        onProgress?.(messages);
       }
-      // Sort by timestamp descending (newest first)
-      messages.sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts));
+
       return messages;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -294,17 +449,20 @@ export class SlackApiService {
       const matches = resp.messages?.matches || [];
       console.log(`[Slack] search.messages "${query}": ${matches.length} matches`);
 
-      const messages: SlackMessage[] = [];
-      for (const match of matches) {
-        const userName = await this.resolveUserName(match.user || '');
-        messages.push({
-          ts: match.ts || '',
-          user: match.user || '',
-          text: convertSlackEmoji(match.text || ''),
-          thread_ts: (match as Record<string, unknown>).thread_ts as string | undefined,
-          channel: ((match.channel as Record<string, unknown>)?.id as string) || '',
-          userName,
-        });
+      const messages: SlackMessage[] = matches.map((match) => ({
+        ts: match.ts || '',
+        user: match.user || '',
+        text: convertSlackEmoji(match.text || ''),
+        thread_ts: (match as Record<string, unknown>).thread_ts as string | undefined,
+        channel: ((match.channel as Record<string, unknown>)?.id as string) || '',
+        userName: match.user || '',
+      }));
+
+      // Resolve user names in parallel
+      const uniqueUserIds = [...new Set(messages.map((m) => m.user).filter(Boolean))];
+      await Promise.all(uniqueUserIds.map((uid) => this.resolveUserName(uid)));
+      for (const m of messages) {
+        m.userName = this.userCache.get(m.user) || m.user;
       }
       return messages;
     } catch (error) {

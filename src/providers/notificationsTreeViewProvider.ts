@@ -25,10 +25,16 @@ export class NotificationsTreeViewProvider
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private notifications: BacklogNotification[] | null = null;
-  private filterUnreadOnly = false;
+  private filterUnreadOnly: boolean;
   private todoIssueKeys: Set<string> = new Set();
 
-  constructor(private backlogApi: BacklogApiService) {}
+  constructor(
+    private backlogApi: BacklogApiService,
+    private getPersistedFilter: () => boolean,
+    private setPersistedFilter: (v: boolean) => void
+  ) {
+    this.filterUnreadOnly = this.getPersistedFilter();
+  }
 
   /** Update the set of issueKeys that have active TODOs */
   setTodoIssueKeys(keys: Set<string>): void {
@@ -67,6 +73,7 @@ export class NotificationsTreeViewProvider
 
   toggleFilterUnread(): boolean {
     this.filterUnreadOnly = !this.filterUnreadOnly;
+    this.setPersistedFilter(this.filterUnreadOnly);
     this._onDidChangeTreeData.fire();
     return this.filterUnreadOnly;
   }
@@ -162,19 +169,22 @@ export class NotificationTreeItem extends vscode.TreeItem {
     this.notification = notification;
 
     // Icon
-    if (notification.alreadyRead) {
+    if (hasTodo) {
+      this.iconPath = new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.purple'));
+    } else if (notification.alreadyRead) {
       this.iconPath = new vscode.ThemeIcon('bell', new vscode.ThemeColor('disabledForeground'));
     } else {
       this.iconPath = new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.green'));
     }
 
     // Description: relative time + state badges
-    const parts = [formatRelativeTime(notification.created)];
-    if (notification.alreadyRead) {
-      parts.push('既読');
-    }
+    const parts: string[] = [];
     if (hasTodo) {
       parts.push('TODO');
+    }
+    parts.push(formatRelativeTime(notification.created));
+    if (notification.alreadyRead) {
+      parts.push('既読');
     }
     this.description = parts.join(' · ');
 

@@ -41,8 +41,29 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
     }
     const todoId = match[1];
 
-    // Initial render
-    await this.render(webviewPanel, todoId);
+    // Cache Slack context fetched on initial render to avoid re-fetching on every status change
+    let cachedSlackBefore: SlackMessage[] = [];
+    let cachedSlackAfter: SlackMessage[] = [];
+
+    // Initial render (fetches Slack context and caches it)
+    const todo = this.todoProvider.findTodoById(todoId);
+    const ctx = todo?.context;
+    if (
+      (ctx?.source === 'slack-mention' || ctx?.source === 'slack-search') &&
+      ctx.slackChannel &&
+      (ctx.slackThreadTs || ctx.slackMessageTs)
+    ) {
+      try {
+        const ts = ctx.slackThreadTs || ctx.slackMessageTs || '';
+        const channelContext = await this.slackApi.getChannelContext(ctx.slackChannel, ts, 3);
+        cachedSlackBefore = channelContext.before;
+        cachedSlackAfter = channelContext.after;
+      } catch {
+        // Silently ignore - context is optional
+      }
+    }
+
+    await this.render(webviewPanel, todoId, cachedSlackBefore, cachedSlackAfter);
 
     // Watch for document changes (e.g., Claude Code writing to the DRAFT section)
     const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
@@ -56,15 +77,26 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
     });
     webviewPanel.onDidDispose(() => changeSubscription.dispose());
 
+    const STATUS_LABELS: Record<string, string> = {
+      open: '○ 未着手',
+      in_progress: '◉ 進行中',
+      waiting: '◷ 待ち',
+      done: '✓ 完了',
+    };
+
     // Handle messages from the webview
     webviewPanel.webview.onDidReceiveMessage(async (message) => {
       if (message.command === 'setStatus') {
         this.todoProvider.setStatus(todoId, message.status);
-        await this.render(webviewPanel, todoId);
+        webviewPanel.webview.postMessage({
+          command: 'updateStatus',
+          status: message.status,
+          statusLabel: STATUS_LABELS[message.status] || message.status,
+        });
       }
       if (message.command === 'markReplied') {
         this.todoProvider.markReplied(todoId);
-        await this.render(webviewPanel, todoId);
+        webviewPanel.webview.postMessage({ command: 'updateReplied' });
       }
       if (message.command === 'saveNotes') {
         this.todoProvider.editNotes(todoId, message.notes);
@@ -82,6 +114,16 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         const ctx = todo?.context;
         if (ctx?.slackChannel) {
           const ts = ctx.slackThreadTs || ctx.slackMessageTs || '';
+          try {
+            const permalink = await this.slackApi.getPermalink(ctx.slackChannel, ts);
+            if (permalink) {
+              vscode.env.openExternal(vscode.Uri.parse(permalink));
+              return;
+            }
+          } catch {
+            // Fall through to internal viewer
+          }
+          // Fallback: open internal thread viewer
           const sender = ctx.slackUserName || 'Thread';
           vscode.commands.executeCommand(
             'workspace.openSlackThread',
@@ -91,9 +133,16 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
           );
         }
       }
+      if (message.command === 'openGoogleDoc') {
+        const todo = this.todoProvider.findTodoById(todoId);
+        const url = todo?.context?.googleDocUrl;
+        if (url) {
+          vscode.env.openExternal(vscode.Uri.parse(url));
+        }
+      }
       if (message.command === 'startClaudeSession') {
         await vscode.commands.executeCommand('workspace.startClaudeSession', todoId);
-        await this.render(webviewPanel, todoId);
+        await this.render(webviewPanel, todoId, cachedSlackBefore, cachedSlackAfter);
       }
       if (message.command === 'refreshDraft') {
         const draft = this.fileService.getDraftInfo(todoId);
@@ -126,11 +175,23 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
           }
           this.todoProvider.markReplied(todoId);
           vscode.window.showInformationMessage(`[Nulab] ${label}しました`);
-          await this.render(webviewPanel, todoId);
+          await this.render(webviewPanel, todoId, cachedSlackBefore, cachedSlackAfter);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           vscode.window.showErrorMessage(`[Nulab] 投稿に失敗: ${msg}`);
         }
+      }
+      if (message.command === 'saveDraft') {
+        if (!this.fileService.hasSession(todoId)) {
+          const todo = this.todoProvider.findTodoById(todoId);
+          if (todo) {
+            const meta = this.fileService.todoToMeta(todo, 'none');
+            const filePath = this.fileService.getSessionFilePath(todoId);
+            this.fileService.writeSessionFile(filePath, meta, '', '');
+          }
+        }
+        this.fileService.saveDraft(todoId, message.content || '');
+        vscode.window.showInformationMessage('[Nulab] ドラフトを保存しました');
       }
       if (message.command === 'discardDraft') {
         const confirm = await vscode.window.showWarningMessage(
@@ -142,36 +203,22 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
           return;
         }
         this.fileService.clearDraft(todoId);
-        await this.render(webviewPanel, todoId);
+        await this.render(webviewPanel, todoId, cachedSlackBefore, cachedSlackAfter);
         vscode.window.showInformationMessage('[Nulab] ドラフトを破棄しました');
       }
     });
   }
 
-  private async render(panel: vscode.WebviewPanel, todoId: string): Promise<void> {
+  private async render(
+    panel: vscode.WebviewPanel,
+    todoId: string,
+    slackContextBefore: SlackMessage[] = [],
+    slackContextAfter: SlackMessage[] = []
+  ): Promise<void> {
     const todo = this.todoProvider.findTodoById(todoId);
     if (!todo) {
       panel.webview.html = '<html><body><p>TODO が見つかりません</p></body></html>';
       return;
-    }
-
-    // Fetch surrounding Slack messages if this TODO is from Slack
-    let slackContextBefore: SlackMessage[] = [];
-    let slackContextAfter: SlackMessage[] = [];
-    const ctx = todo.context;
-    if (
-      (ctx?.source === 'slack-mention' || ctx?.source === 'slack-search') &&
-      ctx.slackChannel &&
-      (ctx.slackThreadTs || ctx.slackMessageTs)
-    ) {
-      try {
-        const ts = ctx.slackThreadTs || ctx.slackMessageTs || '';
-        const channelContext = await this.slackApi.getChannelContext(ctx.slackChannel, ts, 3);
-        slackContextBefore = channelContext.before;
-        slackContextAfter = channelContext.after;
-      } catch {
-        // Silently ignore - context is optional
-      }
     }
 
     const draft = this.fileService.getDraftInfo(todoId);

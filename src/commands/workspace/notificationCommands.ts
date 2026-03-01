@@ -3,7 +3,16 @@ import { NotificationTreeItem } from '../../providers/notificationsTreeViewProvi
 import { NOTIFICATION_REASONS, TodoContext } from '../../types/workspace';
 import { ServiceContainer } from '../../container';
 
-export function registerNotificationCommands(c: ServiceContainer): vscode.Disposable[] {
+const TITLE_BASE = 'Backlog: Notifications';
+
+export function registerNotificationCommands(
+  c: ServiceContainer,
+  treeView: vscode.TreeView<any>
+): vscode.Disposable[] {
+  // Restore title from persisted filter state
+  if (c.notificationsProvider.isFilterUnreadActive()) {
+    treeView.title = `${TITLE_BASE} (未読)`;
+  }
   return [
     vscode.commands.registerCommand('workspace.refreshMyTasks', () => {
       c.myTasksProvider.refresh();
@@ -28,9 +37,7 @@ export function registerNotificationCommands(c: ServiceContainer): vscode.Dispos
 
     vscode.commands.registerCommand('workspace.toggleNotificationFilter', () => {
       const active = c.notificationsProvider.toggleFilterUnread();
-      vscode.window.showInformationMessage(
-        active ? '[Nulab] Notifications: 未読のみ表示' : '[Nulab] Notifications: フィルタ解除'
-      );
+      treeView.title = active ? `${TITLE_BASE} (未読)` : TITLE_BASE;
     }),
 
     vscode.commands.registerCommand(

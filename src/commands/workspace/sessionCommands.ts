@@ -25,7 +25,6 @@ export function registerSessionCommands(c: ServiceContainer): vscode.Disposable[
             c.todoPersistence.createSessionFromTodo(todo);
           }
 
-          c.sessionFileService.setActiveSession(todo.id);
           c.todoProvider.setStatus(todo.id, 'in_progress');
           c.sessionCodeLensProvider.refresh();
 

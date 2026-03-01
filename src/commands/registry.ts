@@ -13,10 +13,14 @@ import { registerNotificationCommands } from './workspace/notificationCommands';
 import { registerSlackCommands } from './workspace/slackCommands';
 import { registerSessionCommands } from './workspace/sessionCommands';
 
-export function registerAllCommands(
-  c: ServiceContainer,
-  todosTreeView: vscode.TreeView<any>
-): vscode.Disposable[] {
+export interface TreeViews {
+  todosTreeView: vscode.TreeView<any>;
+  notificationsTreeView: vscode.TreeView<any>;
+  slackTreeView: vscode.TreeView<any>;
+  slackSearchTreeView: vscode.TreeView<any>;
+}
+
+export function registerAllCommands(c: ServiceContainer, tv: TreeViews): vscode.Disposable[] {
   return [
     ...registerRefreshCommands(c),
     ...registerSettingsCommands(c),
@@ -26,9 +30,9 @@ export function registerAllCommands(
     ...registerOpenWikiCommand(c),
     ...registerOpenDocumentCommand(c),
     ...registerMappingCommands(c),
-    ...registerTodoCommands(c, todosTreeView),
-    ...registerNotificationCommands(c),
-    ...registerSlackCommands(c),
+    ...registerTodoCommands(c, tv.todosTreeView),
+    ...registerNotificationCommands(c, tv.notificationsTreeView),
+    ...registerSlackCommands(c, tv.slackTreeView, tv.slackSearchTreeView),
     ...registerSessionCommands(c),
   ];
 }

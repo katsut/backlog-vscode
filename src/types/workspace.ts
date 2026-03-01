@@ -9,7 +9,7 @@ export interface BacklogParticipant {
 }
 
 export interface TodoContext {
-  source: 'backlog-notification' | 'slack-mention' | 'slack-search' | 'manual';
+  source: 'backlog-notification' | 'slack-mention' | 'slack-search' | 'google-doc' | 'manual';
   // Backlog
   issueKey?: string;
   issueId?: number;
@@ -27,6 +27,13 @@ export interface TodoContext {
   slackMessageTs?: string;
   slackUserName?: string;
   slackText?: string;
+  // Google Doc
+  googleEventSummary?: string;
+  googleEventDate?: string;
+  googleDocId?: string;
+  googleDocUrl?: string;
+  googleMeetUrl?: string;
+  googleAttendees?: string[];
 }
 
 export interface WorkspaceTodoItem {

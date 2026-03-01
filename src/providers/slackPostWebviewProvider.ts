@@ -31,6 +31,10 @@ export class SlackPostWebviewProvider implements vscode.WebviewViewProvider {
         case 'requestChannels':
           this.sendChannels();
           break;
+        case 'editFavorites':
+          await vscode.commands.executeCommand('workspace.editSlackFavoriteChannels');
+          this.sendChannels();
+          break;
       }
     });
 
@@ -101,13 +105,18 @@ export class SlackPostWebviewProvider implements vscode.WebviewViewProvider {
     button.primary:hover { background: var(--vscode-button-hoverBackground); }
     button.primary:disabled { opacity: 0.5; cursor: default; }
     .empty { color: var(--vscode-descriptionForeground); font-size: 12px; text-align: center; margin: 16px 0; }
-    .empty a { color: var(--vscode-textLink-foreground); cursor: pointer; }
+    .empty button {
+      margin-top: 8px; padding: 4px 12px; border: none; border-radius: 2px; cursor: pointer;
+      font-family: inherit; font-size: 12px;
+      background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+    }
+    .empty button:hover { background: var(--vscode-button-hoverBackground); }
   </style>
 </head>
 <body>
   <div id="content">
     <div id="empty" class="empty" style="display:none;">
-      お気に入りチャンネルを<br><a id="setupLink">登録してください</a>
+      お気に入りチャンネルが未登録です<br><button id="setupBtn">チャンネルを登録</button>
     </div>
     <div id="form" style="display:none;">
       <div class="form-group">
@@ -131,7 +140,7 @@ export class SlackPostWebviewProvider implements vscode.WebviewViewProvider {
     const sendBtn = document.getElementById('sendBtn');
     const formEl = document.getElementById('form');
     const emptyEl = document.getElementById('empty');
-    const setupLink = document.getElementById('setupLink');
+    const setupBtn = document.getElementById('setupBtn');
 
     let sending = false;
 
@@ -150,8 +159,8 @@ export class SlackPostWebviewProvider implements vscode.WebviewViewProvider {
       vscode.postMessage({ type: 'send', channelId: channelEl.value, text: messageEl.value.trim() });
     });
 
-    setupLink.addEventListener('click', () => {
-      vscode.postMessage({ type: 'requestChannels' });
+    setupBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'editFavorites' });
     });
 
     // Ctrl+Enter / Cmd+Enter to send

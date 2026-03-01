@@ -42,12 +42,9 @@ export class EventItem extends vscode.TreeItem {
   }
 
   private static buildLabel(event: GoogleCalendarEvent): string {
-    const start = event.start.dateTime || event.start.date || '';
     if (event.start.dateTime) {
-      const time = new Date(start);
-      const hh = String(time.getHours()).padStart(2, '0');
-      const mm = String(time.getMinutes()).padStart(2, '0');
-      return `${hh}:${mm} ${event.summary || '(No title)'}`;
+      const hhmm = extractTime(event.start.dateTime);
+      return `${hhmm} ${event.summary || '(No title)'}`;
     }
     return event.summary || '(No title)';
   }
@@ -68,10 +65,7 @@ export class EventItem extends vscode.TreeItem {
     const lines: string[] = [event.summary || '(No title)'];
 
     if (event.start.dateTime && event.end.dateTime) {
-      const start = new Date(event.start.dateTime);
-      const end = new Date(event.end.dateTime);
-      const fmt = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-      lines.push(`${fmt(start)} - ${fmt(end)}`);
+      lines.push(`${extractTime(event.start.dateTime)} - ${extractTime(event.end.dateTime)}`);
     }
 
     if (event.attendees) {
@@ -241,8 +235,9 @@ export class GoogleCalendarTreeViewProvider
       this.eventCache.clear();
       for (const event of events) {
         const startStr = event.start.dateTime || event.start.date || '';
-        const date = new Date(startStr);
-        const dateKey = formatDateKey(date);
+        const dateKey = event.start.dateTime
+          ? event.start.dateTime.slice(0, 10)
+          : formatDateKey(new Date(startStr));
 
         if (!this.eventCache.has(dateKey)) {
           this.eventCache.set(dateKey, []);
@@ -280,6 +275,11 @@ export class GoogleCalendarTreeViewProvider
 }
 
 // ---- Utility ----
+
+/** Extract HH:MM from an ISO dateTime string (e.g. "2026-02-27T17:00:00+09:00" → "17:00") */
+function extractTime(dateTime: string): string {
+  return dateTime.slice(11, 16);
+}
 
 function formatDateKey(date: Date): string {
   const y = date.getFullYear();

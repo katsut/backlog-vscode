@@ -295,6 +295,7 @@ export class IssueWebview {
             </button>
           </h1>
           <div class="webview-meta">
+            <span class="meta-item">⚡ Backlog</span>
             <span class="key-badge">${WebviewHelper.escapeHtml(issue.issueKey)}</span>
             <span class="status-badge ${this.getStatusClass(
               issue.status

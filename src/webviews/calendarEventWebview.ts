@@ -11,14 +11,13 @@ export class CalendarEventWebview {
     const nonce = WebviewHelper.getNonce();
     const esc = WebviewHelper.escapeHtml;
 
-    // Time
+    // Time — extract directly from ISO string to avoid UTC conversion
     let timeStr = '';
     if (event.start.dateTime && event.end.dateTime) {
-      const start = new Date(event.start.dateTime);
-      const end = new Date(event.end.dateTime);
-      const dateFmt = `${start.getFullYear()}/${start.getMonth() + 1}/${start.getDate()}`;
-      const tf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-      timeStr = `${dateFmt} ${tf(start)} – ${tf(end)}`;
+      const datePart = event.start.dateTime.slice(0, 10).replace(/-/g, '/');
+      const startTime = event.start.dateTime.slice(11, 16);
+      const endTime = event.end.dateTime.slice(11, 16);
+      timeStr = `${datePart} ${startTime} – ${endTime}`;
     } else if (event.start.date) {
       timeStr = event.start.date + ' (終日)';
     }

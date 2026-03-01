@@ -12,14 +12,13 @@ export class MeetingNotesWebview {
   ): string {
     const nonce = WebviewHelper.getNonce();
 
-    // Format event time
+    // Format event time — extract directly from ISO string to avoid UTC conversion
     let timeStr = '';
     if (event.start.dateTime && event.end.dateTime) {
-      const start = new Date(event.start.dateTime);
-      const end = new Date(event.end.dateTime);
-      const dateFmt = `${start.getFullYear()}/${start.getMonth() + 1}/${start.getDate()}`;
-      const timeFmt = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-      timeStr = `${dateFmt} ${timeFmt(start)} - ${timeFmt(end)}`;
+      const datePart = event.start.dateTime.slice(0, 10).replace(/-/g, '/');
+      const startTime = event.start.dateTime.slice(11, 16);
+      const endTime = event.end.dateTime.slice(11, 16);
+      timeStr = `${datePart} ${startTime} - ${endTime}`;
     } else if (event.start.date) {
       timeStr = event.start.date;
     }
@@ -31,8 +30,8 @@ export class MeetingNotesWebview {
 
     const additionalStyles = `
       .meeting-header {
-        margin-bottom: 20px;
-        padding-bottom: 16px;
+        margin-bottom: var(--webview-space-md, 12px);
+        padding-bottom: var(--webview-space-md, 12px);
         border-bottom: 1px solid var(--vscode-panel-border);
       }
       .meeting-title {
@@ -60,38 +59,23 @@ export class MeetingNotesWebview {
         color: var(--vscode-badge-foreground);
         font-size: 0.85em;
       }
-      .doc-content {
-        margin-top: 16px;
-        line-height: 1.7;
-      }
-      .doc-content img {
-        max-width: 100%;
-      }
       .actions {
-        margin-top: 24px;
-        padding-top: 16px;
-        border-top: 1px solid var(--vscode-panel-border);
         display: flex;
-        gap: 8px;
+        align-items: center;
+        gap: var(--webview-space-sm, 8px);
         flex-wrap: wrap;
+        margin-bottom: var(--webview-space-lg, 16px);
+        padding: var(--webview-space-md, 12px);
+        background: var(--vscode-editor-inactiveSelectionBackground);
+        border-radius: var(--webview-radius-md, 6px);
       }
       .action-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 14px;
-        border: 1px solid var(--vscode-button-border, var(--vscode-contrastBorder, transparent));
-        border-radius: 4px;
+        padding: var(--webview-space-xs, 4px) var(--webview-space-md, 12px);
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: var(--webview-radius-md, 6px);
         cursor: pointer;
-        font-size: 0.9em;
+        font-size: var(--webview-font-size-sm, 0.85em);
         font-family: inherit;
-      }
-      .action-btn.primary {
-        background: var(--vscode-button-background);
-        color: var(--vscode-button-foreground);
-      }
-      .action-btn.primary:hover {
-        background: var(--vscode-button-hoverBackground);
       }
       .action-btn.secondary {
         background: var(--vscode-button-secondaryBackground);
@@ -99,6 +83,12 @@ export class MeetingNotesWebview {
       }
       .action-btn.secondary:hover {
         background: var(--vscode-button-secondaryHoverBackground);
+      }
+      .doc-content {
+        line-height: 1.7;
+      }
+      .doc-content img {
+        max-width: 100%;
       }
     `;
 
@@ -128,28 +118,17 @@ ${head}
     }
   </div>
 
+  <div class="actions">
+    <button class="action-btn secondary" onclick="openExternal()">ブラウザで開く</button>
+    <button class="action-btn secondary" onclick="copyContent()">Markdown をコピー</button>
+  </div>
+
   <div class="doc-content">
     ${sanitizeGoogleHtml(htmlContent)}
   </div>
 
-  <div class="actions">
-    <button class="action-btn primary" onclick="createIssue()">Backlog 課題を作成</button>
-    <button class="action-btn primary" onclick="sendToClaudeCode()">Claude Code で扱う</button>
-    <button class="action-btn secondary" onclick="copyContent()">Markdown をコピー</button>
-    <button class="action-btn secondary" onclick="openExternal()">ブラウザで開く</button>
-  </div>
-
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-
-    function createIssue() {
-      const content = document.querySelector('.doc-content')?.innerText || '';
-      vscode.postMessage({
-        command: 'createBacklogIssue',
-        eventSummary: ${JSON.stringify(event.summary || '')},
-        content: content
-      });
-    }
 
     function copyContent() {
       const content = document.querySelector('.doc-content')?.innerText || '';
@@ -166,11 +145,6 @@ ${head}
       });
     }
 
-    function sendToClaudeCode() {
-      vscode.postMessage({
-        command: 'sendToClaudeCode'
-      });
-    }
   </script>
 </body>
 </html>`;

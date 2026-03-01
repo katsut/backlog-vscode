@@ -8,12 +8,18 @@ import {
 } from '../../providers/googleCalendarTreeViewProvider';
 import { GoogleDriveFile, GoogleCalendarEvent } from '../../types/google';
 import { CalendarEventWebview } from '../../webviews/calendarEventWebview';
+import { MeetingNotesWebview } from '../../webviews/meetingNotesWebview';
+import { TodoTreeViewProvider } from '../../providers/todoTreeViewProvider';
+import { TodoPersistenceService } from '../../services/session/todoPersistenceService';
 
 export function registerGoogleCalendar(
   context: vscode.ExtensionContext,
   googleConfig: GoogleConfig,
-  log: (message: string) => void
+  log: (message: string) => void,
+  todoProvider?: TodoTreeViewProvider,
+  todoPersistence?: TodoPersistenceService
 ): { disposables: vscode.Disposable[]; treeView: vscode.TreeView<any> } {
+  log('registerGoogleCalendar: START');
   const googleApi = new GoogleApiService(googleConfig);
   const calendarProvider = new GoogleCalendarTreeViewProvider(googleApi, context.extensionUri);
 
@@ -60,6 +66,33 @@ export function registerGoogleCalendar(
     calendarProvider.refresh();
   });
 
+  /** Build the .gdoc file URI for an event */
+  function gdocFileUri(event: GoogleCalendarEvent): vscode.Uri | null {
+    const wsFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!wsFolder) return null;
+    const eventDate = (event.start.dateTime || event.start.date || '').split('T')[0];
+    const safeName = (event.summary || 'meeting').replace(/[/\\:*?"<>|]/g, '_').substring(0, 60);
+    return vscode.Uri.joinPath(
+      wsFolder.uri,
+      '.nulab',
+      'meeting-notes',
+      `${eventDate}_${safeName}.gdoc`
+    );
+  }
+
+  /** Fetch Google Doc HTML and write .gdoc file */
+  async function fetchAndWriteGdoc(
+    file: GoogleDriveFile,
+    event: GoogleCalendarEvent,
+    fileUri: vscode.Uri
+  ): Promise<void> {
+    const html = await googleApi.getFileContent(file.id);
+    const meta = JSON.stringify({ event, file });
+    const dir = vscode.Uri.joinPath(fileUri, '..');
+    await vscode.workspace.fs.createDirectory(dir);
+    await vscode.workspace.fs.writeFile(fileUri, Buffer.from(`${meta}\n${html}`, 'utf-8'));
+  }
+
   const openMeetingNotesCmd = vscode.commands.registerCommand(
     'nulab.google.openMeetingNotes',
     async (file: GoogleDriveFile, event: GoogleCalendarEvent) => {
@@ -69,24 +102,13 @@ export function registerGoogleCalendar(
         return;
       }
 
-      const wsFolder = vscode.workspace.workspaceFolders?.[0];
-      if (!wsFolder) {
-        log('openMeetingNotes: no workspace folder');
+      const fileUri = gdocFileUri(event);
+      if (!fileUri) {
         vscode.window.showErrorMessage('ワークスペースが開かれていません。');
         return;
       }
 
       try {
-        const nulabDir = vscode.Uri.joinPath(wsFolder.uri, '.nulab', 'meeting-notes');
-        await vscode.workspace.fs.createDirectory(nulabDir);
-
-        const eventDate = (event.start.dateTime || event.start.date || '').split('T')[0];
-        const safeName = (event.summary || 'meeting')
-          .replace(/[/\\:*?"<>|]/g, '_')
-          .substring(0, 60);
-        const fileName = `${eventDate}_${safeName}.gdoc`;
-        const fileUri = vscode.Uri.joinPath(nulabDir, fileName);
-
         let fileExists = false;
         try {
           await vscode.workspace.fs.stat(fileUri);
@@ -97,64 +119,41 @@ export function registerGoogleCalendar(
 
         if (!fileExists) {
           log(`openMeetingNotes: fetching content for file ${file.id}`);
-          const html = await googleApi.getFileContent(file.id);
-          const plainText = html
-            .replace(/<style[\s\S]*?<\/style>/gi, '')
-            .replace(/<[^>]+>/g, '\n')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
-
-          const attendees = (event.attendees || [])
-            .filter((a) => !a.self)
-            .map((a) => a.displayName || a.email);
-
-          let timeStr = '';
-          if (event.start.dateTime && event.end.dateTime) {
-            const s = new Date(event.start.dateTime);
-            const e = new Date(event.end.dateTime);
-            const tf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-            timeStr = `${eventDate} ${tf(s)} - ${tf(e)}`;
-          }
-
-          const attendeeYaml =
-            attendees.length > 0 ? attendees.map((a) => `  - ${a}`).join('\n') : '  []';
-
-          const fm = [
-            '---',
-            `event: "${(event.summary || '').replace(/"/g, '\\"')}"`,
-            `date: "${timeStr || eventDate}"`,
-            'attendees:',
-            attendeeYaml,
-            file.webViewLink ? `source: "${file.webViewLink}"` : null,
-            event.hangoutLink ? `meet: "${event.hangoutLink}"` : null,
-            '---',
-          ]
-            .filter(Boolean)
-            .join('\n');
-
-          log(`openMeetingNotes: writing gdoc file ${fileUri.fsPath}`);
-          await vscode.workspace.fs.writeFile(
-            fileUri,
-            Buffer.from(`${fm}\n\n${plainText}`, 'utf-8')
-          );
+          await fetchAndWriteGdoc(file, event, fileUri);
           log(`openMeetingNotes: gdoc file created`);
-        } else {
-          log(`openMeetingNotes: gdoc file already exists, reusing`);
         }
 
-        const doc = await vscode.workspace.openTextDocument(fileUri);
-        await vscode.window.showTextDocument(doc, {
-          preview: false,
-          viewColumn: vscode.ViewColumn.One,
-        });
+        await vscode.commands.executeCommand('vscode.openWith', fileUri, 'nulab.gdocEditor');
       } catch (error) {
         log(`openMeetingNotes: error - ${error}`);
         vscode.window.showErrorMessage(
           `議事録の取得に失敗しました: ${error instanceof Error ? error.message : error}`
+        );
+      }
+    }
+  );
+
+  const refreshMeetingNotesCmd = vscode.commands.registerCommand(
+    'nulab.google.refreshMeetingNotes',
+    async (item: DocumentItem) => {
+      if (!(item instanceof DocumentItem) || !item.file || !item.event) return;
+
+      const fileUri = gdocFileUri(item.event);
+      if (!fileUri) {
+        vscode.window.showErrorMessage('ワークスペースが開かれていません。');
+        return;
+      }
+
+      try {
+        log(`refreshMeetingNotes: pulling latest for ${item.file.name}`);
+        await fetchAndWriteGdoc(item.file, item.event, fileUri);
+        // Reopen to refresh the custom editor
+        await vscode.commands.executeCommand('vscode.openWith', fileUri, 'nulab.gdocEditor');
+        vscode.window.showInformationMessage('議事録を更新しました');
+      } catch (error) {
+        log(`refreshMeetingNotes: error - ${error}`);
+        vscode.window.showErrorMessage(
+          `議事録の更新に失敗しました: ${error instanceof Error ? error.message : error}`
         );
       }
     }
@@ -228,6 +227,65 @@ export function registerGoogleCalendar(
     }
   );
 
+  log(
+    `addToTodo: registering command, hasTodoProvider=${!!todoProvider}, hasTodoPersistence=${!!todoPersistence}`
+  );
+  const addToTodoCmd = vscode.commands.registerCommand(
+    'nulab.google.addToTodo',
+    async (item: DocumentItem) => {
+      log(`addToTodo: called, item=${item?.constructor?.name}, hasTodoProvider=${!!todoProvider}`);
+      if (!todoProvider || !todoPersistence) {
+        log('addToTodo: missing todoProvider or todoPersistence');
+        return;
+      }
+      if (!(item instanceof DocumentItem) || !item.file || !item.event) {
+        log(`addToTodo: invalid item, instanceof=${item instanceof DocumentItem}`);
+        return;
+      }
+
+      const file = item.file;
+      const event = item.event;
+      const eventDate = (event.start.dateTime || event.start.date || '').split('T')[0];
+
+      const attendees = (event.attendees || [])
+        .filter((a: any) => !a.self)
+        .map((a: any) => a.displayName || a.email);
+
+      let timeStr = '';
+      if (event.start.dateTime && event.end.dateTime) {
+        const s = new Date(event.start.dateTime);
+        const e = new Date(event.end.dateTime);
+        const tf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+        timeStr = `${eventDate} ${tf(s)} - ${tf(e)}`;
+      }
+
+      const todo = todoProvider.addFromGoogleDoc({
+        eventSummary: event.summary || 'meeting',
+        eventDate: timeStr || eventDate,
+        docId: file.id,
+        docUrl: file.webViewLink,
+        meetUrl: event.hangoutLink,
+        attendees,
+      });
+
+      if (!todo) {
+        vscode.window.showInformationMessage('[Nulab] この議事録の TODO は既にあります。');
+        return;
+      }
+
+      // Fetch doc content and build full context
+      try {
+        const html = await googleApi.getFileContent(file.id);
+        const plainText = htmlToPlainText(html);
+        todoPersistence.startGoogleDocSession(todo, plainText);
+      } catch (err) {
+        log(`addToTodo: failed to fetch doc content: ${err}`);
+      }
+
+      vscode.commands.executeCommand('workspace.openTodoDetail', todo.id);
+    }
+  );
+
   return {
     treeView: calendarTreeView,
     disposables: [
@@ -237,9 +295,30 @@ export function registerGoogleCalendar(
       signOutCmd,
       refreshCmd,
       openMeetingNotesCmd,
+      refreshMeetingNotesCmd,
       openInBrowserCmd,
       openEventDetailCmd,
       openSelectedCalendarItemCmd,
+      addToTodoCmd,
     ],
   };
+}
+
+/** Convert Google Docs HTML export to readable plain text */
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(p|div|h[1-6]|li|tr)[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

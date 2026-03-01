@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { SlackApiService } from '../services/slackApi';
+import { SlackConfig } from '../config/slackConfig';
 import { SlackMessage } from '../types/workspace';
 
 type SlackTreeItem = vscode.TreeItem;
@@ -12,8 +13,37 @@ export class SlackTreeViewProvider implements vscode.TreeDataProvider<SlackTreeI
   private mentionsError: string | null = null;
   private configured: boolean | null = null;
   private loaded = false;
+  /** Epoch seconds of the newest message seen at previous poll */
+  private lastSeenTs = 0;
+  /** Set of "channel:ts" keys the user has already opened */
+  private readKeys: Set<string>;
+  private filterUnreadOnly: boolean;
+  /** Set of "channel:messageTs" keys that have active TODOs */
+  private todoKeys: Set<string> = new Set();
 
-  constructor(private slackApi: SlackApiService) {}
+  constructor(private slackApi: SlackApiService, private slackConfig: SlackConfig) {
+    this.readKeys = new Set(slackConfig.getReadKeys());
+    this.filterUnreadOnly = slackConfig.getSlackFilterUnread();
+  }
+
+  setTodoKeys(keys: Set<string>): void {
+    if (keys.size === this.todoKeys.size && [...keys].every((k) => this.todoKeys.has(k))) {
+      return;
+    }
+    this.todoKeys = keys;
+    this._onDidChangeTreeData.fire();
+  }
+
+  toggleFilterUnread(): boolean {
+    this.filterUnreadOnly = !this.filterUnreadOnly;
+    this.slackConfig.setSlackFilterUnread(this.filterUnreadOnly);
+    this._onDidChangeTreeData.fire();
+    return this.filterUnreadOnly;
+  }
+
+  isFilterUnreadActive(): boolean {
+    return this.filterUnreadOnly;
+  }
 
   /** Clear cache and re-render (triggers loading spinner until fetchAndRefresh completes) */
   refresh(): void {
@@ -23,27 +53,51 @@ export class SlackTreeViewProvider implements vscode.TreeDataProvider<SlackTreeI
     this._onDidChangeTreeData.fire();
   }
 
-  /** Fetch mentions, then update tree. Returns mention count. */
-  async fetchAndRefresh(options?: { includeDMs?: boolean }): Promise<number> {
+  /** Fetch mentions, then update tree. Returns { newCount, mentions }. */
+  async fetchAndRefresh(options?: {
+    includeDMs?: boolean;
+  }): Promise<{ newCount: number; mentions: SlackMessage[] }> {
     this.configured = await this.slackApi.isConfigured();
     if (!this.configured) {
       this.loaded = true;
       this._onDidChangeTreeData.fire();
-      return 0;
+      return { newCount: 0, mentions: [] };
     }
 
     this.mentionsError = null;
 
+    const prevNewest = this.lastSeenTs;
     try {
-      this.mentions = await this.slackApi.getMentions({ includeDMs: options?.includeDMs });
+      this.mentions = await this.slackApi.getMentions({
+        includeDMs: options?.includeDMs,
+        onProgress: (partial) => {
+          this.mentions = partial;
+          this.loaded = true;
+          this._onDidChangeTreeData.fire();
+        },
+      });
     } catch (error) {
       this.mentionsError = error instanceof Error ? error.message : String(error);
       this.mentions = [];
     }
 
+    // Track newest ts for "new" badge
+    if (this.mentions.length > 0) {
+      const newest = Math.max(...this.mentions.map((m) => parseFloat(m.ts) || 0));
+      this.lastSeenTs = newest;
+    }
+
     this.loaded = true;
     this._onDidChangeTreeData.fire();
-    return this.mentions.length;
+
+    // Count messages newer than previous newest
+    let newCount: number;
+    if (prevNewest > 0) {
+      newCount = this.mentions.filter((m) => (parseFloat(m.ts) || 0) > prevNewest).length;
+    } else {
+      newCount = this.mentions.length;
+    }
+    return { newCount, mentions: this.mentions };
   }
 
   getTreeItem(element: SlackTreeItem): vscode.TreeItem {
@@ -87,27 +141,61 @@ export class SlackTreeViewProvider implements vscode.TreeDataProvider<SlackTreeI
       return [hint];
     }
 
+    // Filter by unread if active
+    let mentions = this.mentions;
+    if (this.filterUnreadOnly) {
+      mentions = mentions.filter((m) => !this.readKeys.has(`${m.channel}:${m.ts}`));
+    }
+
     // No mentions
-    if (this.mentions.length === 0) {
-      const noDataItem = new vscode.TreeItem('新しい通知はありません');
+    if (mentions.length === 0) {
+      const label = this.filterUnreadOnly ? '未読はありません' : '新しい通知はありません';
+      const noDataItem = new vscode.TreeItem(label);
       noDataItem.iconPath = new vscode.ThemeIcon('check');
       return [noDataItem];
     }
 
     // Mention items (flat list, no sections)
-    return this.mentions.map((m) => new SlackMentionItem(m));
+    return mentions.map((m) => {
+      const key = `${m.channel}:${m.ts}`;
+      const hasTodo = this.todoKeys.has(key);
+      return new SlackMentionItem(m, this.readKeys.has(key), hasTodo);
+    });
+  }
+
+  /** Mark a message as read and refresh the tree */
+  markAsRead(channel: string, ts: string): void {
+    const key = `${channel}:${ts}`;
+    if (this.readKeys.has(key)) {
+      return;
+    }
+    this.readKeys.add(key);
+    // Keep only keys that are in the current mentions to avoid unbounded growth
+    const mentionKeys = new Set(this.mentions.map((m) => `${m.channel}:${m.ts}`));
+    const pruned = [...this.readKeys].filter((k) => mentionKeys.has(k));
+    this.readKeys = new Set(pruned);
+    this.readKeys.add(key);
+    this.slackConfig.setReadKeys([...this.readKeys]);
+    this._onDidChangeTreeData.fire();
   }
 }
 
 export class SlackMentionItem extends vscode.TreeItem {
-  constructor(public readonly message: SlackMessage) {
+  constructor(public readonly message: SlackMessage, isRead: boolean, hasTodo = false) {
     const preview = message.text.substring(0, 60) + (message.text.length > 60 ? '...' : '');
-    const sender = message.userName || message.user;
+    const sender = message.userName || message.user || 'Unknown';
     super(`${sender}: ${preview}`, vscode.TreeItemCollapsibleState.None);
+
+    const iconColor = hasTodo ? 'charts.purple' : isRead ? 'disabledForeground' : 'charts.orange';
     this.iconPath = message.is_dm
-      ? new vscode.ThemeIcon('mail', new vscode.ThemeColor('charts.orange'))
-      : new vscode.ThemeIcon('mention', new vscode.ThemeColor('charts.orange'));
-    this.description = formatSlackTime(message.ts);
+      ? new vscode.ThemeIcon('mail', new vscode.ThemeColor(iconColor))
+      : new vscode.ThemeIcon('mention', new vscode.ThemeColor(iconColor));
+    const descParts: string[] = [];
+    if (hasTodo) {
+      descParts.push('TODO');
+    }
+    descParts.push(formatSlackTime(message.ts));
+    this.description = descParts.join(' · ');
     this.tooltip = `${sender}\n${message.text}`;
     this.contextValue = 'slackMention';
 

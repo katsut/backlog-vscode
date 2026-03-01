@@ -61,6 +61,9 @@ export class TodoPersistenceService {
     } else if (ctx?.source === 'slack-mention' || ctx?.source === 'slack-search') {
       action = 'slack-reply';
       contextSection = this.contextBuilder.buildLightSlackContext(ctx);
+    } else if (ctx?.source === 'google-doc') {
+      action = 'investigate';
+      contextSection = this.contextBuilder.buildLightGoogleDocContext(ctx);
     }
 
     const meta = this.fileService.todoToMeta(todo, action);
@@ -131,6 +134,23 @@ export class TodoPersistenceService {
     const filePath = this.fileService.getSessionFilePath(todo.id);
     const existingDraft = this.fileService.getDraftContent(filePath);
     const meta = this.fileService.todoToMeta(todo, 'slack-reply');
+    meta.sessionStatus = 'draft';
+    meta.contextFull = true;
+    this.fileService.writeSessionFile(filePath, meta, contextSection, existingDraft);
+    return filePath;
+  }
+
+  startGoogleDocSession(todo: WorkspaceTodoItem, gdocContent: string): string {
+    const ctx = todo.context;
+    if (!ctx || ctx.source !== 'google-doc') {
+      throw new Error('TODO に Google Doc 情報がありません');
+    }
+
+    const contextSection = this.contextBuilder.buildGoogleDocContext(ctx, gdocContent);
+
+    const filePath = this.fileService.getSessionFilePath(todo.id);
+    const existingDraft = this.fileService.getDraftContent(filePath);
+    const meta = this.fileService.todoToMeta(todo, 'investigate');
     meta.sessionStatus = 'draft';
     meta.contextFull = true;
     this.fileService.writeSessionFile(filePath, meta, contextSection, existingDraft);

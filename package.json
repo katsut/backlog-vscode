@@ -86,6 +86,11 @@
         {
           "id": "cacooDiagrams",
           "name": "Cacoo"
+        },
+        {
+          "id": "workspaceSlackPost",
+          "name": "Slack: Post",
+          "type": "webview"
         }
       ],
       "notificationsContainer": [
@@ -104,11 +109,6 @@
         {
           "id": "workspaceSlackSearch",
           "name": "Slack: Search"
-        },
-        {
-          "id": "workspaceSlackPost",
-          "name": "Slack: Post",
-          "type": "webview"
         }
       ]
     },
@@ -460,6 +460,18 @@
         "category": "Slack"
       },
       {
+        "command": "workspace.toggleSlackFilter",
+        "title": "Toggle Unread Filter",
+        "icon": "$(filter)",
+        "category": "Slack"
+      },
+      {
+        "command": "workspace.toggleSlackSearchFilter",
+        "title": "Toggle Unread Filter",
+        "icon": "$(filter)",
+        "category": "Slack"
+      },
+      {
         "command": "workspace.refreshDocumentFiles",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -494,6 +506,12 @@
         "title": "Add TODO",
         "icon": "$(add)",
         "category": "Slack"
+      },
+      {
+        "command": "workspace.addTodoFromMyTask",
+        "title": "TODO に追加",
+        "icon": "$(add)",
+        "category": "Backlog"
       },
       {
         "command": "workspace.slackSearchViewGrouped",
@@ -664,6 +682,18 @@
         "title": "Open Google in Browser",
         "icon": "$(link-external)",
         "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.addToTodo",
+        "title": "TODO に追加",
+        "icon": "$(add)",
+        "category": "Google"
+      },
+      {
+        "command": "nulab.google.refreshMeetingNotes",
+        "title": "最新を取得",
+        "icon": "$(sync)",
+        "category": "Google"
       }
     ],
     "menus": {
@@ -789,9 +819,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "workspace.setSlackToken",
+          "command": "workspace.toggleSlackFilter",
           "when": "view == workspaceSlack",
           "group": "navigation@2"
+        },
+        {
+          "command": "workspace.setSlackToken",
+          "when": "view == workspaceSlack",
+          "group": "navigation@3"
         },
         {
           "command": "workspace.editSlackFavoriteChannels",
@@ -804,19 +839,24 @@
           "group": "navigation@1"
         },
         {
-          "command": "workspace.editSlackSearchKeywords",
+          "command": "workspace.toggleSlackSearchFilter",
           "when": "view == workspaceSlackSearch",
           "group": "navigation@2"
         },
         {
+          "command": "workspace.editSlackSearchKeywords",
+          "when": "view == workspaceSlackSearch",
+          "group": "navigation@3"
+        },
+        {
           "command": "workspace.slackSearchViewGrouped",
           "when": "view == workspaceSlackSearch && nulab.slackSearch.viewMode == flat",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "workspace.slackSearchViewFlat",
           "when": "view == workspaceSlackSearch && nulab.slackSearch.viewMode == grouped",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "workspace.refreshDocumentFiles",
@@ -906,6 +946,26 @@
           "group": "slack@3"
         },
         {
+          "command": "workspace.notificationToTodo",
+          "when": "view == workspaceNotifications && viewItem =~ /^notification(Read|Unread)$/",
+          "group": "inline"
+        },
+        {
+          "command": "workspace.addTodoFromSlack",
+          "when": "view == workspaceSlackMentions && viewItem == slackMention && !listMultiSelection",
+          "group": "inline"
+        },
+        {
+          "command": "workspace.addTodoFromSlack",
+          "when": "view == workspaceSlackSearch && viewItem == slackMention && !listMultiSelection",
+          "group": "inline"
+        },
+        {
+          "command": "workspace.addTodoFromMyTask",
+          "when": "viewItem == myTask",
+          "group": "inline"
+        },
+        {
           "command": "workspace.openTodoDetail",
           "when": "view == workspaceTodos && viewItem =~ /^todoItem/",
           "group": "inline"
@@ -974,6 +1034,26 @@
           "command": "nulab.google.openInBrowser",
           "when": "view == workspaceGoogleCalendar && viewItem == calendarDocument",
           "group": "google@1"
+        },
+        {
+          "command": "nulab.google.refreshMeetingNotes",
+          "when": "view == workspaceGoogleCalendar && viewItem == calendarDocument",
+          "group": "google@2"
+        },
+        {
+          "command": "nulab.google.addToTodo",
+          "when": "view == workspaceGoogleCalendar && viewItem == calendarDocument",
+          "group": "google@3"
+        },
+        {
+          "command": "nulab.google.addToTodo",
+          "when": "viewItem == calendarDocument",
+          "group": "inline"
+        },
+        {
+          "command": "nulab.google.refreshMeetingNotes",
+          "when": "viewItem == calendarDocument",
+          "group": "inline"
         }
       ]
     },
@@ -1161,11 +1241,6 @@
             }
           }
         },
-        "nulab.ai.model": {
-          "type": "string",
-          "default": "claude-sonnet-4-20250514",
-          "description": "Anthropic model for AI reply drafts"
-        },
         "nulab.backlog.notificationPollingInterval": {
           "type": "number",
           "default": 60,
@@ -1251,6 +1326,16 @@
         "selector": [
           {
             "filenamePattern": "*.todomd"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "nulab.gdocEditor",
+        "displayName": "Meeting Notes",
+        "selector": [
+          {
+            "filenamePattern": "*.gdoc"
           }
         ],
         "priority": "default"

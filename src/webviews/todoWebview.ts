@@ -56,6 +56,10 @@ export class TodoWebview {
       ctx?.slackChannel
     ) {
       sourceLink = `<a href="#" class="external-link" data-action="openSlackThread">Open in Slack</a>`;
+    } else if (ctx?.source === 'google-doc' && ctx?.googleDocUrl) {
+      sourceLink = `<a href="#" class="external-link" data-url="${esc(
+        ctx.googleDocUrl
+      )}">Open in Google Docs</a>`;
     }
 
     // Context details section
@@ -180,37 +184,101 @@ export class TodoWebview {
             </div>
           </div>`;
       }
+    } else if (ctx?.source === 'google-doc') {
+      const fields: string[] = [];
+      if (ctx.googleEventSummary) {
+        fields.push(
+          `<div class="details-field"><label>Event:</label><span>${esc(
+            ctx.googleEventSummary
+          )}</span></div>`
+        );
+      }
+      if (ctx.googleEventDate) {
+        fields.push(
+          `<div class="details-field"><label>Date:</label><span>${esc(
+            ctx.googleEventDate
+          )}</span></div>`
+        );
+      }
+      if (ctx.googleAttendees && ctx.googleAttendees.length > 0) {
+        const chips = ctx.googleAttendees
+          .map((a) => `<span class="attendee-chip">${esc(a)}</span>`)
+          .join('');
+        fields.push(
+          `<div class="details-field"><label>Attendees:</label><div class="attendee-list">${chips}</div></div>`
+        );
+      }
+      if (ctx.googleMeetUrl) {
+        fields.push(
+          `<div class="details-field"><label>Meet:</label><a href="#" class="external-link" data-url="${esc(
+            ctx.googleMeetUrl
+          )}">${esc(ctx.googleMeetUrl)}</a></div>`
+        );
+      }
+
+      if (fullContext) {
+        contextHtml = `
+          <div class="content-section">
+            <h3>Meeting Notes</h3>
+            <div class="details-section">${fields.join('')}</div>
+          </div>
+          <div class="content-section">
+            <div class="full-context">${markdownToHtml(fullContext)}</div>
+          </div>`;
+      } else if (fields.length > 0) {
+        contextHtml = `
+          <div class="content-section">
+            <h3>Meeting Notes</h3>
+            <div class="details-section">${fields.join('')}</div>
+          </div>`;
+      }
     }
 
-    // Draft section
+    // Draft section — always show textarea so user can write drafts manually
     let draftHtml = '';
-    if (draft) {
-      const postLabel = draft.action === 'slack-reply' ? 'Slack に返信' : 'Backlog にコメント投稿';
-      const isPosted = draft.status === 'posted';
-      const draftContent = draft.content.trim()
-        ? esc(draft.content)
-        : '<span class="draft-placeholder">Claude Code がドラフトを書き込み中...</span>';
+    {
+      const action = draft?.action || 'none';
+      const content = draft?.content || '';
+      const isPosted = draft?.status === 'posted';
+      const postLabel =
+        action === 'slack-reply'
+          ? 'Slack に返信'
+          : action === 'investigate'
+          ? 'アクション確認'
+          : 'Backlog にコメント投稿';
       const postedBadge = isPosted ? '<span class="status-badge done">投稿済</span>' : '';
+      const heading = action === 'investigate' ? 'アクション整理' : '返信ドラフト';
 
       draftHtml = `
         <div class="content-section draft-section">
           <div class="draft-header">
-            <h3>返信ドラフト</h3>
+            <h3>${heading}</h3>
             ${postedBadge}
             ${
-              !isPosted
+              !isPosted && draft
                 ? '<button class="action-btn secondary small" data-action="refreshDraft">↻ 更新</button>'
                 : ''
             }
           </div>
-          <div class="draft-content" id="draftContent">${draftContent}</div>
+          <textarea class="draft-content" id="draftContent" placeholder="ドラフトを入力..." ${
+            isPosted ? 'readonly' : ''
+          }>${content.trim() ? esc(content) : ''}</textarea>
           ${
             !isPosted
               ? `<div class="draft-actions">
-                  <button class="action-btn post-btn" data-action="postDraft">${esc(
-                    postLabel
-                  )}</button>
-                  <button class="action-btn danger-btn small" data-action="discardDraft">破棄</button>
+                  <button class="action-btn secondary small" data-action="saveDraft">保存</button>
+                  ${
+                    action !== 'investigate' && action !== 'none'
+                      ? `<button class="action-btn post-btn" data-action="postDraft">${esc(
+                          postLabel
+                        )}</button>`
+                      : ''
+                  }
+                  ${
+                    draft
+                      ? '<button class="action-btn danger-btn small" data-action="discardDraft">破棄</button>'
+                      : ''
+                  }
                 </div>`
               : ''
           }
@@ -262,9 +330,11 @@ export class TodoWebview {
       ctx &&
       (ctx.source === 'backlog-notification' ||
         ctx.source === 'slack-mention' ||
-        ctx.source === 'slack-search') &&
-      (!draft || !draft.content.trim())
-        ? '<button class="action-btn claude-btn" data-action="startClaudeSession">✦ Claude で対応</button>'
+        ctx.source === 'slack-search' ||
+        ctx.source === 'google-doc')
+        ? `<button class="action-btn claude-btn" data-action="startClaudeSession">✦ ${
+            draft && draft.content.trim() ? 'セッション再開' : 'Claude で対応'
+          }</button>`
         : ''
     }
     ${
@@ -277,8 +347,11 @@ export class TodoWebview {
     <button class="action-btn danger-btn" data-action="delete">削除</button>
   </div>
 
-  ${contextHtml}
-  ${draftHtml}
+  ${
+    ctx?.source === 'google-doc'
+      ? `${draftHtml}\n  ${contextHtml}`
+      : `${contextHtml}\n  ${draftHtml}`
+  }
   ${commentHistoryHtml}
   ${notesHtml}
   ${timestampsHtml}
@@ -311,22 +384,55 @@ export class TodoWebview {
           vscode.postMessage({ command: 'discardDraft' });
         } else if (action === 'refreshDraft') {
           vscode.postMessage({ command: 'refreshDraft' });
+        } else if (action === 'saveDraft') {
+          const ta = document.getElementById('draftContent');
+          if (ta) {
+            vscode.postMessage({ command: 'saveDraft', content: ta.value });
+          }
         }
       });
     });
 
-    // Listen for draft updates from the extension
+    // Listen for messages from the extension
     window.addEventListener('message', (event) => {
       const msg = event.data;
       if (msg.command === 'updateDraft') {
         const el = document.getElementById('draftContent');
         if (el) {
-          if (msg.draft && msg.draft.trim()) {
-            el.textContent = msg.draft;
-          } else {
-            el.innerHTML = '<span class="draft-placeholder">Claude Code がドラフトを書き込み中...</span>';
+          el.value = msg.draft || '';
+        }
+        // Update button text when draft is written
+        if (msg.draft && msg.draft.trim()) {
+          const claudeBtn = document.querySelector('.claude-btn');
+          if (claudeBtn) {
+            claudeBtn.textContent = '✦ セッション再開';
           }
         }
+      }
+      if (msg.command === 'updateStatus') {
+        // Update status badge
+        const badge = document.querySelector('.status-badge');
+        if (badge) {
+          badge.className = 'status-badge ' + msg.status;
+          badge.textContent = msg.statusLabel;
+        }
+        // Update active button
+        document.querySelectorAll('.status-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.status === msg.status);
+        });
+      }
+      if (msg.command === 'updateReplied') {
+        // Add replied badge if not present
+        const meta = document.querySelector('.webview-meta');
+        if (meta && !meta.querySelector('.replied-badge')) {
+          const badge = document.createElement('span');
+          badge.className = 'meta-item replied-badge';
+          badge.textContent = '返信済';
+          meta.appendChild(badge);
+        }
+        // Remove the "返信済にする" button
+        const repliedBtn = document.querySelector('[data-action="markReplied"]');
+        if (repliedBtn) repliedBtn.remove();
       }
     });
 
@@ -365,17 +471,18 @@ export class TodoWebview {
 // ---- Helpers ----
 
 const STATUS_LABELS: Record<TodoStatus, string> = {
-  open: '未着手',
-  in_progress: '進行中',
-  waiting: '待ち',
-  done: '完了',
+  open: '○ 未着手',
+  in_progress: '◉ 進行中',
+  waiting: '◷ 待ち',
+  done: '✓ 完了',
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  'backlog-notification': 'Backlog',
-  'slack-mention': 'Slack Mention',
-  'slack-search': 'Slack Search',
-  manual: 'Manual',
+  'backlog-notification': '⚡ Backlog',
+  'slack-mention': '💬 Slack Mention',
+  'slack-search': '🔍 Slack Search',
+  'google-doc': '📄 Meeting Notes',
+  manual: '✏️ Manual',
 };
 
 function buildStatusButtons(current: TodoStatus): string {
@@ -640,15 +747,25 @@ const additionalStyles = `
   }
   .draft-header h3 { margin: 0; }
   .draft-content {
-    white-space: pre-wrap;
-    word-break: break-word;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
     padding: var(--webview-space-md);
-    background: var(--vscode-textCodeBlock-background);
-    border: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     border-radius: var(--webview-radius-sm);
+    font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--webview-font-size-sm);
     line-height: 1.6;
-    min-height: 60px;
+    min-height: 120px;
+  }
+  .draft-content:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+  }
+  .draft-content[readonly] {
+    background: var(--vscode-textCodeBlock-background);
+    opacity: 0.8;
   }
   .draft-placeholder {
     color: var(--vscode-descriptionForeground);
@@ -830,6 +947,19 @@ const additionalStyles = `
     background: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
     border-radius: 3px;
+  }
+  .attendee-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--webview-space-xs);
+  }
+  .attendee-chip {
+    display: inline-block;
+    padding: 2px var(--webview-space-sm);
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-radius: 12px;
+    font-size: var(--webview-font-size-xs);
   }
   .notif-comment {
     white-space: pre-wrap;

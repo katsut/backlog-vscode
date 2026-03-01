@@ -41,6 +41,52 @@ export class SessionContextBuilder {
     return lines.join('\n');
   }
 
+  buildLightGoogleDocContext(ctx: TodoContext): string {
+    const lines: string[] = [];
+    lines.push(`## 議事録: ${ctx.googleEventSummary || ''}`);
+    lines.push('');
+    if (ctx.googleEventDate) {
+      lines.push(`**日時:** ${ctx.googleEventDate}`);
+      lines.push('');
+    }
+    if (ctx.googleDocUrl) {
+      lines.push(`**Google Docs:** ${ctx.googleDocUrl}`);
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+
+  buildGoogleDocContext(ctx: TodoContext, docContent: string): string {
+    const lines: string[] = [];
+    lines.push(`## 議事録: ${ctx.googleEventSummary || ''}`);
+    lines.push('');
+    if (ctx.googleEventDate) {
+      lines.push(`**日時:** ${ctx.googleEventDate}`);
+    }
+    if (ctx.googleAttendees && ctx.googleAttendees.length > 0) {
+      lines.push(`**参加者:** ${ctx.googleAttendees.join(', ')}`);
+    }
+    if (ctx.googleDocUrl) {
+      lines.push(`**Google Docs:** ${ctx.googleDocUrl}`);
+    }
+    if (ctx.googleMeetUrl) {
+      lines.push(`**Meet:** ${ctx.googleMeetUrl}`);
+    }
+    lines.push('');
+
+    if (docContent.trim()) {
+      lines.push('### 議事録内容');
+      lines.push('');
+      const maxLen = 30000;
+      const truncated =
+        docContent.length > maxLen ? docContent.slice(0, maxLen) + '\n...(truncated)' : docContent;
+      lines.push(truncated);
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
   // ---- Full context builders (with API data) ----
 
   buildBacklogContext(issue: Entity.Issue.Issue, comments: Entity.Issue.Comment[]): string {

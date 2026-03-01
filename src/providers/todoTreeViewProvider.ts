@@ -238,6 +238,36 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
     await this.todoPersistence.startSlackSession(todo);
   }
 
+  addFromGoogleDoc(params: {
+    eventSummary: string;
+    eventDate: string;
+    docId: string;
+    docUrl?: string;
+    meetUrl?: string;
+    attendees?: string[];
+  }): WorkspaceTodoItem | null {
+    // Dedup: same docId non-done
+    const existing = this.todos.find(
+      (t) =>
+        t.status !== 'done' &&
+        t.context?.source === 'google-doc' &&
+        t.context?.googleDocId === params.docId
+    );
+    if (existing) {
+      return null;
+    }
+
+    return this.addTodo(`[Meeting] ${params.eventSummary}`, {
+      source: 'google-doc',
+      googleEventSummary: params.eventSummary,
+      googleEventDate: params.eventDate,
+      googleDocId: params.docId,
+      googleDocUrl: params.docUrl,
+      googleMeetUrl: params.meetUrl,
+      googleAttendees: params.attendees,
+    });
+  }
+
   setStatus(id: string, status: TodoStatus): void {
     const todo = this.todos.find((t) => t.id === id);
     if (!todo) {
@@ -385,6 +415,22 @@ export class TodoTreeViewProvider implements vscode.TreeDataProvider<TodoTreeNod
     }
     return keys;
   }
+
+  /** Get "channel:messageTs" keys for active Slack TODOs */
+  getTodoSlackKeys(): Set<string> {
+    const keys = new Set<string>();
+    for (const t of this.todos) {
+      if (
+        t.status !== 'done' &&
+        (t.context?.source === 'slack-mention' || t.context?.source === 'slack-search') &&
+        t.context.slackChannel &&
+        t.context.slackMessageTs
+      ) {
+        keys.add(`${t.context.slackChannel}:${t.context.slackMessageTs}`);
+      }
+    }
+    return keys;
+  }
 }
 
 // ---- Tree Items ----
@@ -435,6 +481,8 @@ export class TodoTreeItem extends vscode.TreeItem {
         ctx.slackUserName
       ) {
         descParts.unshift(`Slack: ${ctx.slackUserName}`);
+      } else if (ctx.source === 'google-doc' && ctx.googleEventDate) {
+        descParts.unshift(ctx.googleEventDate);
       }
     }
     if (todo.notes) {
@@ -471,6 +519,16 @@ export class TodoTreeItem extends vscode.TreeItem {
         if (ctx.slackText) {
           tooltipLines.push(ctx.slackText.substring(0, 300));
         }
+      } else if (ctx.source === 'google-doc') {
+        if (ctx.googleEventSummary) {
+          tooltipLines.push(`Event: ${ctx.googleEventSummary}`);
+        }
+        if (ctx.googleEventDate) {
+          tooltipLines.push(`Date: ${ctx.googleEventDate}`);
+        }
+        if (ctx.googleAttendees && ctx.googleAttendees.length > 0) {
+          tooltipLines.push(`Attendees: ${ctx.googleAttendees.join(', ')}`);
+        }
       }
     }
     this.tooltip = tooltipLines.join('\n');
@@ -484,6 +542,8 @@ export class TodoTreeItem extends vscode.TreeItem {
       parts.push('backlog');
     } else if (ctx?.source === 'slack-mention' || ctx?.source === 'slack-search') {
       parts.push('slack');
+    } else if (ctx?.source === 'google-doc') {
+      parts.push('google');
     }
     this.contextValue = parts.join('_');
 
@@ -495,31 +555,41 @@ export class TodoTreeItem extends vscode.TreeItem {
   }
 
   private resolveIcon(todo: WorkspaceTodoItem): vscode.ThemeIcon {
-    if (todo.status === 'done') {
-      return new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
-    }
-    if (todo.status === 'in_progress') {
-      return new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.blue'));
-    }
-    if (todo.status === 'waiting') {
-      return new vscode.ThemeIcon('clock', new vscode.ThemeColor('charts.yellow'));
-    }
+    // Shape = source, Color = status
+    const color = this.statusColor(todo.status);
+    const icon = this.sourceIcon(todo);
+    return color
+      ? new vscode.ThemeIcon(icon, new vscode.ThemeColor(color))
+      : new vscode.ThemeIcon(icon);
+  }
 
+  private statusColor(status: string): string | undefined {
+    switch (status) {
+      case 'done':
+        return 'charts.green';
+      case 'in_progress':
+        return 'charts.blue';
+      case 'waiting':
+        return 'charts.yellow';
+      default:
+        return 'charts.orange';
+    }
+  }
+
+  private sourceIcon(todo: WorkspaceTodoItem): string {
     const ctx = todo.context;
     if (!ctx) {
-      return new vscode.ThemeIcon('circle-outline');
+      return 'circle-outline';
     }
-
     if (ctx.source === 'backlog-notification') {
-      if (ctx.reason === 'assigned') {
-        return new vscode.ThemeIcon('person-add', new vscode.ThemeColor('charts.orange'));
-      }
-      return new vscode.ThemeIcon('comment-discussion', new vscode.ThemeColor('charts.orange'));
+      return 'issues';
     }
-    if (ctx.source === 'slack-mention') {
-      return new vscode.ThemeIcon('mention', new vscode.ThemeColor('charts.orange'));
+    if (ctx.source === 'slack-mention' || ctx.source === 'slack-search') {
+      return 'comment-discussion';
     }
-
-    return new vscode.ThemeIcon('circle-outline');
+    if (ctx.source === 'google-doc') {
+      return 'notebook';
+    }
+    return 'circle-outline';
   }
 }

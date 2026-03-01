@@ -37,6 +37,12 @@ export interface TodoSessionMeta {
   slackMessageTs?: string;
   slackUserName?: string;
   slackText?: string;
+  googleEventSummary?: string;
+  googleEventDate?: string;
+  googleDocId?: string;
+  googleDocUrl?: string;
+  googleMeetUrl?: string;
+  googleAttendees?: string;
   action: SessionAction;
   sessionStatus: SessionStatus;
   contextFull?: boolean;
@@ -94,11 +100,6 @@ export class SessionFileService {
     } catch {
       return false;
     }
-  }
-
-  setActiveSession(todoId: string): void {
-    const activePath = path.join(this.ensureSessionsDir(), '.active');
-    fs.writeFileSync(activePath, todoId, 'utf-8');
   }
 
   writeSessionFile(
@@ -179,6 +180,20 @@ export class SessionFileService {
     }
   }
 
+  saveDraft(todoId: string, draftContent: string): void {
+    const filePath = this.getSessionFilePath(todoId);
+    if (!fs.existsSync(filePath)) {
+      return;
+    }
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const draftMarker = '<!-- DRAFT -->';
+    const draftIdx = content.lastIndexOf(draftMarker);
+    if (draftIdx >= 0) {
+      const before = content.slice(0, draftIdx + draftMarker.length);
+      fs.writeFileSync(filePath, before + '\n' + draftContent + '\n', 'utf-8');
+    }
+  }
+
   clearDraft(todoId: string): void {
     const filePath = this.getSessionFilePath(todoId);
     if (!fs.existsSync(filePath)) {
@@ -210,9 +225,6 @@ export class SessionFileService {
       const filePath = this.getSessionFilePath(todoId);
       const parsed = this.parseSession(filePath);
       if (!parsed) {
-        return null;
-      }
-      if (parsed.meta.action === 'none') {
         return null;
       }
       return {
@@ -278,6 +290,12 @@ export class SessionFileService {
       slackMessageTs: ctx?.slackMessageTs,
       slackUserName: ctx?.slackUserName,
       slackText: ctx?.slackText,
+      googleEventSummary: ctx?.googleEventSummary,
+      googleEventDate: ctx?.googleEventDate,
+      googleDocId: ctx?.googleDocId,
+      googleDocUrl: ctx?.googleDocUrl,
+      googleMeetUrl: ctx?.googleMeetUrl,
+      googleAttendees: ctx?.googleAttendees?.join(', ') || undefined,
       action,
       sessionStatus: action === 'none' ? 'none' : 'draft',
     };
@@ -314,6 +332,14 @@ export class SessionFileService {
         slackMessageTs: meta.slackMessageTs,
         slackUserName: meta.slackUserName,
         slackText: meta.slackText,
+        googleEventSummary: meta.googleEventSummary,
+        googleEventDate: meta.googleEventDate,
+        googleDocId: meta.googleDocId,
+        googleDocUrl: meta.googleDocUrl,
+        googleMeetUrl: meta.googleMeetUrl,
+        googleAttendees: meta.googleAttendees
+          ? meta.googleAttendees.split(', ').filter(Boolean)
+          : undefined,
       };
       item.context = context;
     }
@@ -379,6 +405,29 @@ export class SessionFileService {
   }
 
   private buildInstruction(action: SessionAction): string {
+    if (action === 'investigate') {
+      return [
+        '<!-- INSTRUCTION',
+        'このファイルは VSCode 拡張が自動生成した議事録分析用セッションファイルです。',
+        '',
+        '■ あなたのタスク:',
+        '1. CONTEXT セクションの議事録内容を読む',
+        '2. ユーザーの指示に従い、必要なアクションを DRAFT セクションに整理する',
+        '3. Edit ツールで DRAFT セクションに内容を追記する',
+        '',
+        '■ 想定されるアクション:',
+        '- Backlog 課題の作成・更新',
+        '- ドキュメントへの反映',
+        '- カレンダー設定（次回会議の調整等）',
+        '- 関係者への連絡事項の整理',
+        '',
+        '■ ルール:',
+        '- 議事録の内容を踏まえた具体的なアクションを提案する',
+        '- CONTEXT セクションと INSTRUCTION セクションは編集しない',
+        '- アクション内容だけを書く（説明は不要）',
+        '/INSTRUCTION -->',
+      ].join('\n');
+    }
     if (action === 'slack-reply') {
       return [
         '<!-- INSTRUCTION',

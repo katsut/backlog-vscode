@@ -12,7 +12,8 @@ export class SlackThreadWebview {
     contextBefore: SlackMessage[] = [],
     contextAfter: SlackMessage[] = []
   ): string {
-    const head = WebviewHelper.getHtmlHead(webview, extensionUri, title);
+    const nonce = WebviewHelper.getNonce();
+    const head = WebviewHelper.getHtmlHead(webview, extensionUri, title, undefined, nonce);
 
     const parentMessage = messages[0];
     const replies = messages.slice(1);
@@ -52,7 +53,7 @@ export class SlackThreadWebview {
 <html lang="ja">
 <head>
   ${head}
-  <style>
+  <style nonce="${nonce}">
     .thread-parent {
       border-left: 4px solid var(--vscode-textLink-foreground);
     }
@@ -110,7 +111,7 @@ export class SlackThreadWebview {
   ${threadSeparatorAfter}
   ${afterHtml}
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     document.addEventListener('click', (event) => {

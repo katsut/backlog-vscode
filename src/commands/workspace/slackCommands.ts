@@ -4,7 +4,21 @@ import { SlackMessage, TodoContext } from '../../types/workspace';
 import { SlackThreadWebview } from '../../webviews/slackThreadWebview';
 import { ServiceContainer } from '../../container';
 
-export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] {
+const SLACK_TITLE = 'Slack: Notifications';
+const SEARCH_TITLE = 'Slack: Search';
+
+export function registerSlackCommands(
+  c: ServiceContainer,
+  slackTreeView: vscode.TreeView<any>,
+  slackSearchTreeView: vscode.TreeView<any>
+): vscode.Disposable[] {
+  // Restore titles from persisted filter state
+  if (c.slackProvider.isFilterUnreadActive()) {
+    slackTreeView.title = `${SLACK_TITLE} (未読)`;
+  }
+  if (c.slackSearchProvider.isFilterUnreadActive()) {
+    slackSearchTreeView.title = `${SEARCH_TITLE} (未読)`;
+  }
   return [
     vscode.commands.registerCommand('workspace.setSlackToken', async () => {
       const token = await vscode.window.showInputBox({
@@ -82,6 +96,10 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
     vscode.commands.registerCommand(
       'workspace.openSlackThread',
       async (channel: string, threadTs: string, title: string) => {
+        // Mark the mention as read in both tree views
+        c.slackProvider.markAsRead(channel, threadTs);
+        c.slackSearchProvider.markAsRead(channel, threadTs);
+
         const panelKey = `${channel}-${threadTs}`;
         const existing = c.slackThreadPanels.get(panelKey);
         if (existing) {
@@ -205,25 +223,33 @@ export function registerSlackCommands(c: ServiceContainer): vscode.Disposable[] 
       }
       const sender = message.userName || message.user || 'Unknown';
       const preview = message.text.substring(0, 100);
-      const defaultText = `[Slack] ${sender}: ${preview}`;
+      const text = `[Slack] ${sender}: ${preview}`;
+      const context: TodoContext = {
+        source: 'slack-mention',
+        slackChannel: message.channel,
+        slackThreadTs: message.thread_ts,
+        slackMessageTs: message.ts,
+        slackUserName: sender,
+        slackText: message.text.substring(0, 500),
+      };
+      c.todoProvider.addTodo(text, context);
 
-      const text = await vscode.window.showInputBox({
-        prompt: 'TODO を入力',
-        placeHolder: 'タスクの内容',
-        value: defaultText,
-      });
-      if (text) {
-        const context: TodoContext = {
-          source: 'slack-mention',
-          slackChannel: message.channel,
-          slackThreadTs: message.thread_ts,
-          slackMessageTs: message.ts,
-          slackUserName: sender,
-          slackText: message.text.substring(0, 500),
-        };
-        c.todoProvider.addTodo(text, context);
-        vscode.window.showInformationMessage('[Nulab] TODO に追加しました');
-      }
+      // Sync TODO keys to Slack tree views
+      const keys = c.todoProvider.getTodoSlackKeys();
+      c.slackProvider.setTodoKeys(keys);
+      c.slackSearchProvider.setTodoKeys(keys);
+
+      vscode.window.showInformationMessage('[Nulab] TODO に追加しました');
+    }),
+
+    vscode.commands.registerCommand('workspace.toggleSlackFilter', () => {
+      const active = c.slackProvider.toggleFilterUnread();
+      slackTreeView.title = active ? `${SLACK_TITLE} (未読)` : SLACK_TITLE;
+    }),
+
+    vscode.commands.registerCommand('workspace.toggleSlackSearchFilter', () => {
+      const active = c.slackSearchProvider.toggleFilterUnread();
+      slackSearchTreeView.title = active ? `${SEARCH_TITLE} (未読)` : SEARCH_TITLE;
     }),
 
     vscode.commands.registerCommand('workspace.slackSearchViewGrouped', () => {

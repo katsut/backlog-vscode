@@ -25,10 +25,63 @@ export class SlackSearchTreeViewProvider
   private keywordErrors = new Map<string, string>();
   private configured: boolean | null = null;
   private loaded = false;
-  private _viewMode: 'grouped' | 'flat' = 'grouped';
+  private _viewMode: 'grouped' | 'flat';
+  private readKeys: Set<string>;
+  private filterUnreadOnly: boolean;
+  private todoKeys: Set<string> = new Set();
 
   constructor(private slackApi: SlackApiService, private configService: SlackConfig) {
+    this._viewMode = configService.getSearchViewMode();
+    this.readKeys = new Set(configService.getSearchReadKeys());
+    this.filterUnreadOnly = configService.getSlackSearchFilterUnread();
     vscode.commands.executeCommand('setContext', 'nulab.slackSearch.viewMode', this._viewMode);
+  }
+
+  setTodoKeys(keys: Set<string>): void {
+    if (keys.size === this.todoKeys.size && [...keys].every((k) => this.todoKeys.has(k))) {
+      return;
+    }
+    this.todoKeys = keys;
+    this._onDidChangeTreeData.fire();
+  }
+
+  toggleFilterUnread(): boolean {
+    this.filterUnreadOnly = !this.filterUnreadOnly;
+    this.configService.setSlackSearchFilterUnread(this.filterUnreadOnly);
+    this._onDidChangeTreeData.fire();
+    return this.filterUnreadOnly;
+  }
+
+  isFilterUnreadActive(): boolean {
+    return this.filterUnreadOnly;
+  }
+
+  markAsRead(channel: string, ts: string): void {
+    const key = `${channel}:${ts}`;
+    if (this.readKeys.has(key)) {
+      return;
+    }
+    this.readKeys.add(key);
+    // Keep only keys that are in the current results to avoid unbounded growth
+    const currentKeys = new Set<string>();
+    for (const msgs of this.keywordResults.values()) {
+      for (const m of msgs) {
+        currentKeys.add(`${m.channel}:${m.ts}`);
+      }
+    }
+    const pruned = [...this.readKeys].filter((k) => currentKeys.has(k));
+    this.readKeys = new Set(pruned);
+    this.readKeys.add(key);
+    this.configService.setSearchReadKeys([...this.readKeys]);
+    this._onDidChangeTreeData.fire();
+  }
+
+  private isRead(m: SlackMessage): boolean {
+    return this.readKeys.has(`${m.channel}:${m.ts}`);
+  }
+
+  private hasTodo(m: SlackMessage): boolean {
+    return this.todoKeys.has(`${m.channel}:${m.ts}`);
   }
 
   get viewMode(): 'grouped' | 'flat' {
@@ -37,6 +90,7 @@ export class SlackSearchTreeViewProvider
 
   toggleViewMode(): void {
     this._viewMode = this._viewMode === 'grouped' ? 'flat' : 'grouped';
+    this.configService.setSearchViewMode(this._viewMode);
     vscode.commands.executeCommand('setContext', 'nulab.slackSearch.viewMode', this._viewMode);
     this._onDidChangeTreeData.fire();
   }
@@ -164,7 +218,10 @@ export class SlackSearchTreeViewProvider
         errorItem.tooltip = error;
         items.push(errorItem as SearchTreeItem);
       } else {
-        const results = this.keywordResults.get(keyword) || [];
+        let results = this.keywordResults.get(keyword) || [];
+        if (this.filterUnreadOnly) {
+          results = results.filter((m) => !this.isRead(m));
+        }
         items.push(new SearchSectionItem(keyword, results.length));
       }
     }
@@ -177,13 +234,17 @@ export class SlackSearchTreeViewProvider
       return [this.botHintItem()];
     }
 
-    const all: { keyword: string; message: SlackMessage }[] = [];
+    let all: { keyword: string; message: SlackMessage }[] = [];
     for (const keyword of keywords) {
       if (this.keywordErrors.has(keyword)) continue;
       const results = this.keywordResults.get(keyword) || [];
       for (const m of results) {
         all.push({ keyword, message: m });
       }
+    }
+
+    if (this.filterUnreadOnly) {
+      all = all.filter(({ message }) => !this.isRead(message));
     }
 
     // Sort by timestamp descending (newest first)
@@ -193,7 +254,10 @@ export class SlackSearchTreeViewProvider
       return tsB - tsA;
     });
 
-    return all.map(({ keyword, message }) => new SearchResultItem(message, keyword));
+    return all.map(
+      ({ keyword, message }) =>
+        new SearchResultItem(message, keyword, this.isRead(message), this.hasTodo(message))
+    );
   }
 
   private botHintItem(): SearchTreeItem {
@@ -204,8 +268,11 @@ export class SlackSearchTreeViewProvider
   }
 
   private getResultItems(keyword: string): SearchTreeItem[] {
-    const results = this.keywordResults.get(keyword) || [];
-    return results.map((m) => new SearchResultItem(m));
+    let results = this.keywordResults.get(keyword) || [];
+    if (this.filterUnreadOnly) {
+      results = results.filter((m) => !this.isRead(m));
+    }
+    return results.map((m) => new SearchResultItem(m, undefined, this.isRead(m), this.hasTodo(m)));
   }
 }
 
@@ -218,13 +285,27 @@ class SearchSectionItem extends vscode.TreeItem {
 }
 
 class SearchResultItem extends vscode.TreeItem {
-  constructor(public readonly message: SlackMessage, keyword?: string) {
+  constructor(
+    public readonly message: SlackMessage,
+    keyword?: string,
+    isRead = false,
+    hasTodo = false
+  ) {
     const preview = message.text.substring(0, 60) + (message.text.length > 60 ? '...' : '');
     const sender = message.userName || message.user;
     super(`${sender}: ${preview}`, vscode.TreeItemCollapsibleState.None);
-    this.iconPath = new vscode.ThemeIcon('comment', new vscode.ThemeColor('charts.blue'));
+    const iconColor = hasTodo ? 'charts.purple' : isRead ? 'disabledForeground' : 'charts.blue';
+    this.iconPath = new vscode.ThemeIcon('comment', new vscode.ThemeColor(iconColor));
     const time = formatSlackTime(message.ts);
-    this.description = keyword ? `[${keyword}] ${time}` : time;
+    const descParts: string[] = [];
+    if (hasTodo) {
+      descParts.push('TODO');
+    }
+    if (keyword) {
+      descParts.push(`[${keyword}]`);
+    }
+    descParts.push(time);
+    this.description = descParts.join(' · ');
     this.tooltip = `${sender}\n${message.text}`;
     this.contextValue = 'slackMention';
 

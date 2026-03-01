@@ -40,7 +40,7 @@ export class MyTasksTreeViewProvider implements vscode.TreeDataProvider<MyTaskTr
   }
 }
 
-class MyTaskTreeItem extends vscode.TreeItem {
+export class MyTaskTreeItem extends vscode.TreeItem {
   constructor(public readonly issue: Entity.Issue.Issue) {
     const label = `[${issue.issueKey}] ${issue.summary}`;
     super(label, vscode.TreeItemCollapsibleState.None);

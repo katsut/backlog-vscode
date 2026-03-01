@@ -31,6 +31,7 @@ import { SlackSearchTreeViewProvider } from './providers/slackSearchTreeViewProv
 import { SlackPostWebviewProvider } from './providers/slackPostWebviewProvider';
 import { DocumentFilesTreeViewProvider } from './providers/documentFilesTreeViewProvider';
 import { TodoEditorProvider } from './providers/todoEditorProvider';
+import { GdocEditorProvider } from './providers/gdocEditorProvider';
 import { PollingService } from './services/pollingService';
 import { SessionFileService } from './services/session/sessionFileService';
 import { SessionContextBuilder } from './services/session/sessionContextBuilder';
@@ -79,7 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
   const syncService = new SyncService();
   const cacooApi = new CacooApiService(cacooConfig);
   const cacooSyncService = new CacooSyncService();
-  const slackApi = new SlackApiService(slackConfig);
+  const slackApi = new SlackApiService(slackConfig, log);
   const pollingService = new PollingService();
   const markdownRenderer = MarkdownRenderer.getInstance();
 
@@ -113,8 +114,12 @@ export function activate(context: vscode.ExtensionContext) {
   );
   const todoProvider = new TodoTreeViewProvider(sessionFileService, todoPersistence, log);
   const myTasksProvider = new MyTasksTreeViewProvider(backlogApi);
-  const notificationsProvider = new NotificationsTreeViewProvider(backlogApi);
-  const slackProvider = new SlackTreeViewProvider(slackApi);
+  const notificationsProvider = new NotificationsTreeViewProvider(
+    backlogApi,
+    () => slackConfig.getNotificationFilterUnread(),
+    (v) => slackConfig.setNotificationFilterUnread(v)
+  );
+  const slackProvider = new SlackTreeViewProvider(slackApi, slackConfig);
   const slackSearchProvider = new SlackSearchTreeViewProvider(slackApi, slackConfig);
   const slackPostProvider = new SlackPostWebviewProvider(
     context.extensionUri,
@@ -214,6 +219,8 @@ export function activate(context: vscode.ExtensionContext) {
     treeDataProvider: notificationsProvider,
   });
   notificationsProvider.setTodoIssueKeys(todoProvider.getTodoIssueKeys());
+  slackProvider.setTodoKeys(todoProvider.getTodoSlackKeys());
+  slackSearchProvider.setTodoKeys(todoProvider.getTodoSlackKeys());
   const cacooTreeView = vscode.window.createTreeView('cacooDiagrams', {
     treeDataProvider: cacooTreeProvider,
     showCollapseAll: true,
@@ -289,6 +296,14 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // ---- Google Doc editor ----
+  const gdocEditorProvider = new GdocEditorProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(GdocEditorProvider.viewType, gdocEditorProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
+  );
+
   // ---- Document sync commands (from existing class) ----
   const syncPullCommand = vscode.commands.registerCommand('nulab.documentSync.pull', () =>
     documentSyncCommands.pull()
@@ -351,6 +366,9 @@ export function activate(context: vscode.ExtensionContext) {
   // ---- Slack context ----
   slackApi.isConfigured().then((configured) => {
     vscode.commands.executeCommand('setContext', 'nulab.slack.configured', configured);
+    if (configured) {
+      slackApi.warmUpCaches().catch(() => {});
+    }
   });
   const searchKeywords = slackConfig.getSearchKeywords();
   vscode.commands.executeCommand(
@@ -447,16 +465,19 @@ export function activate(context: vscode.ExtensionContext) {
   pollingService.register(
     'slack',
     async () => {
+      log('polling: slack tick');
       if (!(await slackApi.isConfigured())) {
+        log('polling: slack skipped (not configured)');
         return;
       }
 
       const includeDMs = slackConfig.isIncludeDMs();
-      const [mentionCount, , slackMentions] = await Promise.all([
+      const [slackResult] = await Promise.all([
         slackProvider.fetchAndRefresh({ includeDMs }),
         slackSearchProvider.fetchAndRefresh(),
-        slackApi.isConfigured().then((ok) => (ok ? slackApi.getMentions({ includeDMs }) : [])),
       ]);
+      const { newCount: mentionCount, mentions: slackMentions } = slackResult;
+      log(`polling: slack done — ${mentionCount} new, ${slackMentions.length} total`);
 
       if (slackConfig.isAutoTodoEnabled() && slackMentions.length > 0) {
         const autoTodoDMs = slackConfig.isAutoTodoDMs();
@@ -477,6 +498,11 @@ export function activate(context: vscode.ExtensionContext) {
           }
         }
       }
+
+      // Sync TODO keys for both Slack tree views
+      const slackTodoKeys = todoProvider.getTodoSlackKeys();
+      slackProvider.setTodoKeys(slackTodoKeys);
+      slackSearchProvider.setTodoKeys(slackTodoKeys);
 
       if (mentionCount > 0) {
         slackStatusBar.text = `$(mention) ${mentionCount}`;
@@ -542,7 +568,13 @@ export function activate(context: vscode.ExtensionContext) {
   let googleCalendar: { disposables: vscode.Disposable[]; treeView: vscode.TreeView<any> } | null =
     null;
   try {
-    googleCalendar = registerGoogleCalendar(context, googleConfig, log);
+    googleCalendar = registerGoogleCalendar(
+      context,
+      googleConfig,
+      log,
+      todoProvider,
+      todoPersistence
+    );
     log('Google Calendar registered successfully');
   } catch (error) {
     log(`Failed to register Google Calendar: ${error}`);
@@ -550,7 +582,12 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // ---- Register all extracted commands ----
-  const allCommandDisposables = registerAllCommands(container, todosTreeView);
+  const allCommandDisposables = registerAllCommands(container, {
+    todosTreeView,
+    notificationsTreeView,
+    slackTreeView,
+    slackSearchTreeView,
+  });
 
   // ---- Tree view interaction (click guard + enter key) ----
   const allTreeViews: vscode.TreeView<any>[] = [

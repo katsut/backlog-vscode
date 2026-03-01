@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { TodoTreeItem } from '../../providers/todoTreeViewProvider';
+import { MyTaskTreeItem } from '../../providers/myTasksTreeViewProvider';
 import { ServiceContainer } from '../../container';
 
 export function registerTodoCommands(
@@ -155,6 +156,44 @@ export function registerTodoCommands(
           c.todoProvider.markReplied(item.todo.id);
         }
       }
+    }),
+
+    vscode.commands.registerCommand('workspace.addTodoFromMyTask', async (item: MyTaskTreeItem) => {
+      if (!(item instanceof MyTaskTreeItem)) {
+        return;
+      }
+      const issue = item.issue;
+      const text = `[${issue.issueKey}] ${issue.summary}`;
+
+      // Dedup: skip if non-done TODO already exists for this issue
+      const existing = c.todoProvider
+        .getTodos()
+        .find(
+          (t) =>
+            t.status !== 'done' &&
+            t.context?.source === 'backlog-notification' &&
+            t.context?.issueKey === issue.issueKey
+        );
+      if (existing) {
+        vscode.window.showInformationMessage(`[Nulab] ${issue.issueKey} の TODO は既にあります。`);
+        vscode.commands.executeCommand('workspace.openTodoDetail', existing.id);
+        return;
+      }
+
+      const todo = c.todoProvider.addTodo(text, {
+        source: 'backlog-notification',
+        issueKey: issue.issueKey,
+        issueId: issue.id,
+        issueSummary: issue.summary,
+      });
+
+      // Fetch full issue context asynchronously
+      c.todoPersistence.startBacklogSession(todo).catch((err) => {
+        c.log(`Failed to fetch issue context for ${issue.issueKey}: ${err}`);
+      });
+
+      vscode.window.showInformationMessage(`[Nulab] TODO に追加しました: ${issue.issueKey}`);
+      vscode.commands.executeCommand('workspace.openTodoDetail', todo.id);
     }),
 
     vscode.commands.registerCommand('workspace.replyToTodoSlack', async (item: TodoTreeItem) => {
