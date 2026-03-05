@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import { spawn, ChildProcess } from 'child_process';
+import { randomUUID } from 'crypto';
 import { SessionFileService } from '../services/session/sessionFileService';
 import { SessionReplyService } from '../services/session/sessionReplyService';
 import { BacklogConfig } from '../config/backlogConfig';
@@ -8,9 +11,12 @@ import { TodoWebview } from '../webviews/todoWebview';
 import { SlackMessage } from '../types/workspace';
 import { TodoTreeViewProvider } from './todoTreeViewProvider';
 import { SessionCodeLensProvider } from './sessionCodeLensProvider';
+import { TodoPersistenceService } from '../services/session/todoPersistenceService';
 
 export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'nulab.todoEditor';
+  private claudeProcesses = new Map<string, ChildProcess>();
+  private claudeSessionIds = new Map<string, string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -19,8 +25,15 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
     private readonly todoProvider: TodoTreeViewProvider,
     private readonly configService: BacklogConfig,
     private readonly slackApi: SlackApiService,
-    private readonly sessionCodeLensProvider: SessionCodeLensProvider
+    private readonly sessionCodeLensProvider: SessionCodeLensProvider,
+    private readonly todoPersistence: TodoPersistenceService,
+    private readonly outputChannel?: vscode.OutputChannel
   ) {}
+
+  private log(msg: string): void {
+    const ts = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    this.outputChannel?.appendLine(`[${ts}] [ChatSession] ${msg}`);
+  }
 
   async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -141,8 +154,24 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         }
       }
       if (message.command === 'startClaudeSession') {
-        await vscode.commands.executeCommand('workspace.startClaudeSession', todoId);
-        await this.render(webviewPanel, todoId, cachedSlackBefore, cachedSlackAfter);
+        this.log(`message received: startClaudeSession (todoId=${todoId})`);
+        this.startChatSession(webviewPanel, todoId);
+      }
+      if (message.command === 'sendChatMessage') {
+        this.log(`message received: sendChatMessage (todoId=${todoId})`);
+        let isFirst = false;
+        if (!this.claudeSessionIds.has(todoId)) {
+          this.claudeSessionIds.set(todoId, randomUUID());
+          isFirst = true;
+        }
+        this.runClaudeTurn(webviewPanel, todoId, message.text, isFirst, message.model);
+      }
+      if (message.command === 'stopClaude') {
+        const proc = this.claudeProcesses.get(todoId);
+        if (proc) {
+          proc.kill();
+          this.claudeProcesses.delete(todoId);
+        }
       }
       if (message.command === 'refreshDraft') {
         const draft = this.fileService.getDraftInfo(todoId);
@@ -247,5 +276,191 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         draft
       );
     }
+  }
+
+  private buildInitialContext(todoId: string): string {
+    const todo = this.todoProvider.findTodoById(todoId);
+    if (!todo) {
+      return '';
+    }
+    const sessionFilePath = this.fileService.getSessionFilePath(todoId);
+    const parts = [
+      'あなたはドキュメントの作成・校正・レビューを行うアシスタントです。',
+      '以下のTODOへの対応を支援してください。',
+      '回答のドラフトは次のファイルの DRAFT セクションに書き込んでください:',
+      sessionFilePath,
+      '',
+      '## TODO',
+      todo.text,
+    ];
+    try {
+      const content = fs.readFileSync(sessionFilePath, 'utf-8');
+      const m = content.match(/<!-- CONTEXT[^>]*-->([\s\S]*?)<!-- \/CONTEXT -->/);
+      if (m && m[1].trim()) {
+        parts.push('', '## コンテキスト', m[1].trim());
+      }
+    } catch {
+      // no session file
+    }
+    return parts.join('\n');
+  }
+
+  private startChatSession(panel: vscode.WebviewPanel, todoId: string): void {
+    this.log(`startChatSession: todoId=${todoId}`);
+    // Ensure session file exists
+    if (!this.fileService.hasSession(todoId)) {
+      const todo = this.todoProvider.findTodoById(todoId);
+      if (todo) {
+        this.todoPersistence.createSessionFromTodo(todo);
+      }
+    }
+
+    this.todoProvider.setStatus(todoId, 'in_progress');
+    this.sessionCodeLensProvider.refresh();
+
+    const sessionFilePath = this.fileService.getSessionFilePath(todoId);
+    const todo = this.todoProvider.findTodoById(todoId);
+    if (!todo) {
+      this.log(`startChatSession: todo not found for id=${todoId}`);
+      return;
+    }
+
+    let context = '';
+    try {
+      const content = fs.readFileSync(sessionFilePath, 'utf-8');
+      const m = content.match(/<!-- CONTEXT[^>]*-->([\s\S]*?)<!-- \/CONTEXT -->/);
+      context = m ? m[1].trim() : '';
+    } catch {
+      // no context
+    }
+
+    const initialMessage = [
+      `以下のTODOに対応してください。`,
+      ``,
+      `## TODO`,
+      todo.text,
+      ...(context ? [``, `## コンテキスト`, context] : []),
+      ``,
+      `回答のドラフトは以下のファイルの DRAFT セクションに書き込んでください:`,
+      sessionFilePath,
+    ].join('\n');
+
+    // Assign a new session ID for this TODO chat
+    const sessionId = randomUUID();
+    this.claudeSessionIds.set(todoId, sessionId);
+    this.log(`startChatSession: sessionId=${sessionId}, launching first turn`);
+
+    this.runClaudeTurn(panel, todoId, initialMessage, true);
+  }
+
+  private runClaudeTurn(
+    panel: vscode.WebviewPanel,
+    todoId: string,
+    userMessage: string,
+    isFirst: boolean,
+    model?: string
+  ): void {
+    // Kill any running process
+    const existing = this.claudeProcesses.get(todoId);
+    if (existing) {
+      existing.kill();
+      this.claudeProcesses.delete(todoId);
+    }
+
+    const sessionId = this.claudeSessionIds.get(todoId);
+    if (!sessionId) {
+      this.log(`runClaudeTurn: no sessionId for todoId=${todoId}`);
+      return;
+    }
+
+    this.log(`runClaudeTurn: isFirst=${isFirst}, sessionId=${sessionId}`);
+    const args = [
+      '--print',
+      '--verbose',
+      '--output-format',
+      'stream-json',
+      '--include-partial-messages',
+    ];
+    if (isFirst) {
+      const systemPrompt = this.buildInitialContext(todoId);
+      if (systemPrompt) {
+        args.push('--system-prompt', systemPrompt);
+      }
+    }
+    if (model) {
+      args.push('--model', model);
+    }
+    args.push(isFirst ? '--session-id' : '--resume', sessionId, userMessage);
+
+    const env = { ...process.env };
+    // Ensure Homebrew path is included when VSCode is launched from GUI
+    if (!env.PATH?.includes('/opt/homebrew/bin')) {
+      env.PATH = `/opt/homebrew/bin:/usr/local/bin:${env.PATH ?? ''}`;
+    }
+    this.log(`runClaudeTurn: spawn claude ${args.slice(0, -1).join(' ')} [message omitted]`);
+    const proc = spawn('claude', args, {
+      cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      env,
+    });
+    this.log(`runClaudeTurn: pid=${proc.pid}, stdout=${!!proc.stdout}, stderr=${!!proc.stderr}`);
+    proc.stdin?.end();
+    this.claudeProcesses.set(todoId, proc);
+
+    proc.on('error', (err) => {
+      this.log(`runClaudeTurn: spawn error: ${err.message}`);
+      panel.webview.postMessage({ command: 'chatError', text: `起動エラー: ${err.message}` });
+    });
+
+    panel.webview.postMessage({ command: 'chatTurnStart' });
+
+    let buffer = '';
+    proc.stdout?.on('data', (data: Buffer) => {
+      buffer += data.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.trim()) {
+          continue;
+        }
+        this.log(`stdout line: ${line.substring(0, 120)}`);
+        try {
+          const obj = JSON.parse(line);
+          this.log(`stdout type=${obj.type}`);
+          if (obj.type === 'assistant' && obj.message?.content) {
+            let text = '';
+            for (const block of obj.message.content) {
+              if (block.type === 'text') {
+                text += block.text;
+              }
+            }
+            if (text) {
+              panel.webview.postMessage({ command: 'chatChunk', text });
+            }
+          }
+        } catch {
+          this.log(`stdout non-JSON: ${line.substring(0, 80)}`);
+        }
+      }
+    });
+
+    proc.stderr?.on('data', (data: Buffer) => {
+      const text = data.toString().trim();
+      if (text) {
+        this.log(`runClaudeTurn: stderr: ${text}`);
+        panel.webview.postMessage({ command: 'chatError', text });
+      }
+    });
+
+    proc.on('close', (code) => {
+      this.log(`runClaudeTurn: process closed, code=${code}`);
+      this.claudeProcesses.delete(todoId);
+      panel.webview.postMessage({ command: 'chatDone' });
+
+      // Re-read draft after Claude finishes
+      const draft = this.fileService.getDraftInfo(todoId);
+      if (draft) {
+        panel.webview.postMessage({ command: 'updateDraft', draft: draft.content });
+      }
+    });
   }
 }
