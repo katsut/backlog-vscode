@@ -10,7 +10,9 @@ export const ClaudeChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedModel, setSelectedModel] = useState(
+    () => localStorage.getItem('claudeChatModel') || 'claude-sonnet-4-6'
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const currentAssistantRef = useRef<number | null>(null);
@@ -90,10 +92,12 @@ export const ClaudeChat: React.FC = () => {
           <select
             className="model-select"
             value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
+            onChange={(e) => {
+              setSelectedModel(e.target.value);
+              localStorage.setItem('claudeChatModel', e.target.value);
+            }}
             title="モデル選択"
           >
-            <option value="">Default</option>
             <option value="claude-opus-4-6">Opus</option>
             <option value="claude-sonnet-4-6">Sonnet</option>
             <option value="claude-haiku-4-5-20251001">Haiku</option>
@@ -108,7 +112,7 @@ export const ClaudeChat: React.FC = () => {
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`chat-msg ${msg.role}`}>
-            {msg.text}
+            {msg.role === 'assistant' ? msg.text.replace(/^\n+/, '') : msg.text}
           </div>
         ))}
         <div ref={messagesEndRef} />

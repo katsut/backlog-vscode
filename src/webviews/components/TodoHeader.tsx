@@ -105,6 +105,8 @@ export const TodoHeader: React.FC<TodoHeaderProps> = ({
               {s.icon} {s.label}
             </button>
           ))}
+        </div>
+        <div className="todo-side-actions">
           {onRefreshContext && (ctx?.source === 'backlog-notification' || ctx?.source === 'slack-mention' || ctx?.source === 'slack-search') && (
             <button className="action-btn secondary small" onClick={onRefreshContext} title="最新情報を取得">
               ↻ 更新
