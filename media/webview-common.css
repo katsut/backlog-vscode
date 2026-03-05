@@ -748,8 +748,8 @@ body {
 
 .todo-title-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: var(--webview-space-md);
   margin-bottom: var(--webview-space-sm);
 }
 
@@ -759,6 +759,9 @@ body {
   font-weight: 600;
   color: var(--vscode-foreground);
   flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .todo-meta-row {
@@ -766,6 +769,12 @@ body {
   gap: var(--webview-space-sm);
   align-items: center;
   margin-bottom: var(--webview-space-sm);
+}
+
+.todo-controls-row {
+  display: flex;
+  align-items: center;
+  gap: var(--webview-space-sm);
 }
 
 .status-actions {

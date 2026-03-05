@@ -84,7 +84,13 @@ const TodoView: React.FC = () => {
 
   return (
     <div className="editor-wrapper">
-      <TodoHeader todo={todo} onStatusChange={handleStatusChange} onDelete={handleDelete} />
+      <TodoHeader
+        todo={todo}
+        baseUrl={initialState.baseUrl}
+        onStatusChange={handleStatusChange}
+        onDelete={handleDelete}
+        onOpenExternal={handleOpenExternal}
+      />
       <div className="page-layout">
         <div className="main-content">
           <TodoContent

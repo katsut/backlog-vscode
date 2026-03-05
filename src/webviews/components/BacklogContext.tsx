@@ -20,24 +20,13 @@ export const BacklogContext: React.FC<BacklogContextProps> = ({
     return null;
   }
 
-  const fullBaseUrl = baseUrl
-    ? baseUrl.startsWith('http')
-      ? baseUrl
-      : `https://${baseUrl}`
-    : '';
-
-  const issueUrl =
-    ctx.issueKey && fullBaseUrl ? `${fullBaseUrl}/view/${ctx.issueKey}` : null;
-
   // Split fullContext into issue details and comment history
   let issueDetails = '';
-  let commentHistory = '';
   let triggerNotification: React.ReactNode = null;
 
   if (fullContext) {
     const sections = fullContext.split('## コメント履歴');
     issueDetails = sections[0] || '';
-    commentHistory = sections[1] || '';
 
     // Build trigger notification section
     if (ctx.sender || ctx.comment) {
@@ -60,23 +49,6 @@ export const BacklogContext: React.FC<BacklogContextProps> = ({
 
   return (
     <>
-      {issueUrl && (
-        <div className="content-section">
-          <div className="source-link-section">
-            <a
-              href="#"
-              className="external-link link-backlog"
-              onClick={(e) => {
-                e.preventDefault();
-                onOpenExternal(issueUrl);
-              }}
-            >
-              Open in Backlog
-            </a>
-          </div>
-        </div>
-      )}
-
       {issueDetails && (
         <div className="content-section">
           <div className="full-context" dangerouslySetInnerHTML={{ __html: issueDetails }} />
