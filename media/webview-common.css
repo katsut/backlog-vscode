@@ -48,24 +48,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Common header styling */
-.webview-header {
-  border-bottom: 1px solid var(--vscode-panel-border);
-  padding-bottom: var(--webview-space-sm);
-  margin-bottom: var(--webview-space-md);
-}
-
-.webview-header h1 {
-  margin: 0 0 var(--webview-space-xs) 0;
-  color: var(--vscode-foreground);
-  font-size: var(--webview-font-size-2xl);
-  font-weight: 600;
-  line-height: 1.3;
-  display: flex;
-  align-items: center;
-  gap: var(--webview-space-sm);
-  font-family: var(--webview-font-family);
-}
 
 .webview-meta {
   display: flex;
@@ -631,14 +613,33 @@ body {
   padding: 12px 20px 10px;
 }
 
+.webview-header h1 {
+  margin: 0;
+  color: var(--vscode-foreground);
+  font-size: var(--webview-font-size-2xl);
+  font-weight: 600;
+  line-height: 1.3;
+  font-family: var(--webview-font-family);
+}
+
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  gap: var(--webview-space-sm);
+}
+
 /* Two-column layout (main content + chat/sidebar) */
 .page-layout {
   display: flex;
-  gap: 16px;
   align-items: stretch;
-  padding: 12px 20px 20px;
   box-sizing: border-box;
   overflow: hidden;
+  flex: 1;
 }
 
 /* Main content area - scrollable */
@@ -646,6 +647,7 @@ body {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  padding: 12px 20px 20px;
 }
 
 /* Full-height wrapper for editors */
@@ -1005,4 +1007,23 @@ textarea:focus {
   font-size: var(--webview-font-size-sm);
   line-height: 1.5;
   margin-top: var(--webview-space-sm);
+}
+
+/* Document Editor Components */
+.document-editor-textarea {
+  width: 100%;
+  min-height: calc(100vh - 200px);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--webview-radius-sm);
+  padding: var(--webview-space-md);
+  font-family: var(--webview-mono-font-family);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.document-editor-textarea:focus {
+  outline: 1px solid var(--vscode-focusBorder);
 }

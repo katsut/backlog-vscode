@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ClaudeChat } from '../components/ClaudeChat';
 import { PanelResizer } from '../components/PanelResizer';
@@ -29,11 +29,11 @@ const DocumentEditor: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="editor-wrapper">
       <div className="webview-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="header-row">
           <h1>{initialState.title}</h1>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="header-actions">
             <button className="action-btn secondary" onClick={handleSave} disabled={isSaving}>
               {isSaving ? '保存中...' : '保存'}
             </button>
@@ -45,22 +45,16 @@ const DocumentEditor: React.FC = () => {
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+      <div className="page-layout">
+        <div className="main-content">
           <textarea
-            style={{
-              width: '100%',
-              minHeight: '500px',
-              fontFamily: 'var(--webview-mono-font-family)',
-              fontSize: '14px',
-              lineHeight: '1.6',
-            }}
+            className="document-editor-textarea"
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
         </div>
+        <PanelResizer targetId="claudeChatSection" />
         <div id="claudeChatSection" className="claude-chat-section">
-          <PanelResizer targetId="claudeChatSection" />
           <ClaudeChat />
         </div>
       </div>

@@ -83,10 +83,10 @@ const TodoView: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="editor-wrapper">
       <TodoHeader todo={todo} onStatusChange={handleStatusChange} onDelete={handleDelete} />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+      <div className="page-layout">
+        <div className="main-content">
           <TodoContent
             todo={todo}
             baseUrl={initialState.baseUrl}
@@ -104,8 +104,8 @@ const TodoView: React.FC = () => {
             onStartClaude={handleStartClaude}
           />
         </div>
+        <PanelResizer targetId="claudeChatSection" />
         <div id="claudeChatSection" className="claude-chat-section">
-          <PanelResizer targetId="claudeChatSection" />
           <ClaudeChat />
         </div>
       </div>
