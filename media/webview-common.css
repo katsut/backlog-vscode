@@ -694,6 +694,42 @@ body {
   display: flex;
   gap: var(--webview-space-sm);
   align-items: center;
+  margin-bottom: var(--webview-space-sm);
+}
+
+.status-actions {
+  display: flex;
+  gap: var(--webview-space-sm);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status-actions-label {
+  font-weight: 500;
+  font-size: var(--webview-font-size-sm);
+  color: var(--vscode-descriptionForeground);
+}
+
+.status-btn {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+  border-radius: var(--webview-radius-sm);
+  padding: 4px 12px;
+  font-size: var(--webview-font-size-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.status-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.status-btn.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-background);
+  font-weight: 600;
 }
 
 .status-badge.in_progress,

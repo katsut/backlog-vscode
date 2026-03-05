@@ -7,12 +7,12 @@ interface TodoHeaderProps {
   onDelete: () => void;
 }
 
-const STATUS_LABELS: Record<TodoStatus, string> = {
-  open: '○ 未着手',
-  in_progress: '◉ 進行中',
-  waiting: '◷ 待ち',
-  done: '✓ 完了',
-};
+const STATUSES: Array<{ status: TodoStatus; label: string; icon: string }> = [
+  { status: 'open', label: '未着手', icon: '○' },
+  { status: 'in_progress', label: '進行中', icon: '◉' },
+  { status: 'waiting', label: '待ち', icon: '◷' },
+  { status: 'done', label: '完了', icon: '✓' },
+];
 
 const SOURCE_LABELS: Record<string, string> = {
   'backlog-notification': 'Backlog',
@@ -23,33 +23,31 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export const TodoHeader: React.FC<TodoHeaderProps> = ({ todo, onStatusChange, onDelete }) => {
-  const statusLabel = STATUS_LABELS[todo.status] || todo.status;
   const sourceLabel = todo.context ? SOURCE_LABELS[todo.context.source] || todo.context.source : '';
 
   return (
     <div className="webview-header todo-header">
       <div className="todo-title-row">
         <h2 className="todo-title">{todo.text}</h2>
-        <div className="header-actions">
-          <select
-            className="status-select"
-            value={todo.status}
-            onChange={(e) => onStatusChange(e.target.value as TodoStatus)}
-          >
-            <option value="open">{STATUS_LABELS.open}</option>
-            <option value="in_progress">{STATUS_LABELS.in_progress}</option>
-            <option value="waiting">{STATUS_LABELS.waiting}</option>
-            <option value="done">{STATUS_LABELS.done}</option>
-          </select>
-          <button className="delete-btn" onClick={onDelete} title="Delete TODO">
-            🗑
-          </button>
-        </div>
       </div>
       <div className="todo-meta-row">
-        <span className={`status-badge ${todo.status}`}>{statusLabel}</span>
         {sourceLabel && <span className="meta-item">{sourceLabel}</span>}
         {todo.replied && <span className="meta-item replied-badge">返信済</span>}
+      </div>
+      <div className="status-actions">
+        <span className="status-actions-label">Status:</span>
+        {STATUSES.map((s) => (
+          <button
+            key={s.status}
+            className={`status-btn ${s.status === todo.status ? 'active' : ''}`}
+            onClick={() => onStatusChange(s.status)}
+          >
+            {s.icon} {s.label}
+          </button>
+        ))}
+        <button className="action-btn danger-btn" onClick={onDelete}>
+          削除
+        </button>
       </div>
     </div>
   );
