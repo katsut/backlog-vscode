@@ -17,5 +17,13 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", ".vscode-test", "src/services/googleApi.ts"]
+  "exclude": [
+    "node_modules",
+    ".vscode-test",
+    "src/services/googleApi.ts",
+    "src/webviews/components",
+    "src/webviews/entries",
+    "src/webviews/hooks",
+    "src/webviews/legacy"
+  ]
 }

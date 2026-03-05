@@ -1260,8 +1260,15 @@
         },
         "nulab.backlog.autoTodoReasons": {
           "type": "array",
-          "default": [1, 2, 9, 10],
-          "items": { "type": "number" },
+          "default": [
+            1,
+            2,
+            9,
+            10
+          ],
+          "items": {
+            "type": "number"
+          },
           "description": "自動 TODO 作成の対象 reason (1=assigned, 2=commented, 9=PR, 10=PR commented)"
         },
         "nulab.slack.autoTodoEnabled": {
@@ -1301,8 +1308,12 @@
     "languages": [
       {
         "id": "bdoc",
-        "extensions": [".bdoc"],
-        "aliases": ["Backlog Document"],
+        "extensions": [
+          ".bdoc"
+        ],
+        "aliases": [
+          "Backlog Document"
+        ],
         "icon": {
           "light": "media/backlog-icon-light.svg",
           "dark": "media/backlog-icon.svg"
@@ -1344,24 +1355,31 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && npm run build:webviews",
+    "build:webviews": "node scripts/build-webviews.js",
     "watch": "tsc -watch -p ./",
+    "watch:webviews": "node scripts/build-webviews.js --watch",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "lint:fix": "eslint src --ext ts --fix",
     "test": "node ./out/test/runTest.js",
     "format": "prettier --write \"src/**/*.ts\"",
     "package": "vsce package",
-    "install:local": "npm run compile && vsce package && code --install-extension nulab-vscode-0.0.1.vsix && echo 'Installed! Reload VSCode to apply.'"
+    "install:local": "node scripts/gen-build-info.js && npm run compile && vsce package && code --install-extension nulab-vscode-0.0.1.vsix && echo 'Installed! Reload VSCode to apply.'"
   },
   "devDependencies": {
     "@types/node": "16.x",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
     "@vscode/test-electron": "^2.2.0",
+    "esbuild": "^0.27.3",
     "eslint": "^8.28.0",
     "prettier": "^2.8.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "typescript": "^4.9.4",
     "vsce": "^2.15.0"
   },
