@@ -83,9 +83,8 @@ export const TodoHeader: React.FC<TodoHeaderProps> = ({
               key={s.status}
               className={`status-btn ${s.status === todo.status ? 'active' : ''}`}
               onClick={() => onStatusChange(s.status)}
-              title={s.label}
             >
-              {s.icon}
+              {s.icon} {s.label}
             </button>
           ))}
           <button className="action-btn danger-btn small" onClick={onDelete}>

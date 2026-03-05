@@ -970,6 +970,57 @@ textarea:focus {
 }
 
 /* Context-specific components */
+/* Issue Metadata Grid */
+.issue-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--webview-space-md);
+  padding: var(--webview-space-md);
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: var(--webview-radius-md);
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--webview-space-xs);
+}
+
+.metadata-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.metadata-item label {
+  font-size: var(--webview-font-size-xs);
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metadata-item span {
+  font-size: var(--webview-font-size-sm);
+  color: var(--vscode-foreground);
+}
+
+.metadata-item .status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--backlog-color);
+  color: white;
+  border-radius: var(--webview-radius-sm);
+  font-size: var(--webview-font-size-xs);
+  font-weight: 500;
+}
+
+/* Issue Description */
+.issue-description {
+  padding: var(--webview-space-md);
+  background: var(--vscode-editor-background);
+  border-radius: var(--webview-radius-md);
+  border: 1px solid var(--vscode-panel-border);
+}
+
 .notif-trigger-section {
   border-left: 4px solid var(--backlog-color);
   background: var(--vscode-editor-inactiveSelectionBackground);
