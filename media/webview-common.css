@@ -852,3 +852,121 @@ textarea {
 textarea:focus {
   outline: 1px solid var(--vscode-focusBorder);
 }
+
+/* Context-specific components */
+.notif-trigger-section {
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: var(--webview-radius-md);
+}
+
+.notif-trigger {
+  padding: var(--webview-space-md);
+}
+
+.notif-meta {
+  display: flex;
+  gap: var(--webview-space-sm);
+  margin-bottom: var(--webview-space-sm);
+  flex-wrap: wrap;
+}
+
+.notif-sender {
+  font-weight: 600;
+  color: var(--vscode-textLink-foreground);
+}
+
+.notif-reason {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 2px var(--webview-space-sm);
+  border-radius: var(--webview-radius-sm);
+  font-size: var(--webview-font-size-xs);
+}
+
+.notif-comment {
+  padding: var(--webview-space-sm);
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: var(--webview-radius-sm);
+  font-size: var(--webview-font-size-sm);
+}
+
+.slack-context-message {
+  padding: var(--webview-space-sm) 0;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.slack-context-message:last-child {
+  border-bottom: none;
+}
+
+.slack-message-meta {
+  display: flex;
+  gap: var(--webview-space-sm);
+  margin-bottom: var(--webview-space-xs);
+  font-size: var(--webview-font-size-xs);
+}
+
+.slack-user {
+  font-weight: 600;
+  color: var(--vscode-textLink-foreground);
+}
+
+.slack-timestamp {
+  color: var(--vscode-descriptionForeground);
+}
+
+.slack-message-text {
+  font-size: var(--webview-font-size-sm);
+  line-height: 1.5;
+}
+
+.slack-main-message {
+  padding: var(--webview-space-sm);
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: var(--webview-radius-sm);
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  font-weight: 500;
+}
+
+.thread-separator {
+  display: flex;
+  align-items: center;
+  margin: var(--webview-space-md) 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: var(--webview-font-size-xs);
+}
+
+.thread-separator::before,
+.thread-separator::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.thread-separator span {
+  padding: 0 var(--webview-space-sm);
+}
+
+.attendee-list {
+  display: flex;
+  gap: var(--webview-space-xs);
+  flex-wrap: wrap;
+  margin-top: var(--webview-space-xs);
+}
+
+.attendee-chip {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 2px var(--webview-space-sm);
+  border-radius: var(--webview-radius-xl);
+  font-size: var(--webview-font-size-xs);
+}
+
+.context-comment {
+  padding: var(--webview-space-sm);
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: var(--webview-radius-sm);
+  font-size: var(--webview-font-size-sm);
+  line-height: 1.5;
+  margin-top: var(--webview-space-sm);
+}

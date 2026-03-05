@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { WorkspaceTodoItem, SlackMessage } from '../../types/workspace';
 import { DraftInfo } from '../todoWebview';
+import { BacklogContext, BacklogCommentHistory } from './BacklogContext';
+import { SlackContext } from './SlackContext';
+import { GoogleContext } from './GoogleContext';
 
 interface TodoContentProps {
   todo: WorkspaceTodoItem;
@@ -22,6 +25,8 @@ interface TodoContentProps {
 export const TodoContent: React.FC<TodoContentProps> = ({
   todo,
   baseUrl,
+  slackContextBefore,
+  slackContextAfter,
   draft,
   fullContext,
   onSaveNotes,
@@ -36,40 +41,6 @@ export const TodoContent: React.FC<TodoContentProps> = ({
   const [notesValue, setNotesValue] = useState(todo.notes || '');
   const [draftValue, setDraftValue] = useState(draft?.content || '');
 
-  const ctx = todo.context;
-
-  // Build source link
-  let sourceLink = null;
-  const fullBaseUrl = baseUrl
-    ? baseUrl.startsWith('http')
-      ? baseUrl
-      : `https://${baseUrl}`
-    : '';
-
-  if (ctx?.source === 'backlog-notification' && ctx.issueKey && fullBaseUrl) {
-    const issueUrl = `${fullBaseUrl}/view/${ctx.issueKey}`;
-    sourceLink = (
-      <a href="#" onClick={(e) => { e.preventDefault(); onOpenExternal(issueUrl); }}>
-        Open in Backlog
-      </a>
-    );
-  } else if (
-    (ctx?.source === 'slack-mention' || ctx?.source === 'slack-search') &&
-    ctx?.slackChannel
-  ) {
-    sourceLink = (
-      <a href="#" onClick={(e) => { e.preventDefault(); onOpenSlackThread(); }}>
-        Open in Slack
-      </a>
-    );
-  } else if (ctx?.source === 'google-doc' && ctx?.googleDocUrl) {
-    sourceLink = (
-      <a href="#" onClick={(e) => { e.preventDefault(); onOpenExternal(ctx.googleDocUrl!); }}>
-        Open in Google Docs
-      </a>
-    );
-  }
-
   const isPosted = draft?.status === 'posted';
   const action = draft?.action || 'none';
   const postLabel =
@@ -82,18 +53,22 @@ export const TodoContent: React.FC<TodoContentProps> = ({
 
   return (
     <div className="todo-main-content">
-      {sourceLink && (
-        <div className="content-section">
-          <div className="source-link-section">{sourceLink}</div>
-        </div>
-      )}
+      {/* Context-specific rendering */}
+      <BacklogContext
+        todo={todo}
+        baseUrl={baseUrl}
+        fullContext={fullContext}
+        onOpenExternal={onOpenExternal}
+      />
+      <SlackContext
+        todo={todo}
+        slackContextBefore={slackContextBefore}
+        slackContextAfter={slackContextAfter}
+        onOpenSlackThread={onOpenSlackThread}
+      />
+      <GoogleContext todo={todo} fullContext={fullContext} onOpenExternal={onOpenExternal} />
 
-      {fullContext && (
-        <div className="content-section">
-          <div className="full-context" dangerouslySetInnerHTML={{ __html: fullContext }} />
-        </div>
-      )}
-
+      {/* Draft section */}
       <div className="content-section draft-section">
         <div className="draft-header">
           <h3>{heading}</h3>
@@ -130,6 +105,12 @@ export const TodoContent: React.FC<TodoContentProps> = ({
         )}
       </div>
 
+      {/* Comment history (for Backlog) - rendered after draft */}
+      {todo.context?.source === 'backlog-notification' && (
+        <BacklogCommentHistory fullContext={fullContext} />
+      )}
+
+      {/* Notes section */}
       <div className="content-section">
         <h3>Notes</h3>
         <textarea
@@ -142,6 +123,7 @@ export const TodoContent: React.FC<TodoContentProps> = ({
         </button>
       </div>
 
+      {/* Claude action */}
       <div className="content-section">
         <button className="action-btn primary" onClick={onStartClaude}>
           ✦ Claude で対応
