@@ -406,6 +406,13 @@ export class SlackApiService {
           m.userName = this.userCache.get(m.user) || m.user;
         }
 
+        // Resolve <@U...> mentions in message text
+        await Promise.all(
+          messages.map(async (m) => {
+            m.text = await this.resolveUserMentions(m.text);
+          })
+        );
+
         // Sort and emit partial results
         messages.sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts));
         onProgress?.(messages);
@@ -464,6 +471,12 @@ export class SlackApiService {
       for (const m of messages) {
         m.userName = this.userCache.get(m.user) || m.user;
       }
+      // Resolve <@U...> mentions in message text
+      await Promise.all(
+        messages.map(async (m) => {
+          m.text = await this.resolveUserMentions(m.text);
+        })
+      );
       return messages;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -493,10 +506,11 @@ export class SlackApiService {
       const messages: SlackMessage[] = [];
       for (const msg of resp.messages || []) {
         const userName = await this.resolveUserName(msg.user || '');
+        const text = await this.resolveUserMentions(convertSlackEmoji(msg.text || ''));
         messages.push({
           ts: msg.ts || '',
           user: msg.user || '',
-          text: convertSlackEmoji(msg.text || ''),
+          text,
           thread_ts: msg.thread_ts,
           channel,
           userName,
@@ -563,10 +577,13 @@ export class SlackApiService {
         const result: SlackMessage[] = [];
         for (const msg of msgs) {
           const userName = await this.resolveUserName((msg.user as string) || '');
+          const text = await this.resolveUserMentions(
+            convertSlackEmoji((msg.text as string) || '')
+          );
           result.push({
             ts: (msg.ts as string) || '',
             user: (msg.user as string) || '',
-            text: convertSlackEmoji((msg.text as string) || ''),
+            text,
             thread_ts: msg.thread_ts as string | undefined,
             channel,
             userName,
@@ -634,6 +651,23 @@ export class SlackApiService {
       channel,
       text,
       thread_ts: threadTs,
+    });
+  }
+
+  async resolveUserMentions(text: string): Promise<string> {
+    const mentionPattern = /<@(U[A-Z0-9]+)>/g;
+    const ids = new Set<string>();
+    let m;
+    while ((m = mentionPattern.exec(text)) !== null) {
+      ids.add(m[1]);
+    }
+    if (ids.size === 0) {
+      return text;
+    }
+    await Promise.all([...ids].map((id) => this.resolveUserName(id)));
+    return text.replace(/<@(U[A-Z0-9]+)>/g, (_, id) => {
+      const name = this.userCache.get(id);
+      return name ? `@${name}` : `@${id}`;
     });
   }
 

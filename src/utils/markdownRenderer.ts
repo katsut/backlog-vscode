@@ -77,10 +77,12 @@ export class MarkdownRenderer {
     }
 
     try {
+      // Pre-process Backlog-specific markup before markdown parsing
+      let processedContent = this.preprocessBacklogMarkup(content);
+
       // Replace attachment references in markdown content before parsing
-      let processedContent = content;
       if (attachments && attachments.length > 0) {
-        processedContent = this.replaceAttachmentReferences(content, attachments);
+        processedContent = this.replaceAttachmentReferences(processedContent, attachments);
       }
 
       // Parse and render markdown
@@ -96,6 +98,73 @@ export class MarkdownRenderer {
         <pre>${this.escapeHtml(content)}</pre>
       </div>`;
     }
+  }
+
+  /**
+   * Pre-process Backlog-specific markup before markdown parsing
+   */
+  private preprocessBacklogMarkup(content: string): string {
+    let processed = content;
+
+    // Convert {quote}...{/quote} to markdown blockquote
+    processed = processed.replace(/\{quote\}([\s\S]*?)\{\/quote\}/g, (_, quoteContent) => {
+      // Split into lines and prefix each with ">"
+      const lines = quoteContent.trim().split('\n');
+      return lines.map((line: string) => `> ${line}`).join('\n');
+    });
+
+    // Convert Slack-style emoji codes to Unicode emoji
+    const emojiMap: { [key: string]: string } = {
+      ':bow:': '🙇',
+      ':sparkles:': '✨',
+      ':smile:': '😊',
+      ':sad:': '😢',
+      ':wink:': '😉',
+      ':tongue:': '😛',
+      ':laugh:': '😄',
+      ':laughing:': '😄',
+      ':grin:': '😁',
+      ':cool:': '😎',
+      ':sunglasses:': '😎',
+      ':angry:': '😠',
+      ':rage:': '😡',
+      ':surprised:': '😲',
+      ':confused:': '😕',
+      ':heart:': '❤️',
+      ':star:': '⭐',
+      ':thumbsup:': '👍',
+      ':+1:': '👍',
+      ':thumbsdown:': '👎',
+      ':-1:': '👎',
+      ':clap:': '👏',
+      ':pray:': '🙏',
+      ':fire:': '🔥',
+      ':rocket:': '🚀',
+      ':tada:': '🎉',
+      ':eyes:': '👀',
+      ':thinking:': '🤔',
+      ':point_right:': '👉',
+      ':point_left:': '👈',
+      ':raised_hand:': '✋',
+      ':ok_hand:': '👌',
+      ':muscle:': '💪',
+      ':bulb:': '💡',
+      ':warning:': '⚠️',
+      ':memo:': '📝',
+      ':calendar:': '📅',
+      ':white_check_mark:': '✅',
+      ':x:': '❌',
+      ':heavy_check_mark:': '✔️',
+    };
+
+    for (const [code, emoji] of Object.entries(emojiMap)) {
+      processed = processed.replace(
+        new RegExp(code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+        emoji
+      );
+    }
+
+    return processed;
   }
 
   /**
@@ -116,6 +185,10 @@ export class MarkdownRenderer {
       // Pattern: [link text](/document/.../file/123) - Backlogリンク参照
       const linkPattern = new RegExp(`\\[([^\\]]*)\\]\\([^)]*\\/file\\/${attachment.id}\\)`, 'g');
       processed = processed.replace(linkPattern, `[$1](${attachment.dataUrl})`);
+
+      // Pattern: ![alt text](.images/123) - Backlog Document inline image
+      const dotImagePattern = new RegExp(`!\\[([^\\]]*)\\]\\(\\.images\\/${attachment.id}\\)`, 'g');
+      processed = processed.replace(dotImagePattern, `![$1](${attachment.dataUrl})`);
     });
 
     return processed;
@@ -193,14 +266,6 @@ export class MarkdownRenderer {
 
     return '#';
   }
-
-  /**
-   * Escape regex special characters
-   */
-  private escapeRegex(string: string): string {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
   /**
    * Get CSS styles for markdown rendering in webview
    * @deprecated Markdown styles are now loaded from external CSS file (media/markdown.css)

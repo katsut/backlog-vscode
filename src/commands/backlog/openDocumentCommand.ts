@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Entity } from 'backlog-js';
+import { spawn, ChildProcess } from 'child_process';
 import { ServiceContainer } from '../../container';
 import { DocumentWebview } from '../../webviews/documentWebview';
 import { WebviewHelper } from '../../webviews/common';
@@ -89,15 +90,109 @@ export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposa
             projectKey
           );
 
+          // Per-panel Claude state
+          let claudeProc: ChildProcess | null = null;
+          let claudeSessionId = `doc-${Date.now()}`;
+          let isFirstTurn = true;
+          let latestDocument: Entity.Document.Document = documentDetail;
+
+          function buildDocumentContext(doc: Entity.Document.Document): string {
+            return [
+              'あなたはBacklogドキュメントの編集支援AIです。',
+              '以下のドキュメントの内容を把握し、編集・改善の提案を行ってください。',
+              '',
+              `## ドキュメント: ${doc.title || 'Unnamed Document'}`,
+              '',
+              doc.plain || '(コンテンツなし)',
+            ].join('\n');
+          }
+
+          function runClaudeTurn(userMessage: string, model?: string): void {
+            panel.webview.postMessage({ command: 'chatTurnStart' });
+
+            const env: NodeJS.ProcessEnv = { ...process.env };
+            if (!env.PATH || !env.PATH.includes('/opt/homebrew/bin')) {
+              env.PATH = `/opt/homebrew/bin:/usr/local/bin:${env.PATH || ''}`;
+            }
+
+            const args = [
+              '--print',
+              '--verbose',
+              '--output-format',
+              'stream-json',
+              '--include-partial-messages',
+            ];
+            if (isFirstTurn) {
+              args.push('--system-prompt', buildDocumentContext(latestDocument));
+            }
+            if (model) {
+              args.push('--model', model);
+            }
+            args.push(isFirstTurn ? '--session-id' : '--resume', claudeSessionId, userMessage);
+            isFirstTurn = false;
+
+            claudeProc = spawn('claude', args, { env });
+            claudeProc.stdin?.end();
+
+            let accumulated = '';
+            claudeProc.stdout?.on('data', (data: Buffer) => {
+              for (const line of data.toString().split('\n')) {
+                if (!line.trim()) {
+                  continue;
+                }
+                try {
+                  const json = JSON.parse(line);
+                  if (json.type === 'assistant' && Array.isArray(json.message?.content)) {
+                    for (const block of json.message.content) {
+                      if (block.type === 'text') {
+                        accumulated = block.text;
+                        panel.webview.postMessage({ command: 'chatChunk', text: accumulated });
+                      }
+                    }
+                  }
+                } catch {
+                  /* non-JSON lines ignored */
+                }
+              }
+            });
+            claudeProc.on('close', () => {
+              claudeProc = null;
+              panel.webview.postMessage({ command: 'chatDone' });
+            });
+            claudeProc.on('error', (err: Error) => {
+              claudeProc = null;
+              panel.webview.postMessage({ command: 'chatError', text: err.message });
+            });
+          }
+
+          panel.onDidDispose(() => {
+            claudeProc?.kill();
+            claudeProc = null;
+          });
+
           panel.webview.onDidReceiveMessage(
             async (message) => {
               switch (message.command) {
+                case 'startClaudeSession':
+                  isFirstTurn = true;
+                  claudeSessionId = `doc-${Date.now()}`;
+                  break;
+                case 'sendChatMessage':
+                  if (message.text?.trim()) {
+                    runClaudeTurn(message.text.trim(), message.model);
+                  }
+                  break;
+                case 'stopClaude':
+                  claudeProc?.kill();
+                  claudeProc = null;
+                  break;
                 case 'openExternal':
                   vscode.env.openExternal(vscode.Uri.parse(message.url));
                   break;
                 case 'refreshDocument':
                   try {
                     const refreshedDocument = await c.backlogApi.getDocument(message.documentId);
+                    latestDocument = refreshedDocument;
                     const refreshProjectKey =
                       c.backlogDocumentsProvider.getCurrentProjectKey() || '';
                     panel.webview.html = await DocumentWebview.getWebviewContent(

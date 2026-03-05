@@ -1,10 +1,26 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { TodoTreeItem } from '../../providers/todoTreeViewProvider';
 import { ServiceContainer } from '../../container';
 
+/** Track Claude terminals per TODO ID so we can reuse them */
+const claudeTerminals = new Map<string, vscode.Terminal>();
+
 export function registerSessionCommands(c: ServiceContainer): vscode.Disposable[] {
+  // Clean up map when terminals are closed
+  const terminalCloseListener = vscode.window.onDidCloseTerminal((t) => {
+    for (const [id, term] of claudeTerminals) {
+      if (term === t) {
+        claudeTerminals.delete(id);
+        break;
+      }
+    }
+  });
+
   return [
+    terminalCloseListener,
+
     vscode.commands.registerCommand(
       'workspace.startClaudeSession',
       async (itemOrTodoId: TodoTreeItem | string) => {
@@ -20,7 +36,7 @@ export function registerSessionCommands(c: ServiceContainer): vscode.Disposable[
         const todo = resolved;
 
         try {
-          // Ensure session file exists (full context is fetched at TODO creation time)
+          // Ensure session file exists
           if (!c.sessionFileService.hasSession(todo.id)) {
             c.todoPersistence.createSessionFromTodo(todo);
           }
@@ -28,36 +44,45 @@ export function registerSessionCommands(c: ServiceContainer): vscode.Disposable[
           c.todoProvider.setStatus(todo.id, 'in_progress');
           c.sessionCodeLensProvider.refresh();
 
-          const fileUri = vscode.Uri.file(c.sessionFileService.getSessionFilePath(todo.id));
-          const doc = await vscode.workspace.openTextDocument(fileUri);
-          await vscode.window.showTextDocument(doc, {
-            preview: false,
-            viewColumn: vscode.ViewColumn.One,
-          });
+          const sessionFilePath = c.sessionFileService.getSessionFilePath(todo.id);
 
-          try {
-            await vscode.commands.executeCommand('claude-vscode.editor.open');
-          } catch {
-            // Claude Code extension not installed
+          // Reuse existing terminal if still alive
+          const existing = claudeTerminals.get(todo.id);
+          if (existing) {
+            existing.show();
+            return;
           }
 
-          const tabGroup = vscode.window.tabGroups.all.find((g) =>
-            g.tabs.some(
-              (t) =>
-                t.input instanceof vscode.TabInputText &&
-                t.input.uri.toString() === fileUri.toString()
-            )
+          // Build initial prompt from session file context
+          const sessionContent = fs.readFileSync(sessionFilePath, 'utf-8');
+          const contextMatch = sessionContent.match(
+            /<!-- CONTEXT[^>]*-->([\s\S]*?)<!-- \/CONTEXT -->/
           );
-          if (tabGroup) {
-            const tab = tabGroup.tabs.find(
-              (t) =>
-                t.input instanceof vscode.TabInputText &&
-                t.input.uri.toString() === fileUri.toString()
-            );
-            if (tab) {
-              await vscode.window.tabGroups.close(tab);
-            }
-          }
+          const context = contextMatch ? contextMatch[1].trim() : '';
+          const shortTitle = todo.text.substring(0, 40);
+
+          const initialPrompt = [
+            `以下のTODOに対応してください。`,
+            ``,
+            `## TODO`,
+            todo.text,
+            ...(context ? [``, `## コンテキスト`, context] : []),
+            ``,
+            `回答のドラフトは以下のファイルの DRAFT セクションに書き込んでください:`,
+            sessionFilePath,
+          ].join('\n');
+
+          // Create terminal and run claude with initial prompt
+          const terminal = vscode.window.createTerminal({
+            name: `Claude: ${shortTitle}`,
+            iconPath: new vscode.ThemeIcon('sparkle'),
+          });
+          claudeTerminals.set(todo.id, terminal);
+          terminal.show();
+
+          // Escape single quotes for shell
+          const escaped = initialPrompt.replace(/'/g, "'\\''");
+          terminal.sendText(`claude '${escaped}'`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           vscode.window.showErrorMessage(`[Nulab] セッション開始に失敗: ${msg}`);

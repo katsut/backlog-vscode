@@ -12,6 +12,7 @@ import { SlackMessage } from '../types/workspace';
 import { TodoTreeViewProvider } from './todoTreeViewProvider';
 import { SessionCodeLensProvider } from './sessionCodeLensProvider';
 import { TodoPersistenceService } from '../services/session/todoPersistenceService';
+import { MarkdownRenderer } from '../utils/markdownRenderer';
 
 export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'nulab.todoEditor';
@@ -251,7 +252,12 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     const draft = this.fileService.getDraftInfo(todoId);
-    const fullContext = this.fileService.getContextSection(todoId);
+    const fullContextMarkdown = this.fileService.getContextSection(todoId);
+
+    // Convert markdown to HTML for webview display
+    const fullContext = fullContextMarkdown
+      ? MarkdownRenderer.getInstance().renderMarkdown(fullContextMarkdown)
+      : undefined;
 
     try {
       panel.webview.html = TodoWebview.getWebviewContent(

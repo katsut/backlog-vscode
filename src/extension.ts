@@ -44,6 +44,7 @@ import { ServiceContainer } from './container';
 import { registerAllCommands } from './commands/registry';
 import { registerGoogleCalendar } from './commands/google/googleCommands';
 import { registerTreeViewInteraction } from './commands/treeViewInteraction';
+import { BUILD_TIME } from './buildInfo';
 
 // Output channel for logging
 let outputChannel: vscode.OutputChannel;
@@ -56,8 +57,14 @@ function log(message: string): void {
 export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('Nulab Workspace');
   context.subscriptions.push(outputChannel);
-  log('Nulab extension activating...');
+  log(`Nulab extension activating... (built: ${BUILD_TIME})`);
   console.log('Nulab extension activating...');
+
+  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 0);
+  statusBar.text = `Nulab ${BUILD_TIME}`;
+  statusBar.tooltip = `Nulab extension (built: ${BUILD_TIME})`;
+  statusBar.show();
+  context.subscriptions.push(statusBar);
 
   // ---- Config modules ----
   const secretsConfig = new SecretsConfig(context.secrets, context.globalState);
@@ -278,7 +285,9 @@ export function activate(context: vscode.ExtensionContext) {
     todoProvider,
     backlogConfig,
     slackApi,
-    sessionCodeLensProvider
+    sessionCodeLensProvider,
+    todoPersistence,
+    outputChannel
   );
 
   // ---- Session (Claude Code integration) ----

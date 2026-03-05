@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { spawn, ChildProcess } from 'child_process';
 import { SyncService } from '../services/syncService';
 import { BacklogConfig } from '../config/backlogConfig';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
@@ -60,6 +61,84 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
     const text = document.getText();
     const { meta, body } = this.syncService.parseFrontmatter(text);
     const title = meta.title || path.basename(document.uri.fsPath, '.bdoc');
+
+    // Per-panel Claude state
+    const self = this;
+    let claudeProc: ChildProcess | null = null;
+    let claudeSessionId = `bdoc-${Date.now()}`;
+    let isFirstTurn = true;
+
+    function runClaudeTurn(userMessage: string, model?: string): void {
+      webviewPanel.webview.postMessage({ command: 'chatTurnStart' });
+
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      if (!env.PATH || !env.PATH.includes('/opt/homebrew/bin')) {
+        env.PATH = `/opt/homebrew/bin:/usr/local/bin:${env.PATH || ''}`;
+      }
+
+      const args = [
+        '--print',
+        '--verbose',
+        '--output-format',
+        'stream-json',
+        '--include-partial-messages',
+      ];
+      if (isFirstTurn) {
+        const currentText = document.getText();
+        const { meta, body } = self.syncService.parseFrontmatter(currentText);
+        const docTitle = meta.title || path.basename(document.uri.fsPath, '.bdoc');
+        const systemPrompt = [
+          'あなたはBacklogドキュメントの編集支援AIです。',
+          '以下のドキュメントの内容を把握し、編集・改善の提案を行ってください。',
+          '',
+          `## ドキュメント: ${docTitle}`,
+          '',
+          body || '(コンテンツなし)',
+        ].join('\n');
+        args.push('--system-prompt', systemPrompt);
+      }
+      if (model) {
+        args.push('--model', model);
+      }
+      args.push(isFirstTurn ? '--session-id' : '--resume', claudeSessionId, userMessage);
+      isFirstTurn = false;
+
+      claudeProc = spawn('claude', args, { env });
+      claudeProc.stdin?.end();
+
+      let accumulated = '';
+      claudeProc.stdout?.on('data', (data: Buffer) => {
+        for (const line of data.toString().split('\n')) {
+          if (!line.trim()) continue;
+          try {
+            const json = JSON.parse(line);
+            if (json.type === 'assistant' && Array.isArray(json.message?.content)) {
+              for (const block of json.message.content) {
+                if (block.type === 'text') {
+                  accumulated = block.text;
+                  webviewPanel.webview.postMessage({ command: 'chatChunk', text: accumulated });
+                }
+              }
+            }
+          } catch {
+            /* non-JSON lines ignored */
+          }
+        }
+      });
+      claudeProc.on('close', () => {
+        claudeProc = null;
+        webviewPanel.webview.postMessage({ command: 'chatDone' });
+      });
+      claudeProc.on('error', (err: Error) => {
+        claudeProc = null;
+        webviewPanel.webview.postMessage({ command: 'chatError', text: err.message });
+      });
+    }
+
+    webviewPanel.onDidDispose(() => {
+      claudeProc?.kill();
+      claudeProc = null;
+    });
 
     // Register message handler BEFORE setting HTML to avoid race condition
     webviewPanel.webview.onDidReceiveMessage(
@@ -132,6 +211,19 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
             );
             break;
           }
+          case 'startClaudeSession':
+            isFirstTurn = true;
+            claudeSessionId = `bdoc-${Date.now()}`;
+            break;
+          case 'sendChatMessage':
+            if (message.text?.trim()) {
+              runClaudeTurn(message.text.trim(), message.model);
+            }
+            break;
+          case 'stopClaude':
+            claudeProc?.kill();
+            claudeProc = null;
+            break;
         }
       },
       undefined,
