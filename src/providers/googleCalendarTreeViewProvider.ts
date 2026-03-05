@@ -86,7 +86,11 @@ export class EventItem extends vscode.TreeItem {
   }
 }
 
+export type DocumentType = 'gemini' | 'meeting-notes' | 'attachment' | 'other';
+
 export class DocumentItem extends vscode.TreeItem {
+  public readonly docType: DocumentType;
+
   constructor(
     public readonly file: GoogleDriveFile,
     public readonly event: GoogleCalendarEvent,
@@ -94,28 +98,120 @@ export class DocumentItem extends vscode.TreeItem {
   ) {
     super(file.name, vscode.TreeItemCollapsibleState.None);
 
+    this.docType = DocumentItem.detectDocumentType(file.name, event.summary || '');
     this.contextValue = 'calendarDocument';
-    this.tooltip = `${file.name}\n${file.mimeType}`;
+    this.tooltip = DocumentItem.buildTooltip(file, this.docType);
+    this.description = DocumentItem.buildDescription(this.docType);
 
-    // Icon based on mime type
-    if (extensionUri && file.mimeType === 'application/vnd.google-apps.document') {
-      this.iconPath = {
-        light: vscode.Uri.joinPath(extensionUri, 'media', 'google-docs-icon.svg'),
-        dark: vscode.Uri.joinPath(extensionUri, 'media', 'google-docs-icon.svg'),
-      };
-    } else if (file.mimeType === 'application/vnd.google-apps.spreadsheet') {
-      this.iconPath = new vscode.ThemeIcon('table');
-    } else if (file.mimeType === 'application/vnd.google-apps.presentation') {
-      this.iconPath = new vscode.ThemeIcon('preview');
-    } else {
-      this.iconPath = new vscode.ThemeIcon('file');
-    }
+    // Icon based on document type
+    this.iconPath = DocumentItem.getIcon(this.docType, file.mimeType, extensionUri);
 
     this.command = {
       command: 'nulab.treeItemClicked',
       title: 'Open Meeting Notes',
       arguments: ['nulab.google.openMeetingNotes', file, event],
     };
+  }
+
+  private static detectDocumentType(fileName: string, eventTitle: string): DocumentType {
+    const lowerName = fileName.toLowerCase();
+
+    // Gemini AI-generated notes
+    if (
+      lowerName.includes('gemini') ||
+      lowerName.includes('ai ') ||
+      lowerName.includes('summary by') ||
+      lowerName.includes('ai summary')
+    ) {
+      return 'gemini';
+    }
+
+    // Meeting notes (title contains event name or common keywords)
+    if (
+      lowerName.includes('議事録') ||
+      lowerName.includes('meeting notes') ||
+      lowerName.includes('mtg notes') ||
+      lowerName.includes('minutes') ||
+      lowerName === eventTitle.toLowerCase() || // Exact match
+      lowerName.startsWith(eventTitle.toLowerCase().substring(0, 10)) // Partial match
+    ) {
+      return 'meeting-notes';
+    }
+
+    // Attachments (generic documents)
+    return 'attachment';
+  }
+
+  private static buildDescription(docType: DocumentType): string {
+    switch (docType) {
+      case 'gemini':
+        return '🤖 AI メモ';
+      case 'meeting-notes':
+        return '📝 議事録';
+      case 'attachment':
+        return '📎 添付';
+      default:
+        return '';
+    }
+  }
+
+  private static buildTooltip(file: GoogleDriveFile, docType: DocumentType): string {
+    const lines = [file.name];
+
+    switch (docType) {
+      case 'gemini':
+        lines.push('種類: Gemini AI メモ');
+        break;
+      case 'meeting-notes':
+        lines.push('種類: 会議メモ');
+        break;
+      case 'attachment':
+        lines.push('種類: 添付ドキュメント');
+        break;
+    }
+
+    if (file.modifiedTime) {
+      const date = new Date(file.modifiedTime);
+      lines.push(`更新: ${date.toLocaleString('ja-JP')}`);
+    }
+
+    lines.push(`タイプ: ${file.mimeType}`);
+    return lines.join('\n');
+  }
+
+  private static getIcon(
+    docType: DocumentType,
+    mimeType: string,
+    extensionUri?: vscode.Uri
+  ): vscode.ThemeIcon | { light: vscode.Uri; dark: vscode.Uri } {
+    // Gemini: sparkle icon
+    if (docType === 'gemini') {
+      return new vscode.ThemeIcon('sparkle');
+    }
+
+    // Meeting notes: note icon
+    if (docType === 'meeting-notes') {
+      return new vscode.ThemeIcon('note');
+    }
+
+    // Attachment: paperclip icon
+    if (docType === 'attachment') {
+      return new vscode.ThemeIcon('link');
+    }
+
+    // Fallback: mime type based icons
+    if (extensionUri && mimeType === 'application/vnd.google-apps.document') {
+      return {
+        light: vscode.Uri.joinPath(extensionUri, 'media', 'google-docs-icon.svg'),
+        dark: vscode.Uri.joinPath(extensionUri, 'media', 'google-docs-icon.svg'),
+      };
+    } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
+      return new vscode.ThemeIcon('table');
+    } else if (mimeType === 'application/vnd.google-apps.presentation') {
+      return new vscode.ThemeIcon('preview');
+    }
+
+    return new vscode.ThemeIcon('file');
   }
 }
 

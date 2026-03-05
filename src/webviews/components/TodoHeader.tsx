@@ -7,6 +7,8 @@ interface TodoHeaderProps {
   onStatusChange: (status: TodoStatus) => void;
   onDelete: () => void;
   onOpenExternal?: (url: string) => void;
+  onRefreshContext?: () => void;
+  onOpenSlackThread?: () => void;
 }
 
 const STATUSES: Array<{ status: TodoStatus; label: string; icon: string }> = [
@@ -37,7 +39,9 @@ export const TodoHeader: React.FC<TodoHeaderProps> = ({
   baseUrl,
   onStatusChange,
   onDelete,
-  onOpenExternal
+  onOpenExternal,
+  onRefreshContext,
+  onOpenSlackThread
 }) => {
   const ctx = todo.context;
   const sourceLabel = ctx ? SOURCE_LABELS[ctx.source] || ctx.source : '';
@@ -53,6 +57,8 @@ export const TodoHeader: React.FC<TodoHeaderProps> = ({
     ctx?.source === 'backlog-notification' && ctx.issueKey && fullBaseUrl
       ? `${fullBaseUrl}/view/${ctx.issueKey}`
       : ctx?.googleDocUrl || null;
+
+  const isSlackSource = ctx?.source === 'slack-mention' || ctx?.source === 'slack-search';
 
   return (
     <div className="webview-header todo-header">
@@ -75,6 +81,18 @@ export const TodoHeader: React.FC<TodoHeaderProps> = ({
             {ctx?.source === 'backlog-notification' ? 'Open in Backlog' : 'Open in Docs'}
           </a>
         )}
+        {isSlackSource && onOpenSlackThread && (
+          <a
+            href="#"
+            className="external-link link-slack"
+            onClick={(e) => {
+              e.preventDefault();
+              onOpenSlackThread();
+            }}
+          >
+            Open in Slack
+          </a>
+        )}
       </div>
       <div className="todo-controls-row">
         <div className="status-actions">
@@ -87,6 +105,11 @@ export const TodoHeader: React.FC<TodoHeaderProps> = ({
               {s.icon} {s.label}
             </button>
           ))}
+          {onRefreshContext && (ctx?.source === 'backlog-notification' || ctx?.source === 'slack-mention' || ctx?.source === 'slack-search') && (
+            <button className="action-btn secondary small" onClick={onRefreshContext} title="最新情報を取得">
+              ↻ 更新
+            </button>
+          )}
           <button className="action-btn danger-btn small" onClick={onDelete}>
             削除
           </button>

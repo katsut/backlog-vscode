@@ -41,44 +41,97 @@ export class CalendarEventWebview {
 
     // Description
     const descHtml = event.description
-      ? `<div class="section"><h2>Description</h2><div class="description">${sanitizeDescription(
-          event.description
-        )}</div></div>`
+      ? `<div class="content-section">
+          <h3>説明</h3>
+          <div class="event-description">${sanitizeDescription(event.description)}</div>
+        </div>`
       : '';
 
     // Links — use data-url + addEventListener (inline onclick blocked by CSP nonce)
     const links: string[] = [];
     if (event.hangoutLink) {
       links.push(
-        `<a class="action-btn primary" href="#" data-url="${esc(
+        `<a class="external-link link-calendar" href="#" data-url="${esc(
           event.hangoutLink
-        )}">Meet に参加</a>`
+        )}">🎥 Meet に参加</a>`
       );
     }
     if (event.htmlLink) {
       links.push(
-        `<a class="action-btn secondary" href="#" data-url="${esc(
+        `<a class="external-link link-calendar" href="#" data-url="${esc(
           event.htmlLink
         )}">Google Calendar で開く</a>`
       );
     }
 
     const additionalStyles = `
-      .event-header { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--vscode-panel-border); }
-      .event-title { font-size: 1.4em; font-weight: 600; margin: 0 0 8px 0; }
-      .event-time { color: var(--vscode-descriptionForeground); font-size: 0.95em; margin-bottom: 12px; }
-      .section { margin-bottom: 20px; }
-      .section h2 { font-size: 1em; font-weight: 600; margin: 0 0 8px 0; color: var(--vscode-descriptionForeground); }
-      .attendees { display: flex; flex-wrap: wrap; gap: 4px; }
-      .attendee-chip { display: inline-block; padding: 2px 8px; border-radius: 12px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 0.85em; }
-      .description { line-height: 1.6; white-space: pre-wrap; }
-      .description a { color: var(--vscode-textLink-foreground); }
-      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--vscode-panel-border); }
-      .action-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--vscode-button-border, var(--vscode-contrastBorder, transparent)); border-radius: 4px; cursor: pointer; font-size: 0.9em; font-family: inherit; text-decoration: none; }
-      .action-btn.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-      .action-btn.primary:hover { background: var(--vscode-button-hoverBackground); }
-      .action-btn.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-      .action-btn.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+      /* Calendar Event specific styles */
+      .event-info-card {
+        background: var(--vscode-editor-inactiveSelectionBackground);
+        border-left: 4px solid var(--calendar-color);
+        border-radius: 0 var(--webview-radius-lg) var(--webview-radius-lg) 0;
+        padding: var(--webview-space-lg);
+        margin: var(--webview-space-xl) 0;
+        box-shadow: var(--webview-shadow-md);
+      }
+
+      .event-time-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--webview-space-xs);
+        background: var(--vscode-badge-background);
+        color: var(--vscode-badge-foreground);
+        padding: var(--webview-space-xs) var(--webview-space-md);
+        border-radius: var(--webview-radius-md);
+        font-size: var(--webview-font-size-sm);
+        font-weight: 600;
+        margin-bottom: var(--webview-space-md);
+      }
+
+      .event-attendees-section {
+        margin-top: var(--webview-space-md);
+        padding-top: var(--webview-space-md);
+        border-top: 1px solid var(--vscode-panel-border);
+      }
+
+      .event-attendees-label {
+        font-weight: 600;
+        font-size: var(--webview-font-size-sm);
+        color: var(--vscode-descriptionForeground);
+        margin-bottom: var(--webview-space-sm);
+      }
+
+      .event-description {
+        line-height: 1.7;
+        font-family: var(--webview-font-family);
+        color: var(--vscode-foreground);
+        padding: var(--webview-space-md);
+        background: var(--vscode-textCodeBlock-background);
+        border-radius: var(--webview-radius-md);
+      }
+
+      .event-description a {
+        color: var(--vscode-textLink-foreground);
+        text-decoration: none;
+      }
+
+      .event-description a:hover {
+        color: var(--vscode-textLink-activeForeground);
+        text-decoration: underline;
+      }
+
+      .event-description br {
+        line-height: 2;
+      }
+
+      .event-actions {
+        display: flex;
+        gap: var(--webview-space-sm);
+        flex-wrap: wrap;
+        margin-top: var(--webview-space-xl);
+        padding-top: var(--webview-space-lg);
+        border-top: 1px solid var(--vscode-panel-border);
+      }
     `;
 
     const head = WebviewHelper.getHtmlHead(
@@ -93,17 +146,27 @@ export class CalendarEventWebview {
 <html lang="ja">
 ${head}
 <body>
-  <div class="event-header">
-    <h1 class="event-title">${esc(event.summary || '(No title)')}</h1>
-    <div class="event-time">${esc(timeStr)}</div>
+  <div class="webview-header">
+    <h1>${esc(event.summary || '(No title)')}</h1>
+    <div class="webview-meta">
+      <span class="meta-item source-calendar">📅 Google Calendar</span>
+      ${links.join('')}
+    </div>
+  </div>
+
+  <div class="event-info-card">
+    <div class="event-time-badge">🕒 ${esc(timeStr)}</div>
     ${
       attendees.length > 0
-        ? `<div class="section"><h2>Attendees (${attendees.length})</h2><div class="attendees">${attendeeHtml}</div></div>`
+        ? `<div class="event-attendees-section">
+            <div class="event-attendees-label">👥 参加者 (${attendees.length})</div>
+            <div class="attendee-list">${attendeeHtml}</div>
+          </div>`
         : ''
     }
   </div>
+
   ${descHtml}
-  ${links.length > 0 ? `<div class="actions">${links.join('')}</div>` : ''}
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();

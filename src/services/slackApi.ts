@@ -406,10 +406,10 @@ export class SlackApiService {
           m.userName = this.userCache.get(m.user) || m.user;
         }
 
-        // Resolve <@U...> mentions in message text
+        // Process all Slack formatting in message text
         await Promise.all(
           messages.map(async (m) => {
-            m.text = await this.resolveUserMentions(m.text);
+            m.text = await this.preprocessSlackText(m.text);
           })
         );
 
@@ -471,10 +471,10 @@ export class SlackApiService {
       for (const m of messages) {
         m.userName = this.userCache.get(m.user) || m.user;
       }
-      // Resolve <@U...> mentions in message text
+      // Process all Slack formatting in message text
       await Promise.all(
         messages.map(async (m) => {
-          m.text = await this.resolveUserMentions(m.text);
+          m.text = await this.preprocessSlackText(m.text);
         })
       );
       return messages;
@@ -506,7 +506,7 @@ export class SlackApiService {
       const messages: SlackMessage[] = [];
       for (const msg of resp.messages || []) {
         const userName = await this.resolveUserName(msg.user || '');
-        const text = await this.resolveUserMentions(convertSlackEmoji(msg.text || ''));
+        const text = await this.preprocessSlackText(convertSlackEmoji(msg.text || ''));
         messages.push({
           ts: msg.ts || '',
           user: msg.user || '',
@@ -577,7 +577,7 @@ export class SlackApiService {
         const result: SlackMessage[] = [];
         for (const msg of msgs) {
           const userName = await this.resolveUserName((msg.user as string) || '');
-          const text = await this.resolveUserMentions(
+          const text = await this.preprocessSlackText(
             convertSlackEmoji((msg.text as string) || '')
           );
           result.push({
@@ -654,21 +654,103 @@ export class SlackApiService {
     });
   }
 
-  async resolveUserMentions(text: string): Promise<string> {
-    const mentionPattern = /<@(U[A-Z0-9]+)>/g;
-    const ids = new Set<string>();
-    let m;
-    while ((m = mentionPattern.exec(text)) !== null) {
-      ids.add(m[1]);
-    }
-    if (ids.size === 0) {
-      return text;
-    }
-    await Promise.all([...ids].map((id) => this.resolveUserName(id)));
-    return text.replace(/<@(U[A-Z0-9]+)>/g, (_, id) => {
-      const name = this.userCache.get(id);
-      return name ? `@${name}` : `@${id}`;
+  /**
+   * Process all Slack special formatting: mentions, links, channels, markdown, etc.
+   * Converts Slack's mrkdwn format to standard Markdown for rendering.
+   * This should be called on all message text before displaying.
+   */
+  async preprocessSlackText(text: string): Promise<string> {
+    let processed = text;
+
+    // 1. User mentions with display name: <@U123|Display Name> → @Display Name
+    processed = processed.replace(/<@([A-Z0-9]+)\|([^>]+)>/g, (_, _userId, displayName) => {
+      return `@${displayName}`;
     });
+
+    // 2. User mentions without display name: <@U123> → @User Name (resolve from API)
+    const simpleMentionPattern = /<@(U[A-Z0-9]+)>/g;
+    const userIds = new Set<string>();
+    let match;
+    while ((match = simpleMentionPattern.exec(processed)) !== null) {
+      userIds.add(match[1]);
+    }
+    if (userIds.size > 0) {
+      await Promise.all([...userIds].map((id) => this.resolveUserName(id)));
+      processed = processed.replace(/<@(U[A-Z0-9]+)>/g, (_, id) => {
+        const name = this.userCache.get(id);
+        return name ? `@${name}` : `@${id}`;
+      });
+    }
+
+    // 3. Subteam/usergroup mentions: <!subteam^S123|@group> → @group
+    processed = processed.replace(/<!subteam\^([A-Z0-9]+)\|@([^>]+)>/g, (_, _groupId, handle) => {
+      return `@${handle}`;
+    });
+
+    // 4. Subteam/usergroup without display name: <!subteam^S123> → @group-handle (would need API lookup)
+    // For now, just show the ID without the special syntax
+    processed = processed.replace(/<!subteam\^([A-Z0-9]+)>/g, (_, groupId) => {
+      return `@usergroup-${groupId}`;
+    });
+
+    // 5. Channel mentions with name: <#C123|channel-name> → #channel-name
+    processed = processed.replace(/<#([A-Z0-9]+)\|([^>]+)>/g, (_, _channelId, channelName) => {
+      return `#${channelName}`;
+    });
+
+    // 6. Channel mentions without name: <#C123> → #C123 (would need API lookup)
+    processed = processed.replace(/<#([A-Z0-9]+)>/g, (_, channelId) => {
+      return `#${channelId}`;
+    });
+
+    // 7. Special mentions: <!channel>, <!here>, <!everyone>
+    processed = processed.replace(/<!channel>/g, '@channel');
+    processed = processed.replace(/<!here>/g, '@here');
+    processed = processed.replace(/<!everyone>/g, '@everyone');
+
+    // 8. Links with text: <URL|Link Text> → [Link Text](URL)
+    processed = processed.replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g, (_, url, linkText) => {
+      return `[${linkText}](${url})`;
+    });
+
+    // 9. Bare URLs in angle brackets: <URL> → URL
+    processed = processed.replace(/<(https?:\/\/[^>]+)>/g, (_, url) => {
+      return url;
+    });
+
+    // 10. Slack mrkdwn to Markdown conversion
+    // Note: Must be done carefully to avoid conflicts with already-processed content
+
+    // Code blocks: ```text``` (same as Markdown, no conversion needed)
+    // Already compatible
+
+    // Inline code: `code` (same as Markdown, no conversion needed)
+    // Already compatible
+
+    // Bold: *text* → **text**
+    // Match at word boundaries (start of line, whitespace, or non-word char before/after)
+    // But not if already doubled (**) or tripled (***)
+    processed = processed.replace(/(?<=^|[^*\w])\*([^*\n]+?)\*(?=[^*\w]|$)/g, '**$1**');
+
+    // Italic: _text_ → *text*
+    // Match at word boundaries, not within words (avoid matching snake_case)
+    processed = processed.replace(/(?<=^|[\s\p{P}])_([^_\n]+?)_(?=[\s\p{P}]|$)/gu, '*$1*');
+
+    // Strike: ~text~ → ~~text~~
+    // Match at word boundaries
+    processed = processed.replace(/(?<=^|[^~\w])~([^~\n]+?)~(?=[^~\w]|$)/g, '~~$1~~');
+
+    // Block quotes: Slack uses > at line start (same as Markdown)
+    // Already compatible
+
+    return processed;
+  }
+
+  /**
+   * @deprecated Use preprocessSlackText instead for complete Slack formatting support
+   */
+  async resolveUserMentions(text: string): Promise<string> {
+    return this.preprocessSlackText(text);
   }
 
   async resolveUserName(userId: string): Promise<string> {

@@ -286,6 +286,62 @@ export function registerGoogleCalendar(
     }
   );
 
+  const addToTodoFromDocCmd = vscode.commands.registerCommand(
+    'nulab.google.addToTodoFromDoc',
+    async (gdocData: { event: GoogleCalendarEvent; file: GoogleDriveFile }) => {
+      log(`addToTodoFromDoc: called`);
+      if (!todoProvider || !todoPersistence) {
+        log('addToTodoFromDoc: missing todoProvider or todoPersistence');
+        return;
+      }
+      if (!gdocData || !gdocData.event || !gdocData.file) {
+        log('addToTodoFromDoc: invalid gdocData');
+        return;
+      }
+
+      const { event, file } = gdocData;
+      const eventDate = (event.start.dateTime || event.start.date || '').split('T')[0];
+
+      const attendees = (event.attendees || [])
+        .filter((a: any) => !a.self)
+        .map((a: any) => a.displayName || a.email);
+
+      let timeStr = '';
+      if (event.start.dateTime && event.end.dateTime) {
+        const s = new Date(event.start.dateTime);
+        const e = new Date(event.end.dateTime);
+        const tf = (d: Date) => `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+        timeStr = `${eventDate} ${tf(s)} - ${tf(e)}`;
+      }
+
+      const todo = todoProvider.addFromGoogleDoc({
+        eventSummary: event.summary || 'meeting',
+        eventDate: timeStr || eventDate,
+        docId: file.id,
+        docUrl: file.webViewLink,
+        meetUrl: event.hangoutLink,
+        attendees,
+      });
+
+      if (!todo) {
+        vscode.window.showInformationMessage('[Nulab] この議事録の TODO は既にあります。');
+        return;
+      }
+
+      // Fetch doc content and build full context
+      try {
+        const html = await googleApi.getFileContent(file.id);
+        const plainText = htmlToPlainText(html);
+        todoPersistence.startGoogleDocSession(todo, plainText);
+      } catch (err) {
+        log(`addToTodoFromDoc: failed to fetch doc content: ${err}`);
+      }
+
+      vscode.window.showInformationMessage('[Nulab] TODO に追加しました');
+      vscode.commands.executeCommand('workspace.openTodoDetail', todo.id);
+    }
+  );
+
   return {
     treeView: calendarTreeView,
     disposables: [
@@ -300,6 +356,7 @@ export function registerGoogleCalendar(
       openEventDetailCmd,
       openSelectedCalendarItemCmd,
       addToTodoCmd,
+      addToTodoFromDocCmd,
     ],
   };
 }

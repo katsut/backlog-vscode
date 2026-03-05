@@ -66,16 +66,16 @@ const TodoView: React.FC = () => {
     vscode.postMessage({ command: 'discardDraft' });
   };
 
-  const handleRefreshDraft = () => {
-    vscode.postMessage({ command: 'refreshDraft' });
-  };
-
   const handleOpenExternal = (url: string) => {
     vscode.postMessage({ command: 'openExternal', url });
   };
 
   const handleOpenSlackThread = () => {
     vscode.postMessage({ command: 'openSlackThread' });
+  };
+
+  const handleRefreshContext = () => {
+    vscode.postMessage({ command: 'refreshContext' });
   };
 
   return (
@@ -86,6 +86,8 @@ const TodoView: React.FC = () => {
         onStatusChange={handleStatusChange}
         onDelete={handleDelete}
         onOpenExternal={handleOpenExternal}
+        onRefreshContext={handleRefreshContext}
+        onOpenSlackThread={handleOpenSlackThread}
       />
       <div className="page-layout">
         <div className="main-content">
@@ -100,9 +102,7 @@ const TodoView: React.FC = () => {
             onSaveDraft={handleSaveDraft}
             onPostDraft={handlePostDraft}
             onDiscardDraft={handleDiscardDraft}
-            onRefreshDraft={handleRefreshDraft}
             onOpenExternal={handleOpenExternal}
-            onOpenSlackThread={handleOpenSlackThread}
           />
         </div>
         <PanelResizer targetId="claudeChatSection" />

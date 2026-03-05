@@ -236,6 +236,52 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         await this.render(webviewPanel, todoId, cachedSlackBefore, cachedSlackAfter);
         vscode.window.showInformationMessage('[Nulab] ドラフトを破棄しました');
       }
+      if (message.command === 'refreshContext') {
+        const todo = this.todoProvider.findTodoById(todoId);
+        if (!todo) {
+          return;
+        }
+        const ctx = todo.context;
+
+        // Update progress notification
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: '[Nulab] 最新情報を取得中...',
+          },
+          async () => {
+            try {
+              // Refresh Backlog context
+              if (ctx?.source === 'backlog-notification' && ctx.issueKey) {
+                await this.todoPersistence.startBacklogSession(todo);
+                vscode.window.showInformationMessage('[Nulab] Backlog課題情報を更新しました');
+              }
+              // Refresh Slack context
+              else if (
+                (ctx?.source === 'slack-mention' || ctx?.source === 'slack-search') &&
+                ctx.slackChannel &&
+                (ctx.slackThreadTs || ctx.slackMessageTs)
+              ) {
+                const ts = ctx.slackThreadTs || ctx.slackMessageTs || '';
+                const channelContext = await this.slackApi.getChannelContext(
+                  ctx.slackChannel,
+                  ts,
+                  3
+                );
+                cachedSlackBefore = channelContext.before;
+                cachedSlackAfter = channelContext.after;
+                vscode.window.showInformationMessage('[Nulab] Slackスレッド情報を更新しました');
+              }
+
+              // Re-render with updated context
+              await this.render(webviewPanel, todoId, cachedSlackBefore, cachedSlackAfter);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(`[Nulab] 最新情報の取得に失敗: ${msg}`);
+            }
+          }
+        );
+      }
     });
   }
 

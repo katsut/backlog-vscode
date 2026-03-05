@@ -47,6 +47,7 @@ export interface GoogleDriveFile {
   webViewLink: string;
   modifiedTime: string;
   createdTime: string;
+  docType?: 'gemini' | 'meeting-notes' | 'attachment' | 'other';
 }
 
 // ---- Service state ----

@@ -166,22 +166,22 @@ export function registerSlackCommands(
                 const parentMsg = messages[0];
                 const sender = parentMsg?.userName || parentMsg?.user || 'Unknown';
                 const preview = (parentMsg?.text || '').substring(0, 100);
-                const defaultText = `[Slack] ${sender}: ${preview}`;
-                const text = await vscode.window.showInputBox({
-                  prompt: 'TODO を入力',
-                  value: defaultText,
+                const text = `[Slack] ${sender}: ${preview}`;
+                c.todoProvider.addTodo(text, {
+                  source: 'slack-mention',
+                  slackChannel: channel,
+                  slackThreadTs: threadTs,
+                  slackMessageTs: parentMsg?.ts,
+                  slackUserName: sender,
+                  slackText: parentMsg?.text?.substring(0, 500),
                 });
-                if (text) {
-                  c.todoProvider.addTodo(text, {
-                    source: 'slack-mention',
-                    slackChannel: channel,
-                    slackThreadTs: threadTs,
-                    slackMessageTs: parentMsg?.ts,
-                    slackUserName: sender,
-                    slackText: parentMsg?.text?.substring(0, 500),
-                  });
-                  vscode.window.showInformationMessage('[Nulab] TODO に追加しました');
-                }
+
+                // Sync TODO keys to Slack tree views
+                const keys = c.todoProvider.getTodoSlackKeys();
+                c.slackProvider.setTodoKeys(keys);
+                c.slackSearchProvider.setTodoKeys(keys);
+
+                vscode.window.showInformationMessage('[Nulab] TODO に追加しました');
               }
             },
             undefined,

@@ -16,9 +16,7 @@ interface TodoContentProps {
   onSaveDraft: (content: string) => void;
   onPostDraft: () => void;
   onDiscardDraft: () => void;
-  onRefreshDraft: () => void;
   onOpenExternal: (url: string) => void;
-  onOpenSlackThread: () => void;
 }
 
 export const TodoContent: React.FC<TodoContentProps> = ({
@@ -32,9 +30,7 @@ export const TodoContent: React.FC<TodoContentProps> = ({
   onSaveDraft,
   onPostDraft,
   onDiscardDraft,
-  onRefreshDraft,
   onOpenExternal,
-  onOpenSlackThread,
 }) => {
   const [notesValue, setNotesValue] = useState(todo.notes || '');
   const [draftValue, setDraftValue] = useState(draft?.content || '');
@@ -74,7 +70,6 @@ export const TodoContent: React.FC<TodoContentProps> = ({
         todo={todo}
         slackContextBefore={slackContextBefore}
         slackContextAfter={slackContextAfter}
-        onOpenSlackThread={onOpenSlackThread}
       />
       <GoogleContext todo={todo} fullContext={fullContext} onOpenExternal={onOpenExternal} />
 
@@ -83,11 +78,6 @@ export const TodoContent: React.FC<TodoContentProps> = ({
         <div className="draft-header">
           <h3>{heading}</h3>
           {isPosted && <span className="status-badge done">投稿済</span>}
-          {!isPosted && draft && (
-            <button className="action-btn secondary small" onClick={onRefreshDraft}>
-              ↻ 更新
-            </button>
-          )}
         </div>
         <textarea
           className="draft-content"

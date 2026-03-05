@@ -83,7 +83,7 @@ export const ClaudeChat: React.FC = () => {
   };
 
   return (
-    <div className="claude-chat-section">
+    <>
       <div className="claude-chat-header">
         <h3>✦ Claude Code</h3>
         <div className="header-actions">
@@ -128,6 +128,6 @@ export const ClaudeChat: React.FC = () => {
           送信
         </button>
       </div>
-    </div>
+    </>
   );
 };

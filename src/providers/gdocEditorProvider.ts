@@ -42,6 +42,8 @@ export class GdocEditorProvider implements vscode.CustomTextEditorProvider {
       } else if (msg.command === 'copyToClipboard' && msg.content) {
         await vscode.env.clipboard.writeText(msg.content);
         vscode.window.showInformationMessage('コピーしました');
+      } else if (msg.command === 'addToTodo') {
+        vscode.commands.executeCommand('nulab.google.addToTodoFromDoc', parsed);
       }
     });
   }
