@@ -6,7 +6,7 @@
 
   /* Brand colors */
   --backlog-color: #42CE9F;
-  --slack-color: #E01E5A;
+  --slack-color: #FF8FAB;
   --calendar-color: #4285F4;
   --cacoo-color: #00C4CC;
 
@@ -501,6 +501,7 @@ body {
   border-radius: 3px;
   transition: background 0.15s;
   align-self: stretch;
+  margin: var(--webview-space-md) 0;
 }
 
 .panel-resizer:hover,
@@ -514,14 +515,18 @@ body {
    ============================================================ */
 
 .claude-chat-section {
-  flex: 0 0 340px;
+  width: 340px;
   min-width: 200px;
   max-width: 60vw;
-  height: 100%;
+  flex-shrink: 0;
+  flex-grow: 0;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--vscode-panel-border);
   overflow: hidden;
+  align-self: stretch;
+  margin-top: var(--webview-space-md);
+  margin-bottom: var(--webview-space-md);
 }
 
 .claude-chat-header {
