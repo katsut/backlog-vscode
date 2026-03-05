@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { WebviewHelper } from './common';
-import { MarkdownRenderer } from '../utils/markdownRenderer';
-import { BacklogApiService } from '../services/backlogApi';
+import { WebviewHelper } from '../common';
+import { MarkdownRenderer } from '../../utils/markdownRenderer';
+import { BacklogApiService } from '../../services/backlogApi';
 import { Entity } from 'backlog-js';
 
 /**
@@ -370,7 +370,7 @@ export class DocumentWebview {
   /**
    * Convert document content to HTML
    */
-  private static async convertDocumentContent(
+  public static async convertDocumentContent(
     document: Entity.Document.Document,
     baseUrl: string | undefined,
     backlogApi: BacklogApiService
