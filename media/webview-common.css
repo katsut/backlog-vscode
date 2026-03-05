@@ -710,6 +710,7 @@ body {
   box-sizing: border-box;
   overflow: hidden;
   flex: 1;
+  padding: 0 var(--webview-space-lg);
 }
 
 /* Main content area - scrollable */
@@ -717,7 +718,7 @@ body {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 12px 20px 20px;
+  padding: 12px var(--webview-space-md) 20px;
 }
 
 /* Full-height wrapper for editors */
