@@ -784,6 +784,11 @@ body {
   gap: var(--webview-space-sm);
   align-items: center;
   flex-wrap: wrap;
+  flex: 1;
+}
+
+.status-actions > .danger-btn {
+  margin-left: auto;
 }
 
 .status-actions-label {

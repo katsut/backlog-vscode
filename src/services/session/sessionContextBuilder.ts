@@ -89,7 +89,11 @@ export class SessionContextBuilder {
 
   // ---- Full context builders (with API data) ----
 
-  buildBacklogContext(issue: Entity.Issue.Issue, comments: Entity.Issue.Comment[]): string {
+  buildBacklogContext(
+    issue: Entity.Issue.Issue,
+    comments: Entity.Issue.Comment[],
+    attachments?: Array<{ id: number; name: string; dataUrl: string }>
+  ): string {
     const lines: string[] = [];
     lines.push(`## 課題: ${issue.issueKey} - ${issue.summary}`);
     lines.push('');
@@ -130,10 +134,16 @@ export class SessionContextBuilder {
     lines.push('');
 
     if (issue.description) {
-      const desc =
+      let desc =
         issue.description.length > 2000
           ? issue.description.slice(0, 2000) + '...'
           : issue.description;
+
+      // Replace attachment references with data URLs
+      if (attachments && attachments.length > 0) {
+        desc = this.replaceAttachmentReferences(desc, attachments);
+      }
+
       lines.push('### 説明');
       lines.push(`> ${desc.replace(/\n/g, '\n> ')}`);
       lines.push('');
@@ -178,7 +188,12 @@ export class SessionContextBuilder {
           if (!(c.changeLog && c.changeLog.length > 0)) {
             lines.push(`**${author}** (${date}):`);
           }
-          lines.push(`> ${c.content.replace(/\n/g, '\n> ')}`);
+          let commentContent = c.content;
+          // Replace attachment references in comments
+          if (attachments && attachments.length > 0) {
+            commentContent = this.replaceAttachmentReferences(commentContent, attachments);
+          }
+          lines.push(`> ${commentContent.replace(/\n/g, '\n> ')}`);
         }
 
         if ((c.changeLog && c.changeLog.length > 0) || (c.content && c.content.trim())) {
@@ -188,6 +203,30 @@ export class SessionContextBuilder {
     }
 
     return lines.join('\n');
+  }
+
+  private replaceAttachmentReferences(
+    content: string,
+    attachments: Array<{ id: number; name: string; dataUrl: string }>
+  ): string {
+    let processed = content;
+
+    // Replace Backlog attachment reference patterns: ![alt text][filename]
+    for (const att of attachments) {
+      // Pattern 1: ![image][filename]
+      const pattern1 = new RegExp(`!\\[([^\\]]*)\\]\\[${this.escapeRegex(att.name)}\\]`, 'g');
+      processed = processed.replace(pattern1, `![$1](${att.dataUrl})`);
+
+      // Pattern 2: ![filename]
+      const pattern2 = new RegExp(`!\\[${this.escapeRegex(att.name)}\\]`, 'g');
+      processed = processed.replace(pattern2, `![${att.name}](${att.dataUrl})`);
+    }
+
+    return processed;
+  }
+
+  private escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   buildSlackContext(channel: string, messages: SlackMessage[]): string {

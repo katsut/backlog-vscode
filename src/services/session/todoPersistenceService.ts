@@ -81,7 +81,11 @@ export class TodoPersistenceService {
     const issueIdOrKey = ctx.issueId || ctx.issueKey;
     const issue = await this.backlogApi.getIssue(issueIdOrKey);
     const comments = await this.backlogApi.getIssueComments(issueIdOrKey);
-    const contextSection = this.contextBuilder.buildBacklogContext(issue, comments);
+
+    // Download attachments and convert to data URLs
+    const attachments = await this.downloadIssueAttachments(issueIdOrKey, issue);
+
+    const contextSection = this.contextBuilder.buildBacklogContext(issue, comments, attachments);
 
     // Replace truncated comment from notification API with full text
     if (ctx.commentId) {
@@ -101,6 +105,44 @@ export class TodoPersistenceService {
     meta.contextFull = true;
     this.fileService.writeSessionFile(filePath, meta, contextSection, existingDraft, participants);
     return filePath;
+  }
+
+  private async downloadIssueAttachments(
+    issueIdOrKey: string | number,
+    issue: any
+  ): Promise<Array<{ id: number; name: string; dataUrl: string }>> {
+    const attachments: Array<{ id: number; name: string; dataUrl: string }> = [];
+
+    if (!this.backlogApi || !issue.attachments || issue.attachments.length === 0) {
+      return attachments;
+    }
+
+    for (const att of issue.attachments) {
+      try {
+        const buffer = await this.backlogApi.downloadIssueAttachment(issueIdOrKey, att.id);
+        const mime = this.detectMimeFromName(att.name);
+        const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
+        attachments.push({ id: att.id, name: att.name, dataUrl });
+      } catch (error) {
+        console.error(`Failed to download attachment ${att.name}:`, error);
+      }
+    }
+
+    return attachments;
+  }
+
+  private detectMimeFromName(filename: string): string {
+    const ext = filename.toLowerCase().split('.').pop();
+    const mimeMap: { [key: string]: string } = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      svg: 'image/svg+xml',
+      webp: 'image/webp',
+      pdf: 'application/pdf',
+    };
+    return mimeMap[ext || ''] || 'application/octet-stream';
   }
 
   private extractParticipants(issue: any, comments: any[]): BacklogParticipant[] {

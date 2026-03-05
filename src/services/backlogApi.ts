@@ -189,6 +189,33 @@ export class BacklogApiService {
     return await initializedService.backlog.postIssueComments(issueIdOrKey, params);
   }
 
+  async downloadIssueAttachment(
+    issueIdOrKey: string | number,
+    attachmentId: number
+  ): Promise<Buffer> {
+    const initializedService = await this.ensureInitialized();
+
+    try {
+      const response = await initializedService.backlog.getIssueAttachment(
+        issueIdOrKey,
+        attachmentId
+      );
+
+      // Backlog APIは常に {body: {}, url: "...", filename: "..."} 形式を返す
+      if (response && response.body) {
+        return Buffer.from(response.body as ArrayBuffer);
+      }
+
+      throw new Error(`Unexpected response format from getIssueAttachment`);
+    } catch (error) {
+      throw new Error(
+        `Failed to download issue attachment ${attachmentId}: ${
+          error instanceof Error ? error.message : error
+        }`
+      );
+    }
+  }
+
   async getUser(): Promise<Entity.User.User> {
     const initializedService = await this.ensureInitialized();
     return await initializedService.backlog.getMyself();

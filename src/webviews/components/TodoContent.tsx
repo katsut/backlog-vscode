@@ -39,6 +39,18 @@ export const TodoContent: React.FC<TodoContentProps> = ({
   const [notesValue, setNotesValue] = useState(todo.notes || '');
   const [draftValue, setDraftValue] = useState(draft?.content || '');
 
+  // Auto-save draft on change
+  const handleDraftChange = (value: string) => {
+    setDraftValue(value);
+    onSaveDraft(value);
+  };
+
+  // Auto-save notes on change
+  const handleNotesChange = (value: string) => {
+    setNotesValue(value);
+    onSaveNotes(value);
+  };
+
   const isPosted = draft?.status === 'posted';
   const action = draft?.action || 'none';
   const postLabel =
@@ -82,13 +94,10 @@ export const TodoContent: React.FC<TodoContentProps> = ({
           placeholder="ドラフトを入力..."
           readOnly={isPosted}
           value={draftValue}
-          onChange={(e) => setDraftValue(e.target.value)}
+          onChange={(e) => handleDraftChange(e.target.value)}
         />
         {!isPosted && (
           <div className="draft-actions">
-            <button className="action-btn secondary small" onClick={() => onSaveDraft(draftValue)}>
-              保存
-            </button>
             {action !== 'investigate' && action !== 'none' && (
               <button className="action-btn post-btn" onClick={onPostDraft}>
                 {postLabel}
@@ -114,11 +123,8 @@ export const TodoContent: React.FC<TodoContentProps> = ({
         <textarea
           placeholder="メモを追加..."
           value={notesValue}
-          onChange={(e) => setNotesValue(e.target.value)}
+          onChange={(e) => handleNotesChange(e.target.value)}
         />
-        <button className="action-btn secondary" onClick={() => onSaveNotes(notesValue)}>
-          保存
-        </button>
       </div>
     </div>
   );
