@@ -431,3 +431,424 @@ body {
   outline-offset: 2px;
 }
 
+
+
+/* ============================================================
+   Split Layout & Panel Resizer
+   ============================================================ */
+
+.split-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.panel-resizer {
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.15s;
+  align-self: stretch;
+}
+
+.panel-resizer:hover,
+.panel-resizer.dragging {
+  background: var(--vscode-focusBorder);
+}
+
+
+/* ============================================================
+   Claude Chat Panel — Shared Component
+   ============================================================ */
+
+.claude-chat-section {
+  width: 340px;
+  min-width: 200px;
+  max-width: 60vw;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--vscode-panel-border);
+  overflow: hidden;
+}
+
+.claude-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--webview-space-sm) var(--webview-space-md);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  flex-shrink: 0;
+}
+
+.claude-chat-header h3 {
+  margin: 0;
+  font-size: var(--webview-font-size-sm);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.claude-chat-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--webview-space-sm);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--webview-space-sm);
+  padding: var(--webview-space-sm) var(--webview-space-md);
+  min-height: 80px;
+}
+
+.chat-msg {
+  padding: var(--webview-space-sm) var(--webview-space-md);
+  border-radius: var(--webview-radius-md);
+  font-size: var(--webview-font-size-sm);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.chat-msg.user {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  align-self: flex-end;
+  max-width: 85%;
+}
+
+.chat-msg.assistant {
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  color: var(--vscode-foreground);
+  align-self: flex-start;
+  max-width: 95%;
+}
+
+.chat-msg.error {
+  background: var(--vscode-inputValidation-errorBackground);
+  color: var(--vscode-errorForeground);
+  align-self: flex-start;
+  max-width: 95%;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: var(--webview-space-sm);
+  padding: var(--webview-space-sm) var(--webview-space-md);
+  border-top: 1px solid var(--vscode-panel-border);
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+
+.chat-input {
+  flex: 1;
+  resize: none;
+  min-height: 36px;
+  max-height: 120px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--webview-radius-sm);
+  padding: var(--webview-space-sm);
+  font-family: inherit;
+  font-size: var(--webview-font-size-sm);
+  line-height: 1.4;
+  overflow-y: auto;
+}
+
+.chat-input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.chat-send-btn {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: var(--webview-radius-sm);
+  padding: var(--webview-space-sm) var(--webview-space-md);
+  font-size: var(--webview-font-size-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.chat-send-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.chat-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-select {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+  border-radius: var(--webview-radius-sm);
+  font-size: var(--webview-font-size-xs);
+  padding: 2px 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.claude-stop-btn {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+  border-radius: var(--webview-radius-sm);
+  padding: 2px 8px;
+  font-size: var(--webview-font-size-xs);
+  cursor: pointer;
+}
+
+.claude-stop-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+
+/* ============================================================
+   Common Layout Components
+   ============================================================ */
+
+/* Override body padding - all webviews handle layout themselves */
+body {
+  padding: 0;
+}
+
+/* Sticky full-width header */
+.webview-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  padding: 12px 20px 10px;
+}
+
+/* Two-column layout (main content + chat/sidebar) */
+.page-layout {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  padding: 12px 20px 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Main content area - scrollable */
+.main-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* Full-height wrapper for editors */
+.editor-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Content area inside split-area */
+.content-area {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* ============================================================
+   TODO-Specific Components
+   ============================================================ */
+
+/* TODO Header */
+.todo-header {
+  padding: var(--webview-space-md) var(--webview-space-xl);
+}
+
+.todo-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--webview-space-sm);
+}
+
+.todo-title {
+  margin: 0;
+  font-size: var(--webview-font-size-xl);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  flex: 1;
+}
+
+.todo-meta-row {
+  display: flex;
+  gap: var(--webview-space-sm);
+  align-items: center;
+}
+
+.status-badge.in_progress,
+.status-badge.in-progress { background: #ffc107; color: black; }
+.status-badge.waiting { background: #6c757d; color: white; }
+.status-badge.done { background: #28a745; color: white; }
+
+.replied-badge {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+/* TODO Controls */
+.status-select {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+  border-radius: var(--webview-radius-sm);
+  padding: 4px 8px;
+  font-size: var(--webview-font-size-sm);
+  cursor: pointer;
+}
+
+.delete-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.delete-btn:hover {
+  opacity: 1;
+}
+
+/* TODO Main Content */
+.todo-main-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Draft Section */
+.draft-section {
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  padding: var(--webview-space-lg);
+  border-radius: var(--webview-radius-md);
+}
+
+.draft-header {
+  display: flex;
+  align-items: center;
+  gap: var(--webview-space-md);
+  margin-bottom: var(--webview-space-md);
+}
+
+.draft-header h3 {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.draft-content {
+  width: 100%;
+  min-height: 120px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--webview-radius-sm);
+  padding: var(--webview-space-sm);
+  font-family: var(--webview-mono-font-family);
+  font-size: var(--webview-font-size-sm);
+  resize: vertical;
+}
+
+.draft-actions {
+  display: flex;
+  gap: var(--webview-space-sm);
+  margin-top: var(--webview-space-sm);
+}
+
+/* Action Buttons */
+.action-btn {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: var(--webview-radius-sm);
+  padding: var(--webview-space-sm) var(--webview-space-md);
+  font-size: var(--webview-font-size-sm);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.action-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.action-btn.secondary {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+}
+
+.action-btn.secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.action-btn.small {
+  padding: 4px 8px;
+  font-size: var(--webview-font-size-xs);
+}
+
+.action-btn.primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.action-btn.post-btn {
+  background: #28a745;
+  color: white;
+}
+
+.action-btn.post-btn:hover {
+  background: #218838;
+}
+
+.action-btn.danger-btn {
+  background: #dc3545;
+  color: white;
+}
+
+.action-btn.danger-btn:hover {
+  background: #c82333;
+}
+
+/* Source Link Section */
+.source-link-section {
+  padding: var(--webview-space-md) 0;
+}
+
+/* Textarea styling */
+textarea {
+  width: 100%;
+  min-height: 80px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--webview-radius-sm);
+  padding: var(--webview-space-sm);
+  font-family: var(--webview-font-family);
+  font-size: var(--webview-font-size-sm);
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
