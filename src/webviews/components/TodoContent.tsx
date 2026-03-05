@@ -19,7 +19,6 @@ interface TodoContentProps {
   onRefreshDraft: () => void;
   onOpenExternal: (url: string) => void;
   onOpenSlackThread: () => void;
-  onStartClaude: () => void;
 }
 
 export const TodoContent: React.FC<TodoContentProps> = ({
@@ -36,7 +35,6 @@ export const TodoContent: React.FC<TodoContentProps> = ({
   onRefreshDraft,
   onOpenExternal,
   onOpenSlackThread,
-  onStartClaude,
 }) => {
   const [notesValue, setNotesValue] = useState(todo.notes || '');
   const [draftValue, setDraftValue] = useState(draft?.content || '');
@@ -120,13 +118,6 @@ export const TodoContent: React.FC<TodoContentProps> = ({
         />
         <button className="action-btn secondary" onClick={() => onSaveNotes(notesValue)}>
           保存
-        </button>
-      </div>
-
-      {/* Claude action */}
-      <div className="content-section">
-        <button className="action-btn primary" onClick={onStartClaude}>
-          ✦ Claude で対応
         </button>
       </div>
     </div>

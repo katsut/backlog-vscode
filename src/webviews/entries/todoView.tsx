@@ -78,10 +78,6 @@ const TodoView: React.FC = () => {
     vscode.postMessage({ command: 'openSlackThread' });
   };
 
-  const handleStartClaude = () => {
-    vscode.postMessage({ command: 'startClaudeSession' });
-  };
-
   return (
     <div className="editor-wrapper">
       <TodoHeader
@@ -107,7 +103,6 @@ const TodoView: React.FC = () => {
             onRefreshDraft={handleRefreshDraft}
             onOpenExternal={handleOpenExternal}
             onOpenSlackThread={handleOpenSlackThread}
-            onStartClaude={handleStartClaude}
           />
         </div>
         <PanelResizer targetId="claudeChatSection" />
