@@ -22,8 +22,17 @@ const SOURCE_LABELS: Record<string, string> = {
   manual: '手動',
 };
 
+const SOURCE_CLASSES: Record<string, string> = {
+  'backlog-notification': 'source-backlog',
+  'slack-mention': 'source-slack',
+  'slack-search': 'source-slack',
+  'google-doc': 'source-calendar',
+  manual: 'source-manual',
+};
+
 export const TodoHeader: React.FC<TodoHeaderProps> = ({ todo, onStatusChange, onDelete }) => {
   const sourceLabel = todo.context ? SOURCE_LABELS[todo.context.source] || todo.context.source : '';
+  const sourceClass = todo.context ? SOURCE_CLASSES[todo.context.source] || '' : '';
 
   return (
     <div className="webview-header todo-header">
@@ -31,7 +40,9 @@ export const TodoHeader: React.FC<TodoHeaderProps> = ({ todo, onStatusChange, on
         <h2 className="todo-title">{todo.text}</h2>
       </div>
       <div className="todo-meta-row">
-        {sourceLabel && <span className="meta-item">{sourceLabel}</span>}
+        {sourceLabel && (
+          <span className={`meta-item ${sourceClass}`}>{sourceLabel}</span>
+        )}
         {todo.replied && <span className="meta-item replied-badge">返信済</span>}
       </div>
       <div className="status-actions">

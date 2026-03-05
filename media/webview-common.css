@@ -3,7 +3,13 @@
   /* Enhanced font family with better readability */
   --webview-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   --webview-mono-font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  
+
+  /* Brand colors */
+  --backlog-color: #42CE9F;
+  --slack-color: #E01E5A;
+  --calendar-color: #4285F4;
+  --cacoo-color: #00C4CC;
+
   /* Typography scale */
   --webview-font-size-xs: 0.75rem;
   --webview-font-size-sm: 0.875rem;
@@ -12,7 +18,7 @@
   --webview-font-size-xl: 1.25rem;
   --webview-font-size-2xl: 1.5rem;
   --webview-font-size-3xl: 1.75rem;
-  
+
   /* Spacing scale */
   --webview-space-xs: 4px;
   --webview-space-sm: 8px;
@@ -21,13 +27,13 @@
   --webview-space-xl: 20px;
   --webview-space-2xl: 24px;
   --webview-space-3xl: 32px;
-  
+
   /* Border radius */
   --webview-radius-sm: 4px;
   --webview-radius-md: 6px;
   --webview-radius-lg: 8px;
   --webview-radius-xl: 12px;
-  
+
   /* Shadows */
   --webview-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
   --webview-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -73,6 +79,27 @@ body {
   font-family: var(--webview-font-family);
 }
 
+
+/* Source-specific colors */
+.meta-item.source-backlog {
+  background: var(--backlog-color);
+  color: white;
+}
+
+.meta-item.source-slack {
+  background: var(--slack-color);
+  color: white;
+}
+
+.meta-item.source-calendar {
+  background: var(--calendar-color);
+  color: white;
+}
+
+.meta-item.source-cacoo {
+  background: var(--cacoo-color);
+  color: white;
+}
 /* Common external link styling */
 .external-link {
   color: var(--vscode-textLink-foreground);
@@ -95,6 +122,47 @@ body {
   text-decoration: none;
   transform: translateY(-1px);
   box-shadow: var(--webview-shadow-md);
+}
+
+/* Source-specific link colors */
+.external-link.link-backlog {
+  border-color: var(--backlog-color);
+  color: var(--backlog-color);
+}
+
+.external-link.link-backlog:hover {
+  background: var(--backlog-color);
+  color: white;
+}
+
+.external-link.link-slack {
+  border-color: var(--slack-color);
+  color: var(--slack-color);
+}
+
+.external-link.link-slack:hover {
+  background: var(--slack-color);
+  color: white;
+}
+
+.external-link.link-calendar {
+  border-color: var(--calendar-color);
+  color: var(--calendar-color);
+}
+
+.external-link.link-calendar:hover {
+  background: var(--calendar-color);
+  color: white;
+}
+
+.external-link.link-cacoo {
+  border-color: var(--cacoo-color);
+  color: var(--cacoo-color);
+}
+
+.external-link.link-cacoo:hover {
+  background: var(--cacoo-color);
+  color: white;
 }
 
 /* Common badge styling */
@@ -654,7 +722,8 @@ body {
 .editor-wrapper {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -893,6 +962,7 @@ textarea:focus {
 
 /* Context-specific components */
 .notif-trigger-section {
+  border-left: 4px solid var(--backlog-color);
   background: var(--vscode-editor-inactiveSelectionBackground);
   border-radius: var(--webview-radius-md);
 }
@@ -962,7 +1032,7 @@ textarea:focus {
   padding: var(--webview-space-sm);
   background: var(--vscode-editor-inactiveSelectionBackground);
   border-radius: var(--webview-radius-sm);
-  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  border-left: 3px solid var(--slack-color);
   font-weight: 500;
 }
 

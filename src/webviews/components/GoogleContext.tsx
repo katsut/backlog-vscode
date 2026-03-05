@@ -25,7 +25,7 @@ export const GoogleContext: React.FC<GoogleContextProps> = ({
           <div className="source-link-section">
             <a
               href="#"
-              className="external-link"
+              className="external-link link-calendar"
               onClick={(e) => {
                 e.preventDefault();
                 onOpenExternal(ctx.googleDocUrl!);
@@ -70,7 +70,7 @@ export const GoogleContext: React.FC<GoogleContextProps> = ({
                 <label>Meet:</label>
                 <a
                   href="#"
-                  className="external-link"
+                  className="external-link link-calendar"
                   onClick={(e) => {
                     e.preventDefault();
                     onOpenExternal(ctx.googleMeetUrl!);

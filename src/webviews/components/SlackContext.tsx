@@ -40,7 +40,7 @@ export const SlackContext: React.FC<SlackContextProps> = ({
         <div className="source-link-section">
           <a
             href="#"
-            className="external-link"
+            className="external-link link-slack"
             onClick={(e) => {
               e.preventDefault();
               onOpenSlackThread();

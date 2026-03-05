@@ -50,18 +50,15 @@ export class TodoWebview {
   <title>TODO</title>
   <link href="${styleUri}" rel="stylesheet">
   <style nonce="${nonce}">
-    body {
+    html, body {
       margin: 0;
       padding: 0;
+      height: 100%;
       overflow: hidden;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
     }
     #reactRoot {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
+      width: 100%;
+      height: 100%;
     }
   </style>
 </head>

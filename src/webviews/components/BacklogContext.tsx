@@ -50,7 +50,7 @@ export const BacklogContext: React.FC<BacklogContextProps> = ({
               {ctx.reason && <span className="notif-reason">{ctx.reason}</span>}
             </div>
             {ctx.comment && (
-              <div className="notif-comment" dangerouslySetInnerHTML={{ __html: ctx.comment }} />
+              <div className="notif-comment">{ctx.comment}</div>
             )}
           </div>
         </div>
@@ -65,7 +65,7 @@ export const BacklogContext: React.FC<BacklogContextProps> = ({
           <div className="source-link-section">
             <a
               href="#"
-              className="external-link"
+              className="external-link link-backlog"
               onClick={(e) => {
                 e.preventDefault();
                 onOpenExternal(issueUrl);
