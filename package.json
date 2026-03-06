@@ -801,14 +801,24 @@
           "group": "navigation@1"
         },
         {
-          "command": "nulab.filterModifiedDocuments",
+          "command": "nulab.documentSync.fetch",
           "when": "view == backlogDocuments",
           "group": "navigation@2"
         },
         {
-          "command": "nulab.unfocusProject",
+          "command": "nulab.documentSync.pull",
           "when": "view == backlogDocuments",
           "group": "navigation@3"
+        },
+        {
+          "command": "nulab.filterModifiedDocuments",
+          "when": "view == backlogDocuments",
+          "group": "navigation@4"
+        },
+        {
+          "command": "nulab.unfocusProject",
+          "when": "view == backlogDocuments",
+          "group": "navigation@5"
         },
         {
           "command": "cacoo.searchDiagrams",
