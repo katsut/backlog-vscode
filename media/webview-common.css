@@ -1421,7 +1421,7 @@ textarea:focus {
 /* Document Editor Components */
 .document-editor-textarea {
   width: 100%;
-  min-height: calc(100vh - 200px);
+  flex: 1;
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border);
@@ -1430,7 +1430,8 @@ textarea:focus {
   font-family: var(--webview-mono-font-family);
   font-size: 14px;
   line-height: 1.6;
-  resize: vertical;
+  resize: none;
+  box-sizing: border-box;
 }
 
 .document-editor-textarea:focus {

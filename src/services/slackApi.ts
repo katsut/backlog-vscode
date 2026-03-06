@@ -1,4 +1,4 @@
-import { WebClient } from '@slack/web-api';
+import type { WebClient } from '@slack/web-api';
 import { SlackConfig } from '../config/slackConfig';
 import {
   SlackServiceState,
@@ -39,6 +39,7 @@ export class SlackApiService {
     if (!token) {
       throw new Error('Slack token is not configured');
     }
+    const { WebClient } = await import('@slack/web-api');
     this.client = new WebClient(token);
     this.tokenType = token.startsWith('xoxp-')
       ? 'user'

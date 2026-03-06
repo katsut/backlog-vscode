@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ClaudeChat } from '../components/ClaudeChat';
 import { PanelResizer } from '../components/PanelResizer';
+import { getVSCodeAPI } from '../hooks/useVSCodeMessage';
 
 interface InitialState {
   title: string;
@@ -14,7 +15,7 @@ type ViewMode = 'preview' | 'source';
 
 const DocumentView: React.FC = () => {
   const initialState = (window as any).__INITIAL_STATE__ as InitialState;
-  const vscode = (window as any).acquireVsCodeApi();
+  const vscode = getVSCodeAPI();
   const [mode, setMode] = useState<ViewMode>('preview');
 
   const handleOpenExternal = () => {

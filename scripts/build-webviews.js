@@ -21,7 +21,7 @@ const buildOptions = {
   platform: 'browser',
   target: 'es2020',
   minify: production,
-  sourcemap: !production,
+  sourcemap: false,
   define: {
     'process.env.NODE_ENV': production ? '"production"' : '"development"',
   },

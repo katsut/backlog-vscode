@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { SyncService } from '../services/syncService';
 import { BacklogConfig } from '../config/backlogConfig';
@@ -51,6 +52,10 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    const log = vscode.window.createOutputChannel('Nulab BDoc Editor');
+    log.appendLine(`[resolveCustomTextEditor] called for ${document.uri.fsPath}`);
+    log.show(true);
+
     const docDir = path.dirname(document.uri.fsPath);
 
     webviewPanel.webview.options = {
@@ -65,7 +70,7 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
     // Per-panel Claude state
     const self = this;
     let claudeProc: ChildProcess | null = null;
-    let claudeSessionId = `bdoc-${Date.now()}`;
+    let claudeSessionId = crypto.randomUUID();
     let isFirstTurn = true;
 
     function runClaudeTurn(userMessage: string, model?: string): void {
@@ -103,12 +108,22 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
       args.push(isFirstTurn ? '--session-id' : '--resume', claudeSessionId, userMessage);
       isFirstTurn = false;
 
+      log.appendLine(
+        `[spawn] claude ${args
+          .map((a) => (a.length > 100 ? a.substring(0, 100) + '...' : a))
+          .join(' ')}`
+      );
       claudeProc = spawn('claude', args, { env });
       claudeProc.stdin?.end();
 
       let accumulated = '';
+      let stdoutError = '';
+      let lineBuf = '';
       claudeProc.stdout?.on('data', (data: Buffer) => {
-        for (const line of data.toString().split('\n')) {
+        lineBuf += data.toString();
+        const lines = lineBuf.split('\n');
+        lineBuf = lines.pop() || '';
+        for (const line of lines) {
           if (!line.trim()) continue;
           try {
             const json = JSON.parse(line);
@@ -119,17 +134,32 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
                   webviewPanel.webview.postMessage({ command: 'chatChunk', text: accumulated });
                 }
               }
+            } else if (json.type === 'result' && json.is_error) {
+              stdoutError = json.error || json.subtype || 'Unknown error';
             }
           } catch {
-            /* non-JSON lines ignored */
+            log.appendLine(`[stdout:non-json] ${line.substring(0, 200)}`);
           }
         }
       });
-      claudeProc.on('close', () => {
+      let stderrBuf = '';
+      claudeProc.stderr?.on('data', (data: Buffer) => {
+        const chunk = data.toString();
+        log.appendLine(`[stderr] ${chunk}`);
+        stderrBuf += chunk;
+      });
+      claudeProc.on('close', (code) => {
+        log.appendLine(`[close] code=${code} stderr=${stderrBuf.substring(0, 500)}`);
         claudeProc = null;
-        webviewPanel.webview.postMessage({ command: 'chatDone' });
+        const errorText = stderrBuf.trim() || stdoutError;
+        if (code !== 0 && errorText) {
+          webviewPanel.webview.postMessage({ command: 'chatError', text: errorText });
+        } else {
+          webviewPanel.webview.postMessage({ command: 'chatDone' });
+        }
       });
       claudeProc.on('error', (err: Error) => {
+        log.appendLine(`[error] ${err.message}`);
         claudeProc = null;
         webviewPanel.webview.postMessage({ command: 'chatError', text: err.message });
       });
@@ -143,6 +173,9 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
     // Register message handler BEFORE setting HTML to avoid race condition
     webviewPanel.webview.onDidReceiveMessage(
       async (message) => {
+        log.appendLine(
+          `[message] command=${message.command} keys=${Object.keys(message).join(',')}`
+        );
         switch (message.command) {
           case 'save': {
             try {
@@ -213,7 +246,7 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
           }
           case 'startClaudeSession':
             isFirstTurn = true;
-            claudeSessionId = `bdoc-${Date.now()}`;
+            claudeSessionId = crypto.randomUUID();
             break;
           case 'sendChatMessage':
             if (message.text?.trim()) {
@@ -259,6 +292,10 @@ export class BacklogDocumentEditorProvider implements vscode.CustomTextEditorPro
         syncedAt: meta.synced_at || '',
         updatedAt: meta.updated_at || '',
         filePath: document.uri.fsPath,
+        backlogDomain: this.configService
+          .getDomain()
+          ?.replace(/https?:\/\//, '')
+          .split('/')[0],
       },
       body,
       initialPreviewHtml

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { Entity } from 'backlog-js';
 import { spawn, ChildProcess } from 'child_process';
 import { ServiceContainer } from '../../container';
@@ -27,6 +28,8 @@ function findSyncedFile(c: ServiceContainer, documentId: string): string | null 
   return null;
 }
 
+const docLog = vscode.window.createOutputChannel('Nulab Claude Chat');
+
 export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposable[] {
   return [
     vscode.commands.registerCommand(
@@ -41,6 +44,7 @@ export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposa
 
         const existingPanel = c.documentPanels.get(documentKey);
         if (existingPanel) {
+          docLog.appendLine(`[existing] panel found for ${documentKey}, revealing`);
           existingPanel.reveal(vscode.ViewColumn.One);
           try {
             const projectKey = c.backlogDocumentsProvider.getCurrentProjectKey() || '';
@@ -71,6 +75,7 @@ export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposa
         );
 
         c.documentPanels.set(documentKey, panel);
+        docLog.appendLine(`[init] Document panel created for ${documentKey}`);
 
         try {
           const projectKey = c.backlogDocumentsProvider.getCurrentProjectKey() || '';
@@ -92,7 +97,7 @@ export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposa
 
           // Per-panel Claude state
           let claudeProc: ChildProcess | null = null;
-          let claudeSessionId = `doc-${Date.now()}`;
+          let claudeSessionId = crypto.randomUUID();
           let isFirstTurn = true;
           let latestDocument: Entity.Document.Document = documentDetail;
 
@@ -131,12 +136,22 @@ export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposa
             args.push(isFirstTurn ? '--session-id' : '--resume', claudeSessionId, userMessage);
             isFirstTurn = false;
 
+            docLog.appendLine(
+              `[spawn] claude ${args
+                .map((a) => (a.length > 100 ? a.substring(0, 100) + '...' : a))
+                .join(' ')}`
+            );
             claudeProc = spawn('claude', args, { env });
             claudeProc.stdin?.end();
 
             let accumulated = '';
+            let stdoutError = '';
+            let lineBuf = '';
             claudeProc.stdout?.on('data', (data: Buffer) => {
-              for (const line of data.toString().split('\n')) {
+              lineBuf += data.toString();
+              const lines = lineBuf.split('\n');
+              lineBuf = lines.pop() || '';
+              for (const line of lines) {
                 if (!line.trim()) {
                   continue;
                 }
@@ -149,17 +164,32 @@ export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposa
                         panel.webview.postMessage({ command: 'chatChunk', text: accumulated });
                       }
                     }
+                  } else if (json.type === 'result' && json.is_error) {
+                    stdoutError = json.error || json.subtype || 'Unknown error';
                   }
                 } catch {
-                  /* non-JSON lines ignored */
+                  docLog.appendLine(`[stdout:non-json] ${line.substring(0, 200)}`);
                 }
               }
             });
-            claudeProc.on('close', () => {
+            let stderrBuf = '';
+            claudeProc.stderr?.on('data', (data: Buffer) => {
+              const chunk = data.toString();
+              docLog.appendLine(`[stderr] ${chunk}`);
+              stderrBuf += chunk;
+            });
+            claudeProc.on('close', (code) => {
+              docLog.appendLine(`[close] code=${code} stderr=${stderrBuf.substring(0, 500)}`);
               claudeProc = null;
-              panel.webview.postMessage({ command: 'chatDone' });
+              const errorText = stderrBuf.trim() || stdoutError;
+              if (code !== 0 && errorText) {
+                panel.webview.postMessage({ command: 'chatError', text: errorText });
+              } else {
+                panel.webview.postMessage({ command: 'chatDone' });
+              }
             });
             claudeProc.on('error', (err: Error) => {
+              docLog.appendLine(`[error] ${err.message}`);
               claudeProc = null;
               panel.webview.postMessage({ command: 'chatError', text: err.message });
             });
@@ -172,10 +202,13 @@ export function registerOpenDocumentCommand(c: ServiceContainer): vscode.Disposa
 
           panel.webview.onDidReceiveMessage(
             async (message) => {
+              docLog.appendLine(
+                `[message] command=${message.command} keys=${Object.keys(message).join(',')}`
+              );
               switch (message.command) {
                 case 'startClaudeSession':
                   isFirstTurn = true;
-                  claudeSessionId = `doc-${Date.now()}`;
+                  claudeSessionId = crypto.randomUUID();
                   break;
                 case 'sendChatMessage':
                   if (message.text?.trim()) {

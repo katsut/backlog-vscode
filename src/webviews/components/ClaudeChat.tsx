@@ -20,18 +20,19 @@ export const ClaudeChat: React.FC = () => {
   const postMessage = useVSCodeMessage((msg: any) => {
     switch (msg.command) {
       case 'chatTurnStart':
-        currentAssistantRef.current = messages.length;
-        setMessages((prev) => [...prev, { role: 'assistant', text: '' }]);
+        setMessages((prev) => {
+          currentAssistantRef.current = prev.length;
+          return [...prev, { role: 'assistant', text: '' }];
+        });
         setIsProcessing(true);
         break;
       case 'chatChunk':
-        if (currentAssistantRef.current !== null) {
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            newMessages[currentAssistantRef.current!] = { role: 'assistant', text: msg.text };
-            return newMessages;
-          });
-        }
+        setMessages((prev) => {
+          if (currentAssistantRef.current === null) return prev;
+          const newMessages = [...prev];
+          newMessages[currentAssistantRef.current] = { role: 'assistant', text: msg.text };
+          return newMessages;
+        });
         break;
       case 'chatDone':
         currentAssistantRef.current = null;
@@ -39,15 +40,14 @@ export const ClaudeChat: React.FC = () => {
         inputRef.current?.focus();
         break;
       case 'chatError':
-        if (currentAssistantRef.current !== null) {
-          setMessages((prev) => {
+        setMessages((prev) => {
+          if (currentAssistantRef.current !== null) {
             const newMessages = [...prev];
-            newMessages[currentAssistantRef.current!] = { role: 'error', text: `Error: ${msg.text}` };
+            newMessages[currentAssistantRef.current] = { role: 'error', text: `Error: ${msg.text}` };
             return newMessages;
-          });
-        } else {
-          setMessages((prev) => [...prev, { role: 'error', text: `Error: ${msg.text}` }]);
-        }
+          }
+          return [...prev, { role: 'error', text: `Error: ${msg.text}` }];
+        });
         currentAssistantRef.current = null;
         setIsProcessing(false);
         break;
@@ -64,6 +64,7 @@ export const ClaudeChat: React.FC = () => {
 
     setMessages((prev) => [...prev, { role: 'user', text }]);
     setInputValue('');
+    console.log('[ClaudeChat] sending sendChatMessage', { text, model: selectedModel });
     postMessage('sendChatMessage', { text, model: selectedModel || undefined });
   };
 

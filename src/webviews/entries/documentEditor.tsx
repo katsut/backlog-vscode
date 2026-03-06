@@ -22,10 +22,8 @@ const DocumentEditor: React.FC = () => {
     setTimeout(() => setIsSaving(false), 500);
   };
 
-  const handleOpenExternal = () => {
-    if (initialState.backlogUrl) {
-      vscode.postMessage({ command: 'openExternal', url: initialState.backlogUrl });
-    }
+  const handleCopyAndOpen = () => {
+    vscode.postMessage({ command: 'copyAndOpen', content });
   };
 
   return (
@@ -37,16 +35,14 @@ const DocumentEditor: React.FC = () => {
             <button className="action-btn secondary" onClick={handleSave} disabled={isSaving}>
               {isSaving ? '保存中...' : '保存'}
             </button>
-            {initialState.backlogUrl && (
-              <button className="action-btn secondary" onClick={handleOpenExternal}>
-                Open in Backlog
-              </button>
-            )}
+            <button className="action-btn secondary" onClick={handleCopyAndOpen}>
+              Copy &amp; Open
+            </button>
           </div>
         </div>
       </div>
       <div className="page-layout">
-        <div className="main-content">
+        <div className="main-content" style={{ display: 'flex', flexDirection: 'column' }}>
           <textarea
             className="document-editor-textarea"
             value={content}

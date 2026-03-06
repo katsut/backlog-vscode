@@ -8,6 +8,7 @@ interface DocumentData {
   syncedAt: string;
   updatedAt: string;
   filePath: string;
+  backlogDomain?: string;
 }
 
 export class DocumentEditorWebview {
@@ -28,11 +29,9 @@ export class DocumentEditorWebview {
       vscode.Uri.joinPath(extensionUri, 'media', 'webview-common.css')
     );
 
-    // Build Backlog URL (inferred from docData)
-    // Note: baseUrl should come from config, but for now we construct from project
     const backlogUrl =
-      docData.backlogId && docData.project
-        ? `https://example.backlog.com/document/${docData.project}/${docData.backlogId}`
+      docData.backlogId && docData.project && docData.backlogDomain
+        ? `https://${docData.backlogDomain}/document/${docData.project}/${docData.backlogId}`
         : undefined;
 
     // Prepare initial state for React
