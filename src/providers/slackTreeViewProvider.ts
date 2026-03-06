@@ -194,6 +194,11 @@ export class SlackMentionItem extends vscode.TreeItem {
     if (hasTodo) {
       descParts.push('TODO');
     }
+    if (message.is_dm) {
+      descParts.push('DM');
+    } else if (message.channelName) {
+      descParts.push(`#${message.channelName}`);
+    }
     descParts.push(formatSlackTime(message.ts));
     this.description = descParts.join(' · ');
     this.tooltip = `${sender}\n${message.text}`;
