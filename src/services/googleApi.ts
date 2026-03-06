@@ -223,16 +223,26 @@ export class GoogleApiService {
     const escaped = query.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const q = `(fullText contains '${escaped}' or name contains '${escaped}') and trashed = false`;
 
-    const params = new URLSearchParams({
+    const baseParams = {
       q,
       fields: 'files(id,name,mimeType,webViewLink,modifiedTime,createdTime)',
-      orderBy: 'modifiedTime desc',
       pageSize: '30',
-    });
+    };
 
-    const url = `https://www.googleapis.com/drive/v3/files?${params}`;
-    const data = await this.httpsGetAuth<{ files?: GoogleDriveFile[] }>(url, accessToken);
-    return data.files || [];
+    // orderBy may fail with fullText contains queries — fall back to client-side sort
+    try {
+      const params = new URLSearchParams({ ...baseParams, orderBy: 'modifiedTime desc' });
+      const url = `https://www.googleapis.com/drive/v3/files?${params}`;
+      const data = await this.httpsGetAuth<{ files?: GoogleDriveFile[] }>(url, accessToken);
+      return data.files || [];
+    } catch {
+      const params = new URLSearchParams(baseParams);
+      const url = `https://www.googleapis.com/drive/v3/files?${params}`;
+      const data = await this.httpsGetAuth<{ files?: GoogleDriveFile[] }>(url, accessToken);
+      const files = data.files || [];
+      files.sort((a, b) => (b.modifiedTime || '').localeCompare(a.modifiedTime || ''));
+      return files;
+    }
   }
 
   async downloadFile(fileId: string): Promise<Buffer> {
