@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { SlackMessage } from '../types/workspace';
+import { SlackMessage, SlackReaction } from '../types/workspace';
+import { convertSlackEmoji } from '../utils/slackEmoji';
 import { WebviewHelper } from './common';
 
 export class SlackThreadWebview {
@@ -231,6 +232,128 @@ export class SlackThreadWebview {
         background: var(--vscode-editor-background);
       }
 
+      /* Reactions */
+      .reactions-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: var(--webview-space-sm);
+        align-items: center;
+      }
+
+      .reaction-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: var(--vscode-editor-inactiveSelectionBackground);
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 12px;
+        font-size: var(--webview-font-size-sm);
+        cursor: default;
+      }
+
+      .reaction-emoji {
+        font-size: 1.1em;
+      }
+
+      .reaction-count {
+        color: var(--vscode-descriptionForeground);
+        font-weight: 500;
+        font-size: 0.85em;
+      }
+
+      .add-reaction-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 24px;
+        background: transparent;
+        border: 1px dashed var(--vscode-panel-border);
+        border-radius: 12px;
+        cursor: pointer;
+        color: var(--vscode-descriptionForeground);
+        font-size: 0.9em;
+        transition: all 0.15s ease;
+      }
+
+      .add-reaction-btn:hover {
+        background: var(--vscode-editor-inactiveSelectionBackground);
+        border-color: var(--vscode-focusBorder);
+        color: var(--vscode-foreground);
+      }
+
+      .emoji-picker-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 999;
+      }
+
+      .emoji-picker {
+        display: none;
+        position: absolute;
+        z-index: 1000;
+        background: var(--vscode-editor-background);
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        padding: 8px;
+        width: 280px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .emoji-picker.visible {
+        display: block;
+      }
+
+      .emoji-picker-overlay.visible {
+        display: block;
+      }
+
+      .emoji-picker-search {
+        width: 100%;
+        padding: 4px 8px;
+        margin-bottom: 8px;
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 4px;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        font-size: var(--webview-font-size-sm);
+        outline: none;
+        box-sizing: border-box;
+      }
+
+      .emoji-picker-search:focus {
+        border-color: var(--vscode-focusBorder);
+      }
+
+      .emoji-grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 2px;
+      }
+
+      .emoji-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 1.2em;
+        border: none;
+        background: transparent;
+        transition: background 0.1s ease;
+      }
+
+      .emoji-item:hover {
+        background: var(--vscode-editor-inactiveSelectionBackground);
+      }
+
       /* Main content area with padding */
       .thread-content {
         padding: 0 var(--webview-space-xl) var(--webview-space-2xl);
@@ -288,11 +411,73 @@ export class SlackThreadWebview {
     ${afterHtml}
   </div>
 
+  <div class="emoji-picker-overlay" id="emojiOverlay"></div>
+  <div class="emoji-picker" id="emojiPicker">
+    <input type="text" class="emoji-picker-search" id="emojiSearch" placeholder="絵文字を検索..." />
+    <div class="emoji-grid" id="emojiGrid"></div>
+  </div>
+
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+    const EMOJIS = ${JSON.stringify(QUICK_EMOJIS)};
+    let pickerChannel = '';
+    let pickerTs = '';
+
+    function renderEmojiGrid(filter) {
+      const grid = document.getElementById('emojiGrid');
+      const filtered = filter
+        ? EMOJIS.filter(e => e.shortcode.includes(filter.toLowerCase()))
+        : EMOJIS;
+      grid.innerHTML = filtered.map(e =>
+        '<button class="emoji-item" data-shortcode="' + e.shortcode + '" title=":' + e.shortcode + ':">' + e.emoji + '</button>'
+      ).join('');
+    }
+
+    function showPicker(btn) {
+      pickerChannel = btn.getAttribute('data-channel');
+      pickerTs = btn.getAttribute('data-ts');
+      const picker = document.getElementById('emojiPicker');
+      const overlay = document.getElementById('emojiOverlay');
+      const rect = btn.getBoundingClientRect();
+      picker.style.top = (rect.bottom + 4) + 'px';
+      picker.style.left = Math.min(rect.left, window.innerWidth - 296) + 'px';
+      picker.classList.add('visible');
+      overlay.classList.add('visible');
+      const search = document.getElementById('emojiSearch');
+      search.value = '';
+      renderEmojiGrid('');
+      search.focus();
+    }
+
+    function hidePicker() {
+      document.getElementById('emojiPicker').classList.remove('visible');
+      document.getElementById('emojiOverlay').classList.remove('visible');
+    }
+
+    document.getElementById('emojiOverlay').addEventListener('click', hidePicker);
+
+    document.getElementById('emojiSearch').addEventListener('input', (e) => {
+      renderEmojiGrid(e.target.value);
+    });
+
+    document.getElementById('emojiGrid').addEventListener('click', (e) => {
+      const btn = e.target.closest('.emoji-item');
+      if (btn) {
+        const shortcode = btn.getAttribute('data-shortcode');
+        vscode.postMessage({ command: 'addReaction', channel: pickerChannel, timestamp: pickerTs, name: shortcode });
+        hidePicker();
+      }
+    });
 
     document.addEventListener('click', (event) => {
       const target = event.target;
+
+      if (target.closest('.add-reaction-btn')) {
+        event.preventDefault();
+        event.stopPropagation();
+        showPicker(target.closest('.add-reaction-btn'));
+        return;
+      }
 
       if (target.closest('#addToTodoBtn')) {
         event.preventDefault();
@@ -333,6 +518,8 @@ function buildMessageHtml(msg: SlackMessage, className: string): string {
   const sender = msg.userName || msg.user || 'Unknown';
   const text = formatSlackMessage(msg.text);
 
+  const reactionsHtml = buildReactionsHtml(msg.reactions, msg.channel, msg.ts);
+
   return `
     <div class="comment ${className}">
       <div class="comment-header">
@@ -341,8 +528,60 @@ function buildMessageHtml(msg: SlackMessage, className: string): string {
       </div>
       <div class="comment-content">
         <div class="message-text">${text}</div>
+        ${reactionsHtml}
       </div>
     </div>`;
+}
+
+const QUICK_EMOJIS = [
+  { shortcode: '+1', emoji: '👍' },
+  { shortcode: 'heart', emoji: '❤️' },
+  { shortcode: 'smile', emoji: '😄' },
+  { shortcode: 'tada', emoji: '🎉' },
+  { shortcode: 'eyes', emoji: '👀' },
+  { shortcode: 'pray', emoji: '🙏' },
+  { shortcode: 'fire', emoji: '🔥' },
+  { shortcode: '100', emoji: '💯' },
+  { shortcode: 'thinking_face', emoji: '🤔' },
+  { shortcode: 'white_check_mark', emoji: '✅' },
+  { shortcode: 'raised_hands', emoji: '🙌' },
+  { shortcode: 'clap', emoji: '👏' },
+  { shortcode: 'rocket', emoji: '🚀' },
+  { shortcode: 'sparkles', emoji: '✨' },
+  { shortcode: 'wave', emoji: '👋' },
+  { shortcode: 'ok_hand', emoji: '👌' },
+  { shortcode: 'muscle', emoji: '💪' },
+  { shortcode: 'joy', emoji: '😂' },
+  { shortcode: 'sob', emoji: '😭' },
+  { shortcode: 'bow', emoji: '🙇' },
+  { shortcode: 'thumbsdown', emoji: '👎' },
+  { shortcode: 'star', emoji: '⭐' },
+  { shortcode: 'bulb', emoji: '💡' },
+  { shortcode: 'memo', emoji: '📝' },
+];
+
+function buildReactionsHtml(
+  reactions: SlackReaction[] | undefined,
+  channel: string,
+  ts: string
+): string {
+  const chips = (reactions || [])
+    .map((r) => {
+      const emoji = convertSlackEmoji(`:${r.name}:`);
+      return `<span class="reaction-chip" title=":${escapeHtml(
+        r.name
+      )}:"><span class="reaction-emoji">${emoji}</span><span class="reaction-count">${
+        r.count
+      }</span></span>`;
+    })
+    .join('');
+
+  return `<div class="reactions-row">
+    ${chips}
+    <button class="add-reaction-btn" title="リアクションを追加" data-channel="${escapeHtml(
+      channel
+    )}" data-ts="${escapeHtml(ts)}">+</button>
+  </div>`;
 }
 
 function escapeHtml(text: string): string {

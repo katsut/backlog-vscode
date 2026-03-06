@@ -162,6 +162,31 @@ export function registerSlackCommands(
               if (message.command === 'openExternal' && message.url) {
                 vscode.env.openExternal(vscode.Uri.parse(message.url));
               }
+              if (message.command === 'addReaction') {
+                try {
+                  await c.slackApi.addReaction(message.channel, message.timestamp, message.name);
+                  // Refresh the thread to show the new reaction
+                  const updated = await c.slackApi.getThreadMessages(channel, threadTs);
+                  panel.webview.html = SlackThreadWebview.getWebviewContent(
+                    panel.webview,
+                    c.context.extensionUri,
+                    updated,
+                    title || 'Thread',
+                    slackPermalink,
+                    channelContext.before,
+                    channelContext.after
+                  );
+                } catch (error) {
+                  const errMsg = error instanceof Error ? error.message : String(error);
+                  if (errMsg.includes('already_reacted')) {
+                    vscode.window.showInformationMessage('[Nulab] 既にリアクション済みです');
+                  } else {
+                    vscode.window.showErrorMessage(
+                      `[Nulab] リアクションの追加に失敗しました: ${errMsg}`
+                    );
+                  }
+                }
+              }
               if (message.command === 'addToTodo') {
                 const parentMsg = messages[0];
                 const sender = parentMsg?.userName || parentMsg?.user || 'Unknown';

@@ -5,6 +5,7 @@ import {
   InitializedSlackService,
   SlackChannel,
   SlackMessage,
+  SlackReaction,
 } from '../types/workspace';
 import { convertSlackEmoji } from '../utils/slackEmoji';
 
@@ -355,12 +356,14 @@ export class SlackApiService {
             continue;
           }
           added++;
+          const channelName = (chObj?.name as string) || undefined;
           messages.push({
             ts: match.ts || '',
             user: match.user || '',
             text: convertSlackEmoji(match.text || ''),
             thread_ts: (match as Record<string, unknown>).thread_ts as string | undefined,
             channel: channelId,
+            channelName: isDm ? undefined : channelName,
             userName: match.user || '',
             is_dm: isDm,
           });
@@ -456,14 +459,18 @@ export class SlackApiService {
       const matches = resp.messages?.matches || [];
       console.log(`[Slack] search.messages "${query}": ${matches.length} matches`);
 
-      const messages: SlackMessage[] = matches.map((match) => ({
-        ts: match.ts || '',
-        user: match.user || '',
-        text: convertSlackEmoji(match.text || ''),
-        thread_ts: (match as Record<string, unknown>).thread_ts as string | undefined,
-        channel: ((match.channel as Record<string, unknown>)?.id as string) || '',
-        userName: match.user || '',
-      }));
+      const messages: SlackMessage[] = matches.map((match) => {
+        const chObj = match.channel as Record<string, unknown> | undefined;
+        return {
+          ts: match.ts || '',
+          user: match.user || '',
+          text: convertSlackEmoji(match.text || ''),
+          thread_ts: (match as Record<string, unknown>).thread_ts as string | undefined,
+          channel: (chObj?.id as string) || '',
+          channelName: (chObj?.name as string) || undefined,
+          userName: match.user || '',
+        };
+      });
 
       // Resolve user names in parallel
       const uniqueUserIds = [...new Set(messages.map((m) => m.user).filter(Boolean))];
@@ -507,6 +514,8 @@ export class SlackApiService {
       for (const msg of resp.messages || []) {
         const userName = await this.resolveUserName(msg.user || '');
         const text = await this.preprocessSlackText(convertSlackEmoji(msg.text || ''));
+        const msgAny = msg as Record<string, unknown>;
+        const reactions = this.extractReactions(msgAny.reactions as any[] | undefined);
         messages.push({
           ts: msg.ts || '',
           user: msg.user || '',
@@ -514,6 +523,7 @@ export class SlackApiService {
           thread_ts: msg.thread_ts,
           channel,
           userName,
+          reactions,
         });
       }
       return messages;
@@ -652,6 +662,25 @@ export class SlackApiService {
       text,
       thread_ts: threadTs,
     });
+  }
+
+  async addReaction(channel: string, timestamp: string, name: string): Promise<void> {
+    await this.ensureInitialized();
+    if (!this.client) {
+      return;
+    }
+    await this.client.reactions.add({ channel, timestamp, name });
+  }
+
+  private extractReactions(raw: any[] | undefined): SlackReaction[] | undefined {
+    if (!raw || !Array.isArray(raw) || raw.length === 0) {
+      return undefined;
+    }
+    return raw.map((r: any) => ({
+      name: r.name || '',
+      count: r.count || 0,
+      users: r.users || [],
+    }));
   }
 
   /**
