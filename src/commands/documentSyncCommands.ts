@@ -14,6 +14,7 @@ import { proseMirrorToMarkdown } from '../utils/prosemirrorToMarkdown';
 export class DocumentSyncCommands {
   private syncService: SyncService;
   private isPulling = false;
+  private isFetching = false;
 
   constructor(
     private backlogApi: BacklogApiService,
@@ -25,6 +26,27 @@ export class DocumentSyncCommands {
     this.syncService = new SyncService();
   }
 
+  /**
+   * Fetch: リモートのツリー情報と差分状況を表示するだけ（ファイル書き込みなし）。
+   */
+  async fetch(mapping?: DocumentSyncMapping): Promise<void> {
+    if (this.isFetching) {
+      vscode.window.showWarningMessage('[Nulab] Fetch is already in progress.');
+      return;
+    }
+    this.isFetching = true;
+    try {
+      await this.status(mapping);
+    } finally {
+      this.isFetching = false;
+    }
+  }
+
+  /**
+   * Pull: リモートからドキュメントを取り込む。
+   * - ローカル変更なし → 即反映（上書き）
+   * - ローカル変更あり → diff エディタを開いてマージ
+   */
   async pull(mapping?: DocumentSyncMapping): Promise<void> {
     if (this.isPulling) {
       vscode.window.showWarningMessage('[Nulab] Pull is already in progress.');
@@ -67,25 +89,9 @@ export class DocumentSyncCommands {
           let unchanged = 0;
           let skipped = 0;
           let deleted = 0;
+          const conflictPaths: string[] = [];
 
-          // Pull root node itself as index.bdoc
-          try {
-            await this.pullRootDocument(
-              resolved.documentNodeId,
-              localDir,
-              resolved.projectKey,
-              manifest
-            );
-            pulled++;
-          } catch (error) {
-            console.error(`[DocumentSync] FAILED root node: id=${resolved.documentNodeId}:`, error);
-            skipped++;
-          }
-
-          const total = flatNodes.length + 1; // +1 for root
-
-          // Build lookup: manifest backlog_id → remote_updated_at
-          // Also build reverse lookup: backlog_id → relativePath
+          // Build lookup: backlog_id → { relativePath, remote_updated_at }
           const manifestByBacklogId = new Map<
             string,
             { updatedAt: string; relativePath: string }
@@ -97,9 +103,45 @@ export class DocumentSyncCommands {
             });
           }
 
+          // ローカル変更の有無を確認するヘルパー
+          const hasLocalChanges = (relPath: string): boolean => {
+            const entry = manifest[relPath];
+            if (!entry) {
+              return false;
+            }
+            const absPath = path.join(localDir, relPath);
+            if (!fs.existsSync(absPath)) {
+              return false;
+            }
+            return this.syncService.computeLocalFileHash(absPath) !== entry.content_hash;
+          };
+
           // Track which backlog_ids exist in the remote tree
           const remoteIds = new Set<string>();
-          remoteIds.add(resolved.documentNodeId); // root node
+          remoteIds.add(resolved.documentNodeId);
+
+          // Root node as index.bdoc
+          if (hasLocalChanges('index.bdoc')) {
+            conflictPaths.push(path.join(localDir, 'index.bdoc'));
+          } else {
+            try {
+              await this.pullRootDocument(
+                resolved.documentNodeId,
+                localDir,
+                resolved.projectKey,
+                manifest
+              );
+              pulled++;
+            } catch (error) {
+              console.error(
+                `[DocumentSync] FAILED root node: id=${resolved.documentNodeId}:`,
+                error
+              );
+              skipped++;
+            }
+          }
+
+          const total = flatNodes.length + 1;
 
           for (const node of flatNodes) {
             if (token.isCancellationRequested) {
@@ -110,16 +152,28 @@ export class DocumentSyncCommands {
 
             progress.report({
               increment: (1 / total) * 100,
-              message: `${node.name || node.id} (${pulled + unchanged + skipped + 1}/${total})`,
+              message: `${node.name || node.id} (${
+                pulled + unchanged + skipped + conflictPaths.length + 1
+              }/${total})`,
             });
 
-            // Skip documents whose remote updated_at hasn't changed
             const existing = manifestByBacklogId.get(String(node.id));
-            if (existing && node.updated && existing.updatedAt === node.updated) {
-              unchanged++;
-              continue;
+
+            if (existing) {
+              // ローカル変更あり → 競合
+              if (hasLocalChanges(existing.relativePath)) {
+                conflictPaths.push(path.join(localDir, existing.relativePath));
+                continue;
+              }
+
+              // リモートも変更なし → スキップ
+              if (node.updated && existing.updatedAt === node.updated) {
+                unchanged++;
+                continue;
+              }
             }
 
+            // 競合なし → ダウンロードして反映
             try {
               await this.pullSingleDocument(node, localDir, resolved.projectKey, manifest);
               pulled++;
@@ -128,11 +182,10 @@ export class DocumentSyncCommands {
               skipped++;
             }
 
-            // Rate limit 対策
             await this.delay(100);
           }
 
-          // Remove local files for documents deleted on remote
+          // リモートで削除されたファイルをローカルからも削除（ローカル変更がない場合のみ）
           for (const [relPath, entry] of Object.entries(manifest)) {
             if (remoteIds.has(String(entry.backlog_id))) {
               continue;
@@ -143,7 +196,6 @@ export class DocumentSyncCommands {
               deleted++;
               continue;
             }
-            // Only delete if no local modifications
             const localHash = this.syncService.computeLocalFileHash(absPath);
             if (localHash === entry.content_hash) {
               fs.unlinkSync(absPath);
@@ -158,6 +210,11 @@ export class DocumentSyncCommands {
           this.remoteContentProvider.invalidateCache();
           this.decorationProvider?.refresh();
 
+          // 競合ファイルを diff エディタで開く
+          for (const conflictPath of conflictPaths) {
+            await this.diff(conflictPath);
+          }
+
           const parts = [`${pulled} 件更新`];
           if (unchanged > 0) {
             parts.push(`${unchanged} 件変更なし`);
@@ -167,6 +224,9 @@ export class DocumentSyncCommands {
           }
           if (skipped > 0) {
             parts.push(`${skipped} 件スキップ`);
+          }
+          if (conflictPaths.length > 0) {
+            parts.push(`${conflictPaths.length} 件競合（マージエディタを確認してください）`);
           }
           vscode.window.showInformationMessage(`[Nulab] Pull 完了: ${parts.join(', ')}`);
         }
