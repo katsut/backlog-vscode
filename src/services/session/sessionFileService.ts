@@ -5,6 +5,7 @@ import {
   TodoContext,
   TodoStatus,
   BacklogParticipant,
+  ActionItem,
 } from '../../types/workspace';
 
 export type SessionAction = 'backlog-reply' | 'slack-reply' | 'investigate' | 'none';
@@ -107,7 +108,8 @@ export class SessionFileService {
     meta: TodoSessionMeta,
     contextSection: string,
     draft: string,
-    participants?: BacklogParticipant[]
+    participants?: BacklogParticipant[],
+    actions?: ActionItem[]
   ): void {
     const frontmatter = this.toYaml(meta as unknown as Record<string, unknown>);
     const instruction = this.buildInstruction(meta.action);
@@ -124,6 +126,7 @@ export class SessionFileService {
       ...(participants && participants.length > 0
         ? [`<!-- PARTICIPANTS ${JSON.stringify(participants)} -->`, '']
         : []),
+      ...(actions && actions.length > 0 ? [`<!-- ACTIONS ${JSON.stringify(actions)} -->`, ''] : []),
       '<!-- DRAFT -->',
       draft,
       '',
@@ -144,6 +147,43 @@ export class SessionFileService {
       // ignore
     }
     return [];
+  }
+
+  getActions(todoId: string): ActionItem[] {
+    try {
+      const filePath = this.getSessionFilePath(todoId);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const match = content.match(/<!-- ACTIONS (.+?) -->/);
+      if (match) {
+        return JSON.parse(match[1]);
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  }
+
+  saveActions(todoId: string, actions: ActionItem[]): void {
+    const filePath = this.getSessionFilePath(todoId);
+    if (!fs.existsSync(filePath)) {
+      return;
+    }
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const actionsRegex = /<!-- ACTIONS .+? -->\n?/;
+    const newActionsTag = actions.length > 0 ? `<!-- ACTIONS ${JSON.stringify(actions)} -->\n` : '';
+
+    if (actionsRegex.test(content)) {
+      fs.writeFileSync(filePath, content.replace(actionsRegex, newActionsTag), 'utf-8');
+    } else {
+      // Insert before DRAFT marker
+      const draftMarker = '<!-- DRAFT -->';
+      const draftIdx = content.lastIndexOf(draftMarker);
+      if (draftIdx >= 0) {
+        const before = content.slice(0, draftIdx);
+        const after = content.slice(draftIdx);
+        fs.writeFileSync(filePath, before + newActionsTag + after, 'utf-8');
+      }
+    }
   }
 
   updateFrontmatter(todoId: string, updates: Partial<TodoSessionMeta>): void {

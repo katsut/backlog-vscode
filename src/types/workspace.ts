@@ -51,6 +51,27 @@ export interface WorkspaceTodoItem {
   completed?: boolean;
 }
 
+// ---- Action Items ----
+
+export type ActionItemType = 'create-issue' | 'backlog-comment' | 'create-document' | 'todo';
+export type ActionItemStatus = 'draft' | 'posted' | 'done';
+
+export interface ActionItem {
+  id: string;
+  type: ActionItemType;
+  status: ActionItemStatus;
+  title: string;
+  content: string;
+  // create-issue
+  issueTypeId?: number;
+  priorityId?: number;
+  assigneeId?: number;
+  // backlog-comment
+  issueKey?: string;
+  // create-document
+  documentName?: string;
+}
+
 // ---- Slack ----
 
 export interface SlackChannel {
