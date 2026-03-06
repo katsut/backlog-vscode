@@ -635,9 +635,13 @@ function formatSlackMessage(text: string): string {
 
   // Format plain text URLs (not already wrapped in Slack format)
   // Match http:// or https:// URLs that are not already inside <a> tags
+  // Note: &amp; must be included as part of URL since & was escaped to &amp; by escapeHtml
   formatted = formatted.replace(
-    /(?<!href=&quot;)(https?:\/\/[^\s&lt;&gt;]+)/g,
-    '<a href="$1">$1</a>'
+    /(?<!href=")(https?:\/\/[^\s<>]*[^\s<>.,:;!?\])'"」』）])/g,
+    (_, url) => {
+      const href = url.replace(/&amp;/g, '&');
+      return `<a href="${href}">${url}</a>`;
+    }
   );
 
   // Format Slack markdown
