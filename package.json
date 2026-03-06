@@ -312,6 +312,12 @@
         "icon": "$(link)"
       },
       {
+        "command": "nulab.documentSync.fetch",
+        "title": "Fetch Documents from Backlog",
+        "icon": "$(cloud-download)",
+        "category": "Backlog"
+      },
+      {
         "command": "nulab.documentSync.pull",
         "title": "Pull Documents from Backlog",
         "icon": "$(cloud-download)",
@@ -795,14 +801,24 @@
           "group": "navigation@1"
         },
         {
-          "command": "nulab.filterModifiedDocuments",
+          "command": "nulab.documentSync.fetch",
           "when": "view == backlogDocuments",
           "group": "navigation@2"
         },
         {
-          "command": "nulab.unfocusProject",
+          "command": "nulab.documentSync.pull",
           "when": "view == backlogDocuments",
           "group": "navigation@3"
+        },
+        {
+          "command": "nulab.filterModifiedDocuments",
+          "when": "view == backlogDocuments",
+          "group": "navigation@4"
+        },
+        {
+          "command": "nulab.unfocusProject",
+          "when": "view == backlogDocuments",
+          "group": "navigation@5"
         },
         {
           "command": "cacoo.searchDiagrams",
@@ -932,9 +948,14 @@
           "group": "sync@1"
         },
         {
-          "command": "nulab.documentSync.pull",
+          "command": "nulab.documentSync.fetch",
           "when": "view == backlogDocuments && viewItem =~ /^(documentFolder|documentWithChildren)$/",
           "group": "sync@2"
+        },
+        {
+          "command": "nulab.documentSync.pull",
+          "when": "view == backlogDocuments && viewItem =~ /^(documentFolder|documentWithChildren)$/",
+          "group": "sync@3"
         },
         {
           "command": "nulab.documentSync.diff",

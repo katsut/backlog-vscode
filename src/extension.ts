@@ -314,6 +314,9 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // ---- Document sync commands (from existing class) ----
+  const syncFetchCommand = vscode.commands.registerCommand('nulab.documentSync.fetch', () =>
+    documentSyncCommands.fetch()
+  );
   const syncPullCommand = vscode.commands.registerCommand('nulab.documentSync.pull', () =>
     documentSyncCommands.pull()
   );
@@ -760,6 +763,7 @@ export function activate(context: vscode.ExtensionContext) {
     decorationProviderDisposable,
     bdocEditorRegistration,
     // Document sync commands
+    syncFetchCommand,
     syncPullCommand,
     syncStatusCommand,
     syncDiffCommand,
