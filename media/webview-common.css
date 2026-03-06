@@ -1301,6 +1301,123 @@ textarea:focus {
   margin-top: var(--webview-space-sm);
 }
 
+/* ============================================================
+   Action Items — Accordion List
+   ============================================================ */
+
+.action-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--webview-space-sm);
+}
+
+.action-item {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--webview-radius-md);
+  overflow: hidden;
+}
+
+.action-item.posted {
+  opacity: 0.7;
+}
+
+.action-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--webview-space-sm);
+  padding: var(--webview-space-sm) var(--webview-space-md);
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.action-item-header:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.action-item-toggle {
+  font-size: var(--webview-font-size-xs);
+  color: var(--vscode-descriptionForeground);
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.action-item-icon {
+  font-size: var(--webview-font-size-base);
+  flex-shrink: 0;
+}
+
+.action-item-type-badge {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 2px var(--webview-space-sm);
+  border-radius: var(--webview-radius-sm);
+  font-size: var(--webview-font-size-xs);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.action-item-title {
+  flex: 1;
+  font-size: var(--webview-font-size-sm);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-item-body {
+  padding: var(--webview-space-md);
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.action-item-fields {
+  margin-bottom: var(--webview-space-md);
+}
+
+.action-item-fields label {
+  display: block;
+  font-size: var(--webview-font-size-xs);
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--webview-space-xs);
+}
+
+.action-item-fields input {
+  width: 100%;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--webview-radius-sm);
+  padding: var(--webview-space-sm);
+  font-size: var(--webview-font-size-sm);
+  font-family: var(--webview-font-family);
+  box-sizing: border-box;
+}
+
+.action-item-fields input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.action-item-fields input[readonly] {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.action-item-content {
+  min-height: 100px;
+  font-family: var(--webview-mono-font-family);
+}
+
+.action-item-actions {
+  display: flex;
+  gap: var(--webview-space-sm);
+  margin-top: var(--webview-space-sm);
+}
+
 /* Document Editor Components */
 .document-editor-textarea {
   width: 100%;
