@@ -40,8 +40,11 @@ export class GoogleDriveSearchTreeViewProvider implements vscode.TreeDataProvide
 
     try {
       this.results = await this.googleApi.searchDriveFiles(query);
-    } catch {
+    } catch (error) {
       this.results = [];
+      vscode.window.showErrorMessage(
+        `Google Drive 検索に失敗しました: ${error instanceof Error ? error.message : error}`
+      );
     } finally {
       this.searching = false;
       this._onDidChangeTreeData.fire();

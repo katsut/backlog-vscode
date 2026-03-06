@@ -226,7 +226,6 @@ export class GoogleApiService {
     const params = new URLSearchParams({
       q,
       fields: 'files(id,name,mimeType,webViewLink,modifiedTime,createdTime)',
-      orderBy: 'viewedByMeTime desc,modifiedTime desc',
       pageSize: '30',
     });
 
