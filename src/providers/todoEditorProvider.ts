@@ -174,6 +174,48 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
           this.claudeProcesses.delete(todoId);
         }
       }
+      if (message.command === 'updateAction') {
+        const action = message.action as ActionItem;
+        const actions = this.fileService.getActions(todoId);
+        const idx = actions.findIndex((a) => a.id === action.id);
+        if (idx >= 0) {
+          actions[idx] = action;
+        } else {
+          actions.push(action);
+        }
+        this.fileService.saveActions(todoId, actions);
+        webviewPanel.webview.postMessage({ command: 'updateActions', actions });
+      }
+      if (message.command === 'deleteAction') {
+        const actions = this.fileService.getActions(todoId);
+        const filtered = actions.filter((a) => a.id !== message.actionId);
+        this.fileService.saveActions(todoId, filtered);
+        webviewPanel.webview.postMessage({ command: 'updateActions', actions: filtered });
+      }
+      if (message.command === 'postAction') {
+        const action = message.action as ActionItem;
+        const typeLabels: Record<string, string> = {
+          'create-issue': '課題を作成',
+          'backlog-comment': 'コメントを投稿',
+          'create-document': 'ドキュメントを作成',
+        };
+        const label = typeLabels[action.type] || action.type;
+
+        // Copy content to clipboard for manual posting
+        await vscode.env.clipboard.writeText(action.content);
+        vscode.window.showInformationMessage(
+          `[Nulab] 「${action.title}」の内容をクリップボードにコピーしました。Backlog で${label}してください。`
+        );
+
+        // Mark as posted
+        const actions = this.fileService.getActions(todoId);
+        const idx = actions.findIndex((a) => a.id === action.id);
+        if (idx >= 0) {
+          actions[idx] = { ...actions[idx], status: 'posted' };
+          this.fileService.saveActions(todoId, actions);
+          webviewPanel.webview.postMessage({ command: 'updateActions', actions });
+        }
+      }
       if (message.command === 'refreshDraft') {
         const draft = this.fileService.getDraftInfo(todoId);
         if (draft) {
