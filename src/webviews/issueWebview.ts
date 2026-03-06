@@ -309,6 +309,9 @@ export class IssueWebview {
                 : ''
             }
             <a href="#" class="external-link" id="addToTodoBtn">+ TODO</a>
+            <a href="#" class="external-link" id="addStarBtn" title="スターを付ける">&#9733; Star${
+              (issue as any).stars?.length ? ` (${(issue as any).stars.length})` : ''
+            }</a>
           </div>
         </div>
 
@@ -391,6 +394,12 @@ export class IssueWebview {
             if (target.closest('#addToTodoBtn')) {
               event.preventDefault();
               vscode.postMessage({ command: 'addToTodo' });
+              return;
+            }
+
+            if (target.closest('#addStarBtn')) {
+              event.preventDefault();
+              vscode.postMessage({ command: 'addStar', issueId: ${issue.id} });
               return;
             }
 

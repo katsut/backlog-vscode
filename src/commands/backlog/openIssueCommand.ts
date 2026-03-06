@@ -32,6 +32,15 @@ export function registerOpenIssueCommands(c: ServiceContainer): vscode.Disposabl
             }
             break;
           }
+          case 'addStar':
+            try {
+              await c.backlogApi.addStar(message.issueId);
+              vscode.window.showInformationMessage('[Nulab] スターを付けました');
+            } catch (error) {
+              console.error('Error adding star:', error);
+              vscode.window.showErrorMessage(`[Nulab] スターの追加に失敗しました: ${error}`);
+            }
+            break;
           case 'refreshIssue':
             try {
               const [refreshedIssue, refreshedComments] = await Promise.all([

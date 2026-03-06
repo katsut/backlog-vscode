@@ -513,6 +513,11 @@ export class BacklogApiService {
     return result;
   }
 
+  async addStar(issueId: number): Promise<void> {
+    const initializedService = await this.ensureInitialized();
+    await initializedService.backlog.postStar({ issueId });
+  }
+
   async reinitialize(): Promise<void> {
     // 状態をリセットして再初期化
     this.serviceState = { state: 'uninitialized' };
