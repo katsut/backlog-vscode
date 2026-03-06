@@ -1,231 +1,186 @@
 # Nulab Workspace Extension
 
-A VS Code extension to integrate Backlog, Cacoo, and Slack
-into your development workflow.
+Backlog / Slack / Google Calendar / Google Drive / Cacoo を VSCode に統合するワークスペース拡張機能。
 
 ## Features
 
 ### Backlog
 
-- **Issues** — Browse projects and issues in a hierarchical tree view; view details, comments, and attachments in a rich webview
-- **My Tasks** — Quick access to issues assigned to you
-- **Notifications** — View and manage Backlog notifications
-- **Wiki** — Browse and read project wiki pages
-- **Documents** — Browse project documents with local sync support
-
-### Cacoo
-
-- **Diagrams** — Browse Cacoo diagrams and view individual sheets
+- **Issues** — プロジェクト・課題をツリービューで閲覧、Webview で詳細表示（コメント・添付ファイル対応）
+- **My Tasks** — 自分に割り当てられた課題を一覧
+- **Notifications** — Backlog 通知の閲覧・管理
+- **Wiki** — プロジェクト Wiki の閲覧
+- **Documents** — ドキュメント閲覧、ローカル同期（Document Sync）
 
 ### Slack
 
-- **Channels** — Browse Slack channels and read threads
-- **Search** — Search Slack messages by keyword or mention
+- **Notifications** — メンション・DM 通知の閲覧
+- **Search** — キーワード検索でメッセージを横断検索
+- **Thread** — スレッドの閲覧・返信
 
-### General
+### Google Calendar
 
-- **TODO** — Track your TODO items
+- **予定表示** — 設定日数範囲の予定をツリービューで表示
+- **議事録連携** — Gemini 自動生成メモや添付ドキュメントを VSCode 内で閲覧
+- **イベント詳細** — 参加者・Meet リンク・説明文を Webview で表示
 
-## Installation
+### Google Drive
 
-### Development Environment Setup
+- **ファイル検索** — キーワードで Google Drive を全文検索
+- **ファイルを開く** — Google Docs・テキスト・画像は VSCode 内で、その他はブラウザで開く
 
-1. Clone the repository
+### Cacoo
 
-   ```bash
-   git clone https://github.com/katsut/nulab-vscode.git
-   cd nulab-vscode
-   ```
+- **Diagrams** — Cacoo ダイアグラムの閲覧
 
-2. Install dependencies
+### TODO
 
-   ```bash
-   npm install
-   ```
+- **タスク管理** — Backlog 通知・Slack メンション・議事録から TODO を作成
+- **Claude Code 連携** — セッションファイルで Claude Code と連携
 
-3. Compile TypeScript
+## Setup
 
-   ```bash
-   npm run compile
-   ```
+### 1. Backlog
 
-4. Open in VS Code and press F5 to debug
+#### API キーの取得
 
-## Configuration
+1. Backlog にログイン → 「個人設定」→「API」
+2. API キーを生成してコピー
 
-### 1. Get Backlog API Key
+#### VSCode 設定
 
-1. Login to Backlog
-2. Go to "Personal Settings" → "API"
-3. Generate API key
-4. Copy the generated API key
-
-### 2. VS Code Settings
-
-#### Set API Key (Secure)
-
-1. Open Command Palette (`Ctrl+Shift+P`)
-2. Run `Backlog: Set API Key` command
-3. Enter API key (stored securely in Secret Storage)
-
-#### Set API URL
-
-Configure in VS Code settings:
+1. `Cmd+Shift+P` → `Backlog: Set API Key` でキーを入力（Secret Storage に暗号化保存）
+2. Settings (`Cmd+,`) で以下を設定:
 
 ```json
 {
-  "backlog.apiUrl": "https://yourspace.backlog.jp/api/v2"
+  "nulab.backlog.domain": "yourspace.backlog.jp"
 }
 ```
 
-#### Main Configuration Options
+| Setting | Description | Default |
+| --- | --- | --- |
+| `nulab.backlog.domain` | Backlog スペースのドメイン | - |
+| `nulab.backlog.autoRefresh` | 自動更新の有効化 | `true` |
+| `nulab.backlog.refreshInterval` | 更新間隔（秒） | `300` |
+| `nulab.backlog.notificationPollingInterval` | 通知ポーリング間隔（秒） | `60` |
+| `nulab.backlog.favoriteProjects` | お気に入りプロジェクトキー一覧 | `[]` |
 
-| Setting | Description | Example |
-|---------|-------------|---------|
-| `backlog.apiUrl` | Backlog API URL | `https://yourspace.backlog.jp/api/v2` |
-| `backlog.autoRefresh` | Enable/disable auto refresh | `true` |
-| `backlog.refreshInterval` | Refresh interval (seconds) | `300` |
+### 2. Slack
 
-### 3. Slack 連携
-
-Slack 連携には **User OAuth Token (`xoxp-`)** が必要です。Bot Token (`xoxb-`) では検索機能（メンション・キーワード検索）が利用できません。
+Slack 連携には **User OAuth Token (`xoxp-`)** が必要です。Bot Token (`xoxb-`) では検索機能が利用できません。
 
 #### Slack App の作成
 
-1. [Slack API: Your Apps](https://api.slack.com/apps) にアクセス
-2. 「Create New App」→「From scratch」で新しいアプリを作成
-3. 「OAuth & Permissions」ページで以下の **User Token Scopes** を追加:
+1. [Slack API: Your Apps](https://api.slack.com/apps) → 「Create New App」→「From scratch」
+1. 「OAuth & Permissions」で以下の **User Token Scopes** を追加:
 
 | スコープ | 用途 |
 | --- | --- |
-| `channels:read` | パブリックチャンネル一覧の取得 |
-| `groups:read` | プライベートチャンネル一覧の取得 |
-| `im:read` | DM 一覧の取得 |
-| `mpim:read` | グループ DM 一覧の取得 |
+| `channels:read` | パブリックチャンネル一覧 |
+| `groups:read` | プライベートチャンネル一覧 |
+| `im:read` | DM 一覧 |
+| `mpim:read` | グループ DM 一覧 |
 | `channels:history` | パブリックチャンネルのスレッド取得 |
 | `groups:history` | プライベートチャンネルのスレッド取得 |
 | `im:history` | DM のスレッド取得 |
 | `mpim:history` | グループ DM のスレッド取得 |
-| `search:read` | メッセージ検索（メンション・キーワード） |
-| `chat:write` | メッセージ返信の送信 |
+| `search:read` | メッセージ検索 |
+| `chat:write` | メッセージ返信 |
 | `users:read` | ユーザー名の解決 |
-| `usergroups:read` | ユーザーグループ（メンション対象）の取得 |
+| `usergroups:read` | ユーザーグループの取得 |
 
-次の手順でインストール:
+1. 「Install to Workspace」→ 発行された **User OAuth Token** (`xoxp-...`) をコピー
 
-1. 「Install to Workspace」でワークスペースにインストール
-2. 発行された **User OAuth Token** (`xoxp-...`) をコピー
+#### Slack: VSCode 設定
 
-#### VSCode での設定
+1. `Cmd+Shift+P` → `Slack: Set Token` でトークンを入力
 
-1. `Cmd+Shift+P` → `Slack: Set Token`
-2. `xoxp-...` トークンを入力
+| Setting | Description | Default |
+| --- | --- | --- |
+| `nulab.slack.pollingInterval` | ポーリング間隔（秒） | `60` |
+| `nulab.slack.includeDMs` | DM を通知に含める | `false` |
 
-### 4. Google Calendar 連携
+### 3. Google Calendar / Drive
 
-Google Calendar の予定と、それに紐づく議事録（Gemini 自動生成）や添付ドキュメントを VSCode 内で閲覧できます。
+Google Calendar の予定表示・議事録閲覧と、Google Drive のファイル検索に対応。
 
 #### GCP で OAuth クライアントを作成
 
 1. [GCP Console](https://console.cloud.google.com/) でプロジェクトを選択
-2. 上部の検索バーで「Google Calendar API」を検索 → **有効にする**。同様に「Google Drive API」も有効化
-3. 検索バーで「OAuth 同意画面」を検索 → **内部** を選択 → アプリ名を入力して保存
-4. 左メニュー **API とサービス** → **認証情報** → 「認証情報を作成」→ **OAuth クライアント ID**
+2. 「Google Calendar API」と「Google Drive API」を有効化
+3. 「OAuth 同意画面」→ **内部** を選択 → アプリ名を入力して保存
+4. 「認証情報」→「認証情報を作成」→ **OAuth クライアント ID**
 5. アプリケーションの種類: **デスクトップアプリ** → 作成
 6. **クライアント ID** と **クライアントシークレット** をメモ
 
-#### VSCode での設定
+#### Google: VSCode 設定
 
 1. Settings (`Cmd+,`) で `nulab.google.clientId` にクライアント ID を設定
-2. `Cmd+Shift+P` → `Nulab: Set Google Client Secret` でクライアントシークレットを入力
+2. `Cmd+Shift+P` → `Nulab: Set Google Client Secret` でシークレットを入力
 3. `Cmd+Shift+P` → `Nulab: Sign in to Google` でブラウザ認証
 
 | Setting | Description | Default |
-| ------- | ----------- | ------- |
+| --- | --- | --- |
 | `nulab.google.clientId` | OAuth Client ID | - |
-| `nulab.google.calendarId` | 取得するカレンダー ID | `primary` |
-| `nulab.google.daysRange` | 表示する日数範囲 (前後) | `7` |
+| `nulab.google.calendarId` | カレンダー ID | `primary` |
+| `nulab.google.daysRange` | 表示する日数範囲（前後） | `7` |
 
-認証後、Notifications サイドバーの **Google Calendar** ビューにカレンダー予定が表示されます。
+#### Google Drive 検索の使い方
 
-### 5. Security Features
+1. Notifications サイドバーの **Google: Drive** ビューで検索ボタン (🔍) をクリック
+2. キーワードを入力して検索
+3. 結果をクリックしてファイルを開く
+   - **Google Docs / テキスト / 画像** → VSCode 内で表示
+   - **スプレッドシート / スライド / 動画 / PDF / その他** → ブラウザで開く
+4. コマンドパレットからも `Nulab: Search Google Drive` で検索可能
 
-- Secret Storage: Encrypted API key storage
-- Auto Migration: Safe migration from existing settings
-- HTTPS Communication: Encrypted data transfer
+### 4. Cacoo
 
-## Usage
-
-### Browsing Backlog
-
-1. Open the **Backlog** section in the sidebar
-   - Browse projects, issues, wiki, and documents in tree views
-   - Setup guide shown when not configured
-2. Click an issue, wiki page, or document to open its detail view
-   - Rich webview with Backlog-style UI and VS Code theme support
-3. Use **My Tasks** for issues assigned to you, **Notifications** for updates, and **TODO** for task tracking
-
-### Viewing Cacoo Diagrams
-
-1. Open the **Cacoo** section in the sidebar to browse diagrams
-2. Click a diagram to view its sheets
-
-### Using Slack
-
-1. Open the **Slack** section in the sidebar to browse channels
-2. Click a thread to view the full conversation
-3. Use **Slack Search** to find messages by keyword or mention
-
-## Architecture
-
-```text
-┌─────────────────────────────────────────┐
-│           VS Code Extension             │
-├─────────────────────────────────────────┤
-│  ├─ Tree Views (Sidebar)                │
-│  └─ Webviews (Detail / Editor)          │
-├─────────────────────────────────────────┤
-│  Services Layer                         │
-│  ├─ ConfigService                       │
-│  ├─ BacklogApiService (backlog-js)      │
-│  ├─ CacooApiService                     │
-│  ├─ SlackApiService                     │
-│  ├─ GoogleApiService (Service Account)  │
-│  └─ SyncService                         │
-├─────────────────────────────────────────┤
-│  Backlog / Cacoo / Slack / Google APIs  │
-└─────────────────────────────────────────┘
-```
+| Setting | Description |
+| --- | --- |
+| `nulab.cacoo.organizationKey` | Cacoo 組織キー |
 
 ## Development
 
-### Development Commands
+### Build Commands
 
 ```bash
-npm run compile    # Compile
-npm run watch      # Watch mode
-npm run lint       # Lint
-npm run format     # Format
+npm run compile          # TypeScript コンパイル
+npm run watch            # ウォッチモード
+npm run lint             # ESLint
+npm run format           # Prettier
+npm run install:local    # ビルド → パッケージ → ローカルインストール
 ```
 
-### Technologies Used
+インストール後は `Cmd+Shift+P` → `Developer: Reload Window` でリロード。
 
-- TypeScript: Type-safe development
-- VS Code Extension API: Tree View, Webview, Secret Storage
-- backlog-js: Official Backlog API library
-- Slack Web API: Channel browsing, message search, thread viewing
-- ESLint + Prettier: Code quality management
+### Architecture
+
+```text
+src/
+├── commands/          # コマンドハンドラー
+│   ├── backlog/       #   Backlog 関連
+│   ├── google/        #   Google Calendar / Drive
+│   └── workspace/     #   Slack, TODO 等
+├── config/            # 設定管理
+├── providers/         # TreeView / Webview プロバイダー
+├── services/          # API クライアント・同期サービス
+├── types/             # 型定義
+└── webviews/          # Webview HTML 生成
+```
+
+### Technologies
+
+- TypeScript
+- VS Code Extension API (TreeView, Webview, Custom Editor, Secret Storage)
+- backlog-js (Backlog API)
+- Slack Web API
+- Google Calendar / Drive API (OAuth2)
 
 ## Troubleshooting
 
-### Common Issues
-
-1. Extension not working
-   - Check API URL and API Key configuration
-   - Verify API key permissions
-   - Check network connection
-
-2. Data not displayed
-   - Verify project access permissions
-   - Use refresh button to reload data
-   - Check developer console for errors
+- **拡張が動作しない** — API URL・キーの設定を確認。開発者コンソール (`Cmd+Shift+I`) でエラーを確認
+- **データが表示されない** — プロジェクトのアクセス権限を確認。更新ボタンでリロード
+- **Google 認証エラー** — Client ID / Secret を再設定し、`Sign in to Google` を再実行
+- **Slack トークンエラー** — `xoxp-` で始まる User OAuth Token を使用しているか確認
