@@ -79,14 +79,15 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
 
     await this.render(webviewPanel, todoId, cachedSlackBefore, cachedSlackAfter);
 
-    // Watch for document changes (e.g., Claude Code writing to the DRAFT section)
+    // Watch for document changes (e.g., Claude Code writing to the DRAFT/ACTIONS section)
     const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === document.uri.toString() && e.contentChanges.length > 0) {
-        // Re-read draft info and push update to webview
         const draft = this.fileService.getDraftInfo(todoId);
         if (draft) {
           webviewPanel.webview.postMessage({ command: 'updateDraft', draft: draft.content });
         }
+        const actions = this.fileService.getActions(todoId);
+        webviewPanel.webview.postMessage({ command: 'updateActions', actions });
       }
     });
     webviewPanel.onDidDispose(() => changeSubscription.dispose());
@@ -554,11 +555,13 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
       this.claudeProcesses.delete(todoId);
       panel.webview.postMessage({ command: 'chatDone' });
 
-      // Re-read draft after Claude finishes
+      // Re-read draft and actions after Claude finishes
       const draft = this.fileService.getDraftInfo(todoId);
       if (draft) {
         panel.webview.postMessage({ command: 'updateDraft', draft: draft.content });
       }
+      const updatedActions = this.fileService.getActions(todoId);
+      panel.webview.postMessage({ command: 'updateActions', actions: updatedActions });
     });
   }
 }
