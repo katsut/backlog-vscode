@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { WorkspaceTodoItem, SlackMessage } from '../../types/workspace';
+import { WorkspaceTodoItem, SlackMessage, ActionItem } from '../../types/workspace';
 import { DraftInfo } from '../todoWebview';
 import { BacklogContext, BacklogCommentHistory } from './BacklogContext';
 import { SlackContext } from './SlackContext';
 import { GoogleContext } from './GoogleContext';
+import { ActionItems } from './ActionItems';
 
 interface TodoContentProps {
   todo: WorkspaceTodoItem;
@@ -12,11 +13,15 @@ interface TodoContentProps {
   slackContextAfter?: SlackMessage[];
   draft?: DraftInfo | null;
   fullContext?: string;
+  actions: ActionItem[];
   onSaveNotes: (notes: string) => void;
   onSaveDraft: (content: string) => void;
   onPostDraft: () => void;
   onDiscardDraft: () => void;
   onOpenExternal: (url: string) => void;
+  onUpdateAction: (action: ActionItem) => void;
+  onDeleteAction: (actionId: string) => void;
+  onPostAction: (action: ActionItem) => void;
 }
 
 export const TodoContent: React.FC<TodoContentProps> = ({
@@ -26,11 +31,15 @@ export const TodoContent: React.FC<TodoContentProps> = ({
   slackContextAfter,
   draft,
   fullContext,
+  actions,
   onSaveNotes,
   onSaveDraft,
   onPostDraft,
   onDiscardDraft,
   onOpenExternal,
+  onUpdateAction,
+  onDeleteAction,
+  onPostAction,
 }) => {
   const [notesValue, setNotesValue] = useState(todo.notes || '');
   const [draftValue, setDraftValue] = useState(draft?.content || '');
@@ -72,6 +81,14 @@ export const TodoContent: React.FC<TodoContentProps> = ({
         slackContextAfter={slackContextAfter}
       />
       <GoogleContext todo={todo} fullContext={fullContext} onOpenExternal={onOpenExternal} />
+
+      {/* Action Items */}
+      <ActionItems
+        actions={actions}
+        onUpdateAction={onUpdateAction}
+        onDeleteAction={onDeleteAction}
+        onPostAction={onPostAction}
+      />
 
       {/* Draft section */}
       <div className="content-section draft-section">

@@ -5,7 +5,7 @@ import { PanelResizer } from '../components/PanelResizer';
 import { TodoHeader } from '../components/TodoHeader';
 import { TodoContent } from '../components/TodoContent';
 import { getVSCodeAPI } from '../hooks/useVSCodeMessage';
-import { WorkspaceTodoItem, TodoStatus } from '../../types/workspace';
+import { WorkspaceTodoItem, TodoStatus, ActionItem } from '../../types/workspace';
 import { DraftInfo } from '../todoWebview';
 
 interface InitialState {
@@ -15,12 +15,14 @@ interface InitialState {
   slackContextAfter?: any[];
   draft?: DraftInfo | null;
   fullContext?: string;
+  actions?: ActionItem[];
 }
 
 const TodoView: React.FC = () => {
   const initialState = (window as any).__INITIAL_STATE__ as InitialState;
   const [todo, setTodo] = useState<WorkspaceTodoItem>(initialState.todo);
   const [draft, setDraft] = useState<DraftInfo | null>(initialState.draft || null);
+  const [actions, setActions] = useState<ActionItem[]>(initialState.actions || []);
   const vscode = getVSCodeAPI();
 
   useEffect(() => {
@@ -34,6 +36,9 @@ const TodoView: React.FC = () => {
       }
       if (msg.command === 'updateDraft') {
         setDraft((prev) => ({ ...prev!, content: msg.draft }));
+      }
+      if (msg.command === 'updateActions') {
+        setActions(msg.actions);
       }
     };
     window.addEventListener('message', listener);
@@ -78,6 +83,18 @@ const TodoView: React.FC = () => {
     vscode.postMessage({ command: 'refreshContext' });
   };
 
+  const handleUpdateAction = (action: ActionItem) => {
+    vscode.postMessage({ command: 'updateAction', action });
+  };
+
+  const handleDeleteAction = (actionId: string) => {
+    vscode.postMessage({ command: 'deleteAction', actionId });
+  };
+
+  const handlePostAction = (action: ActionItem) => {
+    vscode.postMessage({ command: 'postAction', action });
+  };
+
   return (
     <div className="editor-wrapper">
       <TodoHeader
@@ -98,11 +115,15 @@ const TodoView: React.FC = () => {
             slackContextAfter={initialState.slackContextAfter}
             draft={draft}
             fullContext={initialState.fullContext}
+            actions={actions}
             onSaveNotes={handleSaveNotes}
             onSaveDraft={handleSaveDraft}
             onPostDraft={handlePostDraft}
             onDiscardDraft={handleDiscardDraft}
             onOpenExternal={handleOpenExternal}
+            onUpdateAction={handleUpdateAction}
+            onDeleteAction={handleDeleteAction}
+            onPostAction={handlePostAction}
           />
         </div>
         <PanelResizer targetId="claudeChatSection" />

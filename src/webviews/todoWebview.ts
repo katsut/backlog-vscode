@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { WorkspaceTodoItem, SlackMessage } from '../types/workspace';
+import { WorkspaceTodoItem, SlackMessage, ActionItem } from '../types/workspace';
 import { WebviewHelper } from './common';
 
 export interface DraftInfo {
@@ -17,7 +17,8 @@ export class TodoWebview {
     slackContextBefore: SlackMessage[] = [],
     slackContextAfter: SlackMessage[] = [],
     draft?: DraftInfo | null,
-    fullContext?: string
+    fullContext?: string,
+    actions?: ActionItem[]
   ): string {
     const nonce = WebviewHelper.getNonce();
 
@@ -37,6 +38,7 @@ export class TodoWebview {
       slackContextAfter,
       draft,
       fullContext,
+      actions: actions || [],
     };
 
     return `<!DOCTYPE html>

@@ -8,7 +8,7 @@ import { SessionReplyService } from '../services/session/sessionReplyService';
 import { BacklogConfig } from '../config/backlogConfig';
 import { SlackApiService } from '../services/slackApi';
 import { TodoWebview } from '../webviews/todoWebview';
-import { SlackMessage } from '../types/workspace';
+import { SlackMessage, ActionItem } from '../types/workspace';
 import { TodoTreeViewProvider } from './todoTreeViewProvider';
 import { SessionCodeLensProvider } from './sessionCodeLensProvider';
 import { TodoPersistenceService } from '../services/session/todoPersistenceService';
@@ -299,6 +299,7 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
 
     const draft = this.fileService.getDraftInfo(todoId);
     const fullContextMarkdown = this.fileService.getContextSection(todoId);
+    const actions = this.fileService.getActions(todoId);
 
     // Convert markdown to HTML for webview display
     const fullContext = fullContextMarkdown
@@ -314,7 +315,8 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         slackContextBefore,
         slackContextAfter,
         draft,
-        fullContext
+        fullContext,
+        actions
       );
     } catch {
       // Fallback: render without fullContext if markdown processing fails
@@ -325,7 +327,9 @@ export class TodoEditorProvider implements vscode.CustomTextEditorProvider {
         this.configService.getBaseUrl(),
         slackContextBefore,
         slackContextAfter,
-        draft
+        draft,
+        undefined,
+        actions
       );
     }
   }
