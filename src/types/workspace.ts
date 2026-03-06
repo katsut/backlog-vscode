@@ -62,14 +62,22 @@ export interface SlackChannel {
   latest?: SlackMessage;
 }
 
+export interface SlackReaction {
+  name: string;
+  count: number;
+  users: string[];
+}
+
 export interface SlackMessage {
   ts: string;
   user: string;
   text: string;
   thread_ts?: string;
   channel: string;
+  channelName?: string;
   userName?: string;
   is_dm?: boolean;
+  reactions?: SlackReaction[];
 }
 
 export interface SlackMention {

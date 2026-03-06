@@ -11,6 +11,10 @@ import { CalendarEventWebview } from '../../webviews/calendarEventWebview';
 import { MeetingNotesWebview } from '../../webviews/meetingNotesWebview';
 import { TodoTreeViewProvider } from '../../providers/todoTreeViewProvider';
 import { TodoPersistenceService } from '../../services/session/todoPersistenceService';
+import {
+  GoogleDriveSearchTreeViewProvider,
+  DriveFileItem,
+} from '../../providers/googleDriveSearchTreeViewProvider';
 
 export function registerGoogleCalendar(
   context: vscode.ExtensionContext,
@@ -18,7 +22,7 @@ export function registerGoogleCalendar(
   log: (message: string) => void,
   todoProvider?: TodoTreeViewProvider,
   todoPersistence?: TodoPersistenceService
-): { disposables: vscode.Disposable[]; treeView: vscode.TreeView<any> } {
+): { disposables: vscode.Disposable[]; treeViews: vscode.TreeView<any>[] } {
   log('registerGoogleCalendar: START');
   const googleApi = new GoogleApiService(googleConfig);
   const calendarProvider = new GoogleCalendarTreeViewProvider(googleApi, context.extensionUri);
@@ -26,6 +30,11 @@ export function registerGoogleCalendar(
   const calendarTreeView = vscode.window.createTreeView('workspaceGoogleCalendar', {
     treeDataProvider: calendarProvider,
     showCollapseAll: true,
+  });
+
+  const driveSearchProvider = new GoogleDriveSearchTreeViewProvider(googleApi);
+  const driveTreeView = vscode.window.createTreeView('workspaceGoogleDrive', {
+    treeDataProvider: driveSearchProvider,
   });
 
   const setClientSecretCmd = vscode.commands.registerCommand(
@@ -342,10 +351,49 @@ export function registerGoogleCalendar(
     }
   );
 
+  const searchDriveCmd = vscode.commands.registerCommand('nulab.google.searchDrive', async () => {
+    const query = await vscode.window.showInputBox({
+      prompt: 'Google Drive を検索',
+      placeHolder: 'ファイル名やキーワードを入力',
+      value: driveSearchProvider.getLastQuery(),
+    });
+    if (!query) return;
+
+    driveTreeView.title = `Google: Drive — "${query}"`;
+    await vscode.window.withProgress({ location: { viewId: 'workspaceGoogleDrive' } }, () =>
+      driveSearchProvider.search(query)
+    );
+  });
+
+  const clearDriveSearchCmd = vscode.commands.registerCommand(
+    'nulab.google.clearDriveSearch',
+    () => {
+      driveSearchProvider.clear();
+      driveTreeView.title = 'Google: Drive';
+    }
+  );
+
+  const openDriveFileCmd = vscode.commands.registerCommand(
+    'nulab.google.openDriveFile',
+    (file: GoogleDriveFile) => {
+      if (file) openDriveFile(file, googleApi, log);
+    }
+  );
+
+  const openDriveFileInBrowserCmd = vscode.commands.registerCommand(
+    'nulab.google.openDriveFileInBrowser',
+    (item: DriveFileItem) => {
+      if (item instanceof DriveFileItem && item.file.webViewLink) {
+        vscode.env.openExternal(vscode.Uri.parse(item.file.webViewLink));
+      }
+    }
+  );
+
   return {
-    treeView: calendarTreeView,
+    treeViews: [calendarTreeView, driveTreeView],
     disposables: [
       calendarTreeView,
+      driveTreeView,
       setClientSecretCmd,
       authenticateCmd,
       signOutCmd,
@@ -357,8 +405,93 @@ export function registerGoogleCalendar(
       openSelectedCalendarItemCmd,
       addToTodoCmd,
       addToTodoFromDocCmd,
+      searchDriveCmd,
+      clearDriveSearchCmd,
+      openDriveFileCmd,
+      openDriveFileInBrowserCmd,
     ],
   };
+}
+
+async function openDriveFile(
+  file: GoogleDriveFile,
+  googleApi: GoogleApiService,
+  log: (msg: string) => void
+): Promise<void> {
+  const mime = file.mimeType;
+
+  // Google Docs → .gdoc カスタムエディタ
+  if (mime === 'application/vnd.google-apps.document') {
+    try {
+      const html = await googleApi.getFileContent(file.id);
+      const wsFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!wsFolder) {
+        vscode.env.openExternal(vscode.Uri.parse(file.webViewLink));
+        return;
+      }
+      const safeName = file.name.replace(/[/\\:*?"<>|]/g, '_').substring(0, 60);
+      const fileUri = vscode.Uri.joinPath(
+        wsFolder.uri,
+        '.nulab',
+        'drive-search',
+        `${safeName}.gdoc`
+      );
+      const dummyEvent = { id: '', summary: file.name, start: {}, end: {}, htmlLink: '' };
+      const meta = JSON.stringify({ event: dummyEvent, file });
+      await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(fileUri, '..'));
+      await vscode.workspace.fs.writeFile(fileUri, Buffer.from(`${meta}\n${html}`, 'utf-8'));
+      await vscode.commands.executeCommand('vscode.openWith', fileUri, 'nulab.gdocEditor');
+    } catch (error) {
+      log(`searchDrive: failed to open doc: ${error}`);
+      vscode.env.openExternal(vscode.Uri.parse(file.webViewLink));
+    }
+    return;
+  }
+
+  // テキスト → VSCode テキストエディタ
+  if (mime.startsWith('text/')) {
+    try {
+      const content = await googleApi.downloadFile(file.id);
+      const wsFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!wsFolder) {
+        vscode.env.openExternal(vscode.Uri.parse(file.webViewLink));
+        return;
+      }
+      const safeName = file.name.replace(/[/\\:*?"<>|]/g, '_');
+      const fileUri = vscode.Uri.joinPath(wsFolder.uri, '.nulab', 'drive-search', safeName);
+      await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(fileUri, '..'));
+      await vscode.workspace.fs.writeFile(fileUri, content);
+      await vscode.window.showTextDocument(fileUri);
+    } catch (error) {
+      log(`searchDrive: failed to open text: ${error}`);
+      vscode.env.openExternal(vscode.Uri.parse(file.webViewLink));
+    }
+    return;
+  }
+
+  // 画像 → VSCode 画像ビューア
+  if (mime.startsWith('image/')) {
+    try {
+      const content = await googleApi.downloadFile(file.id);
+      const wsFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!wsFolder) {
+        vscode.env.openExternal(vscode.Uri.parse(file.webViewLink));
+        return;
+      }
+      const safeName = file.name.replace(/[/\\:*?"<>|]/g, '_');
+      const fileUri = vscode.Uri.joinPath(wsFolder.uri, '.nulab', 'drive-search', safeName);
+      await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(fileUri, '..'));
+      await vscode.workspace.fs.writeFile(fileUri, content);
+      await vscode.commands.executeCommand('vscode.open', fileUri);
+    } catch (error) {
+      log(`searchDrive: failed to open image: ${error}`);
+      vscode.env.openExternal(vscode.Uri.parse(file.webViewLink));
+    }
+    return;
+  }
+
+  // その他 → ブラウザ
+  vscode.env.openExternal(vscode.Uri.parse(file.webViewLink));
 }
 
 /** Convert Google Docs HTML export to readable plain text */

@@ -574,8 +574,10 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // ---- Google Calendar ----
-  let googleCalendar: { disposables: vscode.Disposable[]; treeView: vscode.TreeView<any> } | null =
-    null;
+  let googleCalendar: {
+    disposables: vscode.Disposable[];
+    treeViews: vscode.TreeView<any>[];
+  } | null = null;
   try {
     googleCalendar = registerGoogleCalendar(
       context,
@@ -611,7 +613,7 @@ export function activate(context: vscode.ExtensionContext) {
     documentFilesTreeView,
     slackTreeView,
     slackSearchTreeView,
-    ...(googleCalendar ? [googleCalendar.treeView] : []),
+    ...(googleCalendar ? googleCalendar.treeViews : []),
   ];
 
   const treeViewHandlers = [

@@ -217,6 +217,30 @@ export class GoogleApiService {
 
   // ---- Drive API ----
 
+  async searchDriveFiles(query: string): Promise<GoogleDriveFile[]> {
+    const { accessToken } = await this.ensureInitialized();
+
+    const escaped = query.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const q = `(fullText contains '${escaped}' or name contains '${escaped}') and trashed = false`;
+
+    const params = new URLSearchParams({
+      q,
+      fields: 'files(id,name,mimeType,webViewLink,modifiedTime,createdTime)',
+      orderBy: 'viewedByMeTime desc,modifiedTime desc',
+      pageSize: '30',
+    });
+
+    const url = `https://www.googleapis.com/drive/v3/files?${params}`;
+    const data = await this.httpsGetAuth<{ files?: GoogleDriveFile[] }>(url, accessToken);
+    return data.files || [];
+  }
+
+  async downloadFile(fileId: string): Promise<Buffer> {
+    const { accessToken } = await this.ensureInitialized();
+    const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
+    return await this.httpsGetBuffer(url, accessToken);
+  }
+
   async searchMeetingNotes(
     eventSummary: string,
     eventStartTime: string
@@ -383,6 +407,40 @@ export class GoogleApiService {
             reject(new Error(`Failed to parse Google API response: ${error}`));
           }
         });
+        res.on('error', reject);
+      });
+
+      req.on('error', reject);
+      req.setTimeout(30000, () => {
+        req.destroy();
+        reject(new Error('Google API request timeout'));
+      });
+      req.end();
+    });
+  }
+
+  private httpsGetBuffer(url: string, accessToken: string): Promise<Buffer> {
+    const parsed = new URL(url);
+    const options: https.RequestOptions = {
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    };
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const req = https.request(options, (res) => {
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`Google API HTTP ${res.statusCode}`));
+          res.resume();
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
         res.on('error', reject);
       });
 

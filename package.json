@@ -99,6 +99,10 @@
           "name": "Google: Calendar"
         },
         {
+          "id": "workspaceGoogleDrive",
+          "name": "Google: Drive"
+        },
+        {
           "id": "workspaceNotifications",
           "name": "Backlog: Notifications"
         },
@@ -166,6 +170,10 @@
       {
         "view": "workspaceGoogleCalendar",
         "contents": "Google アカウントにサインインして会議の議事録を確認しましょう。\n[Sign in to Google](command:nulab.google.authenticate)"
+      },
+      {
+        "view": "workspaceGoogleDrive",
+        "contents": "検索ボタンを押して Google Drive のファイルを検索できます。\n[検索する](command:nulab.google.searchDrive)"
       }
     ],
     "commands": [
@@ -694,6 +702,29 @@
         "title": "最新を取得",
         "icon": "$(sync)",
         "category": "Google"
+      },
+      {
+        "command": "nulab.google.searchDrive",
+        "title": "Search Google Drive",
+        "icon": "$(search)",
+        "category": "Nulab"
+      },
+      {
+        "command": "nulab.google.clearDriveSearch",
+        "title": "クリア",
+        "icon": "$(clear-all)",
+        "category": "Google"
+      },
+      {
+        "command": "nulab.google.openDriveFile",
+        "title": "Open Drive File",
+        "category": "Google"
+      },
+      {
+        "command": "nulab.google.openDriveFileInBrowser",
+        "title": "ブラウザで開く",
+        "icon": "$(link-external)",
+        "category": "Google"
       }
     ],
     "menus": {
@@ -877,6 +908,16 @@
           "command": "nulab.google.refreshCalendar",
           "when": "view == workspaceGoogleCalendar",
           "group": "navigation@1"
+        },
+        {
+          "command": "nulab.google.searchDrive",
+          "when": "view == workspaceGoogleDrive",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nulab.google.clearDriveSearch",
+          "when": "view == workspaceGoogleDrive",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -1053,6 +1094,16 @@
         {
           "command": "nulab.google.refreshMeetingNotes",
           "when": "viewItem == calendarDocument",
+          "group": "inline"
+        },
+        {
+          "command": "nulab.google.openDriveFileInBrowser",
+          "when": "view == workspaceGoogleDrive && viewItem == driveFile",
+          "group": "drive@1"
+        },
+        {
+          "command": "nulab.google.openDriveFileInBrowser",
+          "when": "view == workspaceGoogleDrive && viewItem == driveFile",
           "group": "inline"
         }
       ]
